@@ -17,23 +17,6 @@ The addon reads your `nexus_token` JWT directly from the browser cookies — no 
 
 All data is stored locally in `browser.storage.local`. Nothing is sent anywhere.
 
-## Installation
-
-### From XPI (local install)
-
-1. Open Firefox and go to `about:addons`
-2. Click the gear icon → **Install Add-on From File…**
-3. Select `nexus-accounting-1.0.0.xpi`
-4. Click **Add**
-
-For a permanent install without developer mode, sign the XPI via [AMO](https://addons.mozilla.org/developers/).
-
-### From source (developer mode)
-
-1. Go to `about:debugging#/runtime/this-firefox`
-2. Click **Load Temporary Add-on…**
-3. Select `nexus-addon/manifest.json`
-
 ## Usage
 
 1. Log in to [Nexus Legacy](https://s0.nexuslegacy.space)
@@ -57,3 +40,7 @@ Use the **View** selector (All time / Daily / Hourly) to filter all stats and ch
 
 - **Records cap**: max survey reports kept locally. Oldest are dropped when limit is reached. Set to `0` for unlimited.
 - **Reset all data**: drops all stored reports (keeps your cap setting).
+
+## Screens
+
+
