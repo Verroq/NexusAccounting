@@ -45,6 +45,12 @@ Use the **View** selector (All time / Daily / Hourly) to filter all stats and ch
 
 ## Screens
 
+<img width="1903" height="726" alt="nexus_accounting" src="https://github.com/user-attachments/assets/9a3fd91c-e3cf-4fec-88e1-0c1b973e693c" />
+
+<img width="1893" height="728" alt="nexus_accounting_hourly" src="https://github.com/user-attachments/assets/1658ae94-12c2-42c1-b634-fab23f98bede" />
+
+<img width="1901" height="883" alt="nexus_accounting_graph_bar" src="https://github.com/user-attachments/assets/723bf0e3-8251-4fe3-bc6b-57f1bb54629f" />
+
 
 ## Disclaimer
 
