@@ -130,7 +130,7 @@ async function scrape() {
       const ore = loot.ore || 0;
       const hydrogen = loot.hydrogen || 0;
       const silicates = loot.silicates || 0;
-      const nLost = (r.shipsLost || []).length;
+      const nLost = (r.shipsLost || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
       const nDamaged = (r.shipsDamaged || []).length;
       const lostDetail = parseShipsLost(r.shipsLost);
 
