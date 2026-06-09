@@ -7,6 +7,10 @@ function fmt(n) {
   return n == null ? '0' : Number(n).toLocaleString();
 }
 
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ── Storage ────────────────────────────────────────────────────────────────
 
 async function loadAll() {
@@ -24,7 +28,7 @@ async function loadAll() {
 function updateStatus(lastScrape, lastError) {
   const el = document.getElementById('status-text');
   if (lastError) {
-    el.innerHTML = `<span class="error">Error: ${lastError}</span>`;
+    el.innerHTML = `<span class="error">Error: ${esc(lastError)}</span>`;
   } else if (lastScrape) {
     el.textContent = `Last scrape: ${new Date(lastScrape).toLocaleString()}`;
   } else {
@@ -177,7 +181,7 @@ function renderCollected(t, periodLabel) {
 function renderLost(rl, periodLabel) {
   const rareCards = Object.entries(rl.rare || {})
     .sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => `<div class="stat-card"><div class="label">${k.replace(/_/g, ' ')}${periodLabel}</div><div class="value rare">${fmt(v)}</div></div>`)
+    .map(([k, v]) => `<div class="stat-card"><div class="label">${esc(k).replace(/_/g, ' ')}${periodLabel}</div><div class="value rare">${fmt(v)}</div></div>`)
     .join('');
 
   document.getElementById('stats-lost').innerHTML = `
@@ -278,8 +282,8 @@ function renderTable() {
   const z = v => v ? v.toLocaleString() : '<span class="zero">—</span>';
   document.getElementById('reports-tbody').innerHTML = slice.map(r => `<tr>
     <td>${new Date(r.created_at).toLocaleString()}</td>
-    <td>${r.system_name ?? '—'}</td>
-    <td><span class="badge ${r.event_type}">${r.event_type.replace(/_/g, ' ')}</span></td>
+    <td>${esc(r.system_name) || '—'}</td>
+    <td><span class="badge ${esc(r.event_type)}">${esc(r.event_type).replace(/_/g, ' ')}</span></td>
     <td class="ore">${z(r.ore)}</td>
     <td class="hydrogen">${z(r.hydrogen)}</td>
     <td class="silicates">${z(r.silicates)}</td>
