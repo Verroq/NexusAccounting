@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Tracks survey mission data from Nexus Legacy — aggregates resources collected and ships lost over time with daily and hourly breakdowns.",
   "author": "Verrok",
-  "homepage_url": "https://github.com/verrok/nexus-accounting",
+  "homepage_url": "https://github.com/Verroq/NexusAccounting",
   "permissions": [
     "cookies",
     "storage",
@@ -19,11 +19,11 @@
   "browser_action": {
     "default_title": "Nexus Accounting",
     "default_icon": {
-      "48": "icons/icon.svg"
+      "128": "icons/icon128.png"
     }
   },
   "icons": {
-    "48": "icons/icon.svg"
+    "128": "icons/icon128.png"
   },
   "web_accessible_resources": ["dashboard.html"],
   "browser_specific_settings": {
