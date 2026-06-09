@@ -298,7 +298,7 @@ function renderByEventChart(events) {
 // ── Reports table ──────────────────────────────────────────────────────────
 
 function renderTable() {
-  const allReports = store.recent_reports || [];
+  const allReports = (store.recent_reports || []).slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
   const totalPages = Math.ceil(allReports.length / PER_PAGE);
   document.getElementById('page-info').textContent = `Page ${currentPage} / ${Math.max(1, totalPages)} (${allReports.length} total)`;
   document.getElementById('btn-prev').disabled = currentPage <= 1;
@@ -350,6 +350,9 @@ function changePage(delta) {
   currentPage += delta;
   renderTable();
 }
+
+document.getElementById('btn-prev').addEventListener('click', () => changePage(-1));
+document.getElementById('btn-next').addEventListener('click', () => changePage(1));
 
 // ── Controls ───────────────────────────────────────────────────────────────
 
