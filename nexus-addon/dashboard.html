@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Nexus Accounting</title>
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <h1>Nexus Accounting — Survey Reports</h1>
+
+  <div class="status-bar">
+    <span id="status-text">Loading…</span>
+    <button id="btn-scrape">Scrape Now</button>
+    <button id="btn-reset" style="color:#ff7b72; border-color:#ff7b7244;">Reset all data</button>
+  </div>
+
+  <div class="controls">
+    <label for="mode-select">View:</label>
+    <select id="mode-select">
+      <option value="all">All time</option>
+      <option value="daily">Daily</option>
+      <option value="hourly">Hourly</option>
+    </select>
+    <span style="margin-left:auto; display:flex; align-items:center; gap:8px; font-size:0.8rem; color:#8b949e;">
+      Records cap
+      <span title="Maximum number of individual survey reports stored locally. Older records are dropped when the limit is reached. Set to 0 for unlimited storage."
+        style="display:inline-flex; align-items:center; justify-content:center;
+               width:14px; height:14px; border-radius:50%; border:1px solid #8b949e;
+               color:#8b949e; font-size:0.65rem; cursor:help; flex-shrink:0;">i</span>
+      :
+      <input id="records-cap" type="text" value="500"
+        style="width:70px; background:#21262d; border:1px solid #30363d; color:#e6edf3;
+               padding:4px 8px; border-radius:6px; font-size:0.8rem;" />
+      <span id="cap-warning" style="display:none; color:#ff7b72; font-size:0.75rem;">Must be a whole number ≥ 0</span>
+      <button id="btn-save-cap">Save</button>
+    </span>
+  </div>
+
+  <div id="main-content">
+    <div class="section-label">Resources collected</div>
+    <div class="stats" id="stats-collected"></div>
+
+    <div class="section-label">Resources lost (ship build costs)</div>
+    <div class="stats" id="stats-lost"></div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h2>Resources per period</h2>
+        <canvas id="chart-resources"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Event type breakdown</h2>
+        <canvas id="chart-events"></canvas>
+      </div>
+    </div>
+
+    <div class="charts">
+      <div class="chart-box" style="grid-column: 1 / -1;">
+        <h2>Resources by event type</h2>
+        <canvas id="chart-by-event"></canvas>
+      </div>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Recent Reports</h2>
+        <div class="pagination">
+          <button id="btn-prev" onclick="changePage(-1)">← Prev</button>
+          <span id="page-info">Page 1</span>
+          <button id="btn-next" onclick="changePage(1)">Next →</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>System</th><th>Event</th>
+            <th>Ore</th><th>Hydrogen</th><th>Silicates</th>
+            <th>Ships lost</th><th>Ships damaged</th><th>Wormholes</th>
+          </tr>
+        </thead>
+        <tbody id="reports-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="chart.umd.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

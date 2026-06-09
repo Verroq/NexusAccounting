@@ -1,0 +1,89 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: system-ui, sans-serif; padding: 24px; }
+h1 { font-size: 1.4rem; margin-bottom: 4px; color: #58a6ff; }
+
+.status-bar {
+  font-size: 0.75rem; color: #8b949e; margin-bottom: 20px;
+  display: flex; gap: 16px; align-items: center;
+}
+.status-bar .error { color: #ff7b72; }
+.status-bar button {
+  background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 3px 10px; border-radius: 6px; cursor: pointer; font-size: 0.75rem;
+}
+.status-bar button:hover { background: #30363d; }
+.status-bar button:disabled { opacity: 0.5; cursor: default; }
+
+.section-label {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: #484f58; margin-bottom: 6px; margin-top: 20px;
+}
+
+.stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.stat-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 14px 20px; min-width: 140px;
+}
+.stat-card .label { font-size: 0.75rem; color: #8b949e; margin-bottom: 4px; }
+.stat-card .value { font-size: 1.5rem; font-weight: 700; }
+
+.ore    { color: #f0883e; }
+.hydrogen { color: #79c0ff; }
+.silicates { color: #56d364; }
+.missions { color: #d2a8ff; }
+.alloys  { color: #e3b341; }
+.rare   { color: #bc8cff; }
+
+.controls { display: flex; gap: 8px; align-items: center; margin: 16px 0; }
+select, .controls button {
+  background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+}
+.controls button:hover { background: #30363d; }
+.controls button:disabled { opacity: 0.5; cursor: default; }
+
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+.chart-box {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px;
+}
+.chart-box h2 { font-size: 1rem; color: #8b949e; margin-bottom: 10px; }
+canvas { max-height: 280px; }
+
+.reports-section { margin-top: 28px; }
+.reports-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.reports-header h2 { font-size: 1rem; color: #8b949e; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+thead th {
+  text-align: left; padding: 8px 10px; color: #8b949e;
+  border-bottom: 1px solid #30363d; white-space: nowrap;
+}
+tbody tr { border-bottom: 1px solid #21262d; }
+tbody tr:hover { background: #161b22; }
+tbody td { padding: 7px 10px; }
+td.ore { color: #f0883e; }
+td.hydrogen { color: #79c0ff; }
+td.silicates { color: #56d364; }
+.zero { color: #484f58; }
+.badge {
+  display: inline-block; padding: 2px 7px; border-radius: 4px;
+  font-size: 0.75rem; background: #21262d; color: #8b949e;
+}
+.badge.ancient_signal, .badge.anomaly_rift, .badge.anomaly_detected { background: #1f2d3d; color: #79c0ff; }
+.badge.resource_cache, .badge.abandoned_cargo, .badge.debris_fragment { background: #1a2d1a; color: #56d364; }
+.badge.rogue_drone, .badge.booby_trap { background: #2d1a1a; color: #ff7b72; }
+
+.pagination { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.pagination span { color: #8b949e; }
+.pagination button {
+  background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+}
+.pagination button:hover { background: #30363d; }
+.pagination button:disabled { opacity: 0.5; cursor: default; }
+
+.empty-state {
+  text-align: center; padding: 60px 20px; color: #484f58;
+}
+.empty-state h2 { color: #8b949e; margin-bottom: 8px; }
+
+@media (max-width: 700px) { .charts { grid-template-columns: 1fr; } }

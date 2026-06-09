@@ -1,0 +1,20 @@
+# Python app (server-side, not part of addon)
+*.py
+__pycache__/
+*.pyc
+*.pyo
+requirements.txt
+templates/
+
+# Data / secrets
+data.db
+.nexus_token_cache
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# Claude
+.claude/
+CLAUDE.md

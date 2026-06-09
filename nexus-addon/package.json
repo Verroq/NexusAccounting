@@ -1,0 +1,11 @@
+{
+  "name": "nexus-accounting",
+  "version": "1.0.0",
+  "description": "Firefox addon — tracks Nexus Legacy survey mission data",
+  "author": "Verrok",
+  "license": "MIT",
+  "dependencies": {
+    "chart.js": "4.5.1"
+  },
+  "notes": "chart.umd.js is the unminified UMD build of chart.js@4.5.1 from https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.js"
+}
