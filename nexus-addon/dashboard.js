@@ -7,9 +7,6 @@ function fmt(n) {
   return n == null ? '0' : Number(n).toLocaleString();
 }
 
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
@@ -27,8 +24,12 @@ async function loadAll() {
 
 function updateStatus(lastScrape, lastError) {
   const el = document.getElementById('status-text');
+  el.textContent = '';
   if (lastError) {
-    el.innerHTML = `<span class="error">Error: ${esc(lastError)}</span>`;
+    const span = document.createElement('span');
+    span.className = 'error';
+    span.textContent = `Error: ${lastError}`;
+    el.appendChild(span);
   } else if (lastScrape) {
     el.textContent = `Last scrape: ${new Date(lastScrape).toLocaleString()}`;
   } else {
@@ -162,35 +163,60 @@ function renderAll() {
 
 // ── Stat cards ─────────────────────────────────────────────────────────────
 
+function makeStatCard(label, value, valueClass, valueStyle) {
+  const card = document.createElement('div');
+  card.className = 'stat-card';
+  const labelDiv = document.createElement('div');
+  labelDiv.className = 'label';
+  labelDiv.textContent = label;
+  const valueDiv = document.createElement('div');
+  valueDiv.className = valueClass ? `value ${valueClass}` : 'value';
+  if (valueStyle) valueDiv.style.cssText = valueStyle;
+  valueDiv.textContent = value;
+  card.append(labelDiv, valueDiv);
+  return card;
+}
+
 function renderCollected(t, periodLabel) {
+  const container = document.getElementById('stats-collected');
+  container.textContent = '';
   const noData = !store.totals || !store.totals.missions;
   if (noData) {
-    document.getElementById('stats-collected').innerHTML =
-      `<p style="color:#484f58;padding:8px 0">No data yet — log in to <a href="https://s0.nexuslegacy.space" target="_blank" style="color:#58a6ff">Nexus Legacy</a> then click Scrape Now.</p>`;
+    const p = document.createElement('p');
+    p.style.cssText = 'color:#484f58;padding:8px 0';
+    p.textContent = 'No data yet — log in to ';
+    const a = document.createElement('a');
+    a.href = 'https://s0.nexuslegacy.space';
+    a.target = '_blank';
+    a.style.color = '#58a6ff';
+    a.textContent = 'Nexus Legacy';
+    p.append(a, document.createTextNode(' then click Scrape Now.'));
+    container.appendChild(p);
     return;
   }
-  document.getElementById('stats-collected').innerHTML = `
-    <div class="stat-card"><div class="label">Ore${periodLabel}</div><div class="value ore">${fmt(t.ore)}</div></div>
-    <div class="stat-card"><div class="label">Hydrogen${periodLabel}</div><div class="value hydrogen">${fmt(t.hydrogen)}</div></div>
-    <div class="stat-card"><div class="label">Silicates${periodLabel}</div><div class="value silicates">${fmt(t.silicates)}</div></div>
-    <div class="stat-card"><div class="label">Missions${periodLabel}</div><div class="value missions">${fmt(t.missions)}</div></div>
-    <div class="stat-card"><div class="label">Ships lost${periodLabel}</div><div class="value" style="color:#ff7b72">${fmt(t.ships_lost)}</div></div>
-  `;
+  container.append(
+    makeStatCard(`Ore${periodLabel}`,        fmt(t.ore),        'ore'),
+    makeStatCard(`Hydrogen${periodLabel}`,   fmt(t.hydrogen),   'hydrogen'),
+    makeStatCard(`Silicates${periodLabel}`,  fmt(t.silicates),  'silicates'),
+    makeStatCard(`Missions${periodLabel}`,   fmt(t.missions),   'missions'),
+    makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
+  );
 }
 
 function renderLost(rl, periodLabel) {
-  const rareCards = Object.entries(rl.rare || {})
+  const container = document.getElementById('stats-lost');
+  container.textContent = '';
+  container.append(
+    makeStatCard(`Ore lost${periodLabel}`,      fmt(rl.ore),      'ore'),
+    makeStatCard(`Silicates lost${periodLabel}`, fmt(rl.silicates), 'silicates'),
+    makeStatCard(`Hydrogen lost${periodLabel}`,  fmt(rl.hydrogen),  'hydrogen'),
+    makeStatCard(`Alloys lost${periodLabel}`,    fmt(rl.alloys),    'alloys'),
+  );
+  Object.entries(rl.rare || {})
     .sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => `<div class="stat-card"><div class="label">${esc(k).replace(/_/g, ' ')}${periodLabel}</div><div class="value rare">${fmt(v)}</div></div>`)
-    .join('');
-
-  document.getElementById('stats-lost').innerHTML = `
-    <div class="stat-card"><div class="label">Ore lost${periodLabel}</div><div class="value ore">${fmt(rl.ore)}</div></div>
-    <div class="stat-card"><div class="label">Silicates lost${periodLabel}</div><div class="value silicates">${fmt(rl.silicates)}</div></div>
-    <div class="stat-card"><div class="label">Hydrogen lost${periodLabel}</div><div class="value hydrogen">${fmt(rl.hydrogen)}</div></div>
-    <div class="stat-card"><div class="label">Alloys lost${periodLabel}</div><div class="value alloys">${fmt(rl.alloys)}</div></div>
-    ${rareCards}
-  `;
+    .forEach(([k, v]) => container.appendChild(
+      makeStatCard(`${k.replace(/_/g, ' ')}${periodLabel}`, fmt(v), 'rare')
+    ));
 }
 
 // ── Charts ─────────────────────────────────────────────────────────────────
@@ -279,18 +305,45 @@ function renderTable() {
   document.getElementById('btn-next').disabled = currentPage >= totalPages;
 
   const slice = allReports.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE);
-  const z = v => v ? v.toLocaleString() : '<span class="zero">—</span>';
-  document.getElementById('reports-tbody').innerHTML = slice.map(r => `<tr>
-    <td>${new Date(r.created_at).toLocaleString()}</td>
-    <td>${esc(r.system_name) || '—'}</td>
-    <td><span class="badge ${esc(r.event_type)}">${esc(r.event_type).replace(/_/g, ' ')}</span></td>
-    <td class="ore">${z(r.ore)}</td>
-    <td class="hydrogen">${z(r.hydrogen)}</td>
-    <td class="silicates">${z(r.silicates)}</td>
-    <td>${r.ships_lost || '<span class="zero">—</span>'}</td>
-    <td>${r.ships_damaged || '<span class="zero">—</span>'}</td>
-    <td>${r.wormholes_detected || '<span class="zero">—</span>'}</td>
-  </tr>`).join('');
+  const tbody = document.getElementById('reports-tbody');
+  tbody.textContent = '';
+
+  function zeroTd(v) {
+    const td = document.createElement('td');
+    if (v) {
+      td.textContent = v.toLocaleString();
+    } else {
+      const span = document.createElement('span');
+      span.className = 'zero';
+      span.textContent = '—';
+      td.appendChild(span);
+    }
+    return td;
+  }
+
+  for (const r of slice) {
+    const tr = document.createElement('tr');
+
+    const tdDate = document.createElement('td');
+    tdDate.textContent = new Date(r.created_at).toLocaleString();
+
+    const tdSys = document.createElement('td');
+    tdSys.textContent = r.system_name || '—';
+
+    const tdEvt = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = `badge ${r.event_type}`;
+    badge.textContent = r.event_type.replace(/_/g, ' ');
+    tdEvt.appendChild(badge);
+
+    const tdOre = zeroTd(r.ore);       tdOre.className = 'ore';
+    const tdHyd = zeroTd(r.hydrogen);  tdHyd.className = 'hydrogen';
+    const tdSil = zeroTd(r.silicates); tdSil.className = 'silicates';
+
+    tr.append(tdDate, tdSys, tdEvt, tdOre, tdHyd, tdSil,
+              zeroTd(r.ships_lost), zeroTd(r.ships_damaged), zeroTd(r.wormholes_detected));
+    tbody.appendChild(tr);
+  }
 }
 
 function changePage(delta) {
