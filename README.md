@@ -15,7 +15,7 @@ Firefox addon that tracks survey mission data from [Nexus Legacy](https://s0.nex
 
 ## How it works
 
-The addon reads your `nexus_token` JWT directly from the browser cookies — no credentials to enter. You just need to be logged in to Nexus Legacy.
+The addon reads your `nexus_token` JWT directly from the browser cookies, no credentials to enter. You just need to be logged in to Nexus Legacy.
 
 All data is stored locally in `browser.storage.local`. Nothing is sent anywhere.
 
