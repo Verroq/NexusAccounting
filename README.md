@@ -1,0 +1,59 @@
+# Nexus Accounting
+
+Firefox addon that tracks survey mission data from [Nexus Legacy](https://s0.nexuslegacy.space).
+
+## What it does
+
+- Scrapes survey reports from the game API every 15 minutes (or on demand)
+- Aggregates resources collected: ore, hydrogen, silicates
+- Tracks ship losses and computes their rebuild cost (ore, silicates, hydrogen, alloys, rare resources)
+- Breaks down results by event type
+- Displays all-time, daily, and hourly views
+- Stores up to 500 survey reports locally (configurable, 0 = unlimited)
+
+## How it works
+
+The addon reads your `nexus_token` JWT directly from the browser cookies — no credentials to enter. You just need to be logged in to Nexus Legacy.
+
+All data is stored locally in `browser.storage.local`. Nothing is sent anywhere.
+
+## Installation
+
+### From XPI (local install)
+
+1. Open Firefox and go to `about:addons`
+2. Click the gear icon → **Install Add-on From File…**
+3. Select `nexus-accounting-1.0.0.xpi`
+4. Click **Add**
+
+For a permanent install without developer mode, sign the XPI via [AMO](https://addons.mozilla.org/developers/).
+
+### From source (developer mode)
+
+1. Go to `about:debugging#/runtime/this-firefox`
+2. Click **Load Temporary Add-on…**
+3. Select `nexus-addon/manifest.json`
+
+## Usage
+
+1. Log in to [Nexus Legacy](https://s0.nexuslegacy.space)
+2. Click the Nexus Accounting toolbar icon to open the dashboard
+3. Click **Scrape Now** to fetch data immediately, or wait for the automatic 15-minute scrape
+
+## Dashboard
+
+| Section | Description |
+|---|---|
+| Resources collected | Ore, hydrogen, silicates, mission count, ships lost |
+| Resources lost | Build cost of destroyed ships per resource type |
+| Resources per period | Line chart over time |
+| Event type breakdown | Doughnut chart of mission types |
+| Resources by event type | Bar chart of yields per mission type |
+| Recent reports | Paginated table of individual survey reports |
+
+Use the **View** selector (All time / Daily / Hourly) to filter all stats and charts to the latest day or hour.
+
+## Settings
+
+- **Records cap**: max survey reports kept locally. Oldest are dropped when limit is reached. Set to `0` for unlimited.
+- **Reset all data**: drops all stored reports (keeps your cap setting).
