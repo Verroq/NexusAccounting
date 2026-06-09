@@ -4,7 +4,7 @@ const REPORTS_PATH = '/api/fleet/survey-reports';
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes — forces a full re-scrape.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
@@ -125,6 +125,11 @@ async function scrape() {
     const newReports = reports.filter(r => !seenIds.has(r.id));
 
     for (const r of newReports) {
+      // Not yet investigated — anomaly pending exploration, skip and retry next scrape.
+      if (!r.investigated) continue;
+      // Loot not yet collected — skip and retry next scrape.
+      if (r.uncollectedLoot !== null) continue;
+
       seenIds.add(r.id);
       const loot = r.loot || {};
       const ore = loot.ore || 0;
