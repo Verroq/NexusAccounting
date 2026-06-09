@@ -2,6 +2,8 @@
 
 Firefox addon that tracks survey mission data from [Nexus Legacy](https://s0.nexuslegacy.space).
 
+<img width="1889" height="726" alt="image" src="https://github.com/user-attachments/assets/62757e1c-d4c6-422d-9889-4ad0144b8801" />
+
 ## What it does
 
 - Scrapes survey reports from the game API every 15 minutes (or on demand)
@@ -42,5 +44,15 @@ Use the **View** selector (All time / Daily / Hourly) to filter all stats and ch
 - **Reset all data**: drops all stored reports (keeps your cap setting).
 
 ## Screens
+
+
+## Disclaimer
+
+Web UI made with Claude Opus 4.8
+
+## License
+
+[Mozilla Public License](https://www.mozilla.org/en-US/MPL/2.0/)
+
 
 
