@@ -696,7 +696,7 @@ document.getElementById('import-file').addEventListener('change', async function
   const btn = document.getElementById('btn-import');
   try {
     const payload = JSON.parse(await file.text());
-    if (!payload || payload.nexus_accounting_backup !== 1 || typeof payload.data !== 'object') {
+    if (!payload || payload.nexus_accounting_backup !== 1 || !payload.data || Array.isArray(payload.data) || typeof payload.data !== 'object') {
       throw new Error('not a Nexus Accounting backup file');
     }
     const exportedAt = payload.exported_at ? new Date(payload.exported_at).toLocaleString() : 'unknown date';
