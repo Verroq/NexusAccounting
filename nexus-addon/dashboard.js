@@ -662,6 +662,60 @@ document.getElementById('btn-save-cap').addEventListener('click', async function
   setTimeout(() => { this.textContent = 'Save'; }, 1500);
 });
 
+// ── Export / Import ────────────────────────────────────────────────────────
+
+document.getElementById('btn-export').addEventListener('click', async function () {
+  const data = await browser.storage.local.get(null);
+  // JSON cannot represent Infinity (unlimited records cap) — store as 0.
+  if (data.records_cap === Infinity) data.records_cap = 0;
+  const payload = {
+    nexus_accounting_backup: 1,
+    exported_at: new Date().toISOString(),
+    data,
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `nexus-accounting-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  this.textContent = 'Exported ✓';
+  setTimeout(() => { this.textContent = 'Export JSON'; }, 2000);
+});
+
+document.getElementById('btn-import').addEventListener('click', () => {
+  document.getElementById('import-file').click();
+});
+
+document.getElementById('import-file').addEventListener('change', async function () {
+  const file = this.files[0];
+  this.value = '';                    // allow re-selecting the same file
+  if (!file) return;
+
+  const btn = document.getElementById('btn-import');
+  try {
+    const payload = JSON.parse(await file.text());
+    if (!payload || payload.nexus_accounting_backup !== 1 || !payload.data || Array.isArray(payload.data) || typeof payload.data !== 'object') {
+      throw new Error('not a Nexus Accounting backup file');
+    }
+    const exportedAt = payload.exported_at ? new Date(payload.exported_at).toLocaleString() : 'unknown date';
+    if (!confirm(`Replace ALL current data with backup from ${exportedAt}? This cannot be undone.`)) return;
+
+    const data = payload.data;
+    if (data.records_cap === 0) data.records_cap = Infinity;
+    await browser.storage.local.clear();
+    await browser.storage.local.set(data);
+    await loadAll();
+    btn.textContent = 'Imported ✓';
+  } catch (e) {
+    alert(`Import failed: ${e.message}`);
+    btn.textContent = 'Error';
+  } finally {
+    setTimeout(() => { btn.textContent = 'Import JSON'; }, 2000);
+  }
+});
+
 // ── Init ───────────────────────────────────────────────────────────────────
 
 loadAll();

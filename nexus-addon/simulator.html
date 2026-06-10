@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Nexus Accounting — Combat Simulator</title>
+  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="simulator.css" />
+</head>
+<body>
+  <h1>Combat Simulator</h1>
+
+  <div class="status-bar">
+    <a href="dashboard.html" style="color:#58a6ff;">← Back to dashboard</a>
+    <span id="sim-status"></span>
+  </div>
+
+  <div class="sim-options">
+    <label>Simulations
+      <input id="opt-sims" type="number" value="500" min="1" max="10000" />
+    </label>
+    <label>Max rounds
+      <input id="opt-rounds" type="number" value="10" min="1" max="20" />
+    </label>
+    <label>Damage variance ±%
+      <input id="opt-variance" type="number" value="10" min="0" max="50" />
+    </label>
+    <label>Debris rate %
+      <input id="opt-debris" type="number" value="30" min="0" max="100" />
+    </label>
+    <label class="checkbox-label">
+      <input id="opt-shield-regen" type="checkbox" />
+      Shields regenerate each round
+    </label>
+    <button id="btn-run">Run simulation</button>
+    <button id="btn-clear">Clear fleets</button>
+  </div>
+
+  <div class="sim-layout">
+    <div class="fleet-box">
+      <h2 class="fleet-title attacker">Attacker fleet</h2>
+      <details class="tech-panel">
+        <summary>Research levels</summary>
+        <div class="tech-grid" id="attacker-techs"></div>
+      </details>
+      <table class="fleet-table"><tbody id="attacker-ships"></tbody></table>
+    </div>
+    <div class="fleet-box">
+      <h2 class="fleet-title defender">Defender fleet</h2>
+      <details class="tech-panel">
+        <summary>Research levels</summary>
+        <div class="tech-grid" id="defender-techs"></div>
+      </details>
+      <table class="fleet-table"><tbody id="defender-ships"></tbody></table>
+    </div>
+  </div>
+
+  <div class="tip-box">
+    Weapon-vs-armor multipliers are estimates derived from the official guide —
+    exact engine numbers are not published. Research bonuses and capital-ship
+    rapid-fire values are exact (read from in-game screens).
+    Outcomes are indicative, not exact.
+  </div>
+
+  <div id="results" style="display:none;">
+    <div class="section-label">Outcome (across all simulations)</div>
+    <div class="stats" id="outcome-stats"></div>
+
+    <div class="sim-layout">
+      <div class="fleet-box">
+        <h2 class="fleet-title attacker">Attacker — average losses</h2>
+        <table><thead><tr><th>Ship</th><th>Sent</th><th>Avg lost</th><th>Survival</th></tr></thead>
+        <tbody id="attacker-losses"></tbody></table>
+        <div class="stats" id="attacker-cost" style="margin-top:10px;"></div>
+      </div>
+      <div class="fleet-box">
+        <h2 class="fleet-title defender">Defender — average losses</h2>
+        <table><thead><tr><th>Ship</th><th>Sent</th><th>Avg lost</th><th>Survival</th></tr></thead>
+        <tbody id="defender-losses"></tbody></table>
+        <div class="stats" id="defender-cost" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <div class="section-label">Average debris field generated</div>
+    <div class="stats" id="debris-stats"></div>
+  </div>
+
+  <script src="simulator.js"></script>
+</body>
+</html>
