@@ -205,8 +205,8 @@ function renderCollected(t, periodLabel) {
   }
   container.append(
     makeStatCard(`Ore${periodLabel}`,        fmt(t.ore),        'ore'),
-    makeStatCard(`Hydrogen${periodLabel}`,   fmt(t.hydrogen),   'hydrogen'),
     makeStatCard(`Silicates${periodLabel}`,  fmt(t.silicates),  'silicates'),
+    makeStatCard(`Hydrogen${periodLabel}`,   fmt(t.hydrogen),   'hydrogen'),
     makeStatCard(`Missions${periodLabel}`,   fmt(t.missions),   'missions'),
     makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
   );
@@ -458,8 +458,8 @@ function renderPiratesTab() {
   } else {
     collected.append(
       makeStatCard(`Ore${periodLabel}`,       fmt(t.ore),       'ore'),
-      makeStatCard(`Hydrogen${periodLabel}`,  fmt(t.hydrogen),  'hydrogen'),
       makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
+      makeStatCard(`Hydrogen${periodLabel}`,  fmt(t.hydrogen),  'hydrogen'),
       makeStatCard(`Raids${periodLabel}`,     fmt(t.raids),     'missions'),
       makeStatCard(`Ships destroyed${periodLabel}`, fmt(t.ships_destroyed), '', 'color:#ff7b72'),
       makeStatCard(`Pirates destroyed${periodLabel}`, fmt(t.pirates_destroyed), '', 'color:#56d364'),
