@@ -6,6 +6,27 @@
 .fleet-title.attacker { color: #ff7b72; }
 .fleet-title.defender { color: #79c0ff; }
 
+.tech-panel {
+  margin-bottom: 12px; padding: 8px 10px;
+  background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+  font-size: 0.75rem; color: #8b949e;
+}
+.tech-panel summary { cursor: pointer; user-select: none; }
+.tech-grid {
+  display: grid; grid-template-columns: 1fr auto 1fr auto;
+  gap: 4px 8px; align-items: center; margin-top: 8px;
+}
+.tech-label { cursor: help; border-bottom: 1px dotted #484f58; }
+.tech-label .est { color: #e3b341; }
+.tech-input {
+  width: 50px; background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 3px 6px; border-radius: 6px; font-size: 0.8rem;
+}
+.tech-group {
+  grid-column: 1 / -1; margin-top: 6px; font-size: 0.7rem;
+  text-transform: uppercase; letter-spacing: 0.08em; color: #484f58;
+}
+
 .fleet-table td { padding: 4px 8px; }
 .fleet-table .ship-name { width: 40%; }
 .fleet-table .ship-stats { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
@@ -13,6 +34,8 @@
   width: 80px; background: #21262d; border: 1px solid #30363d; color: #e6edf3;
   padding: 4px 8px; border-radius: 6px; font-size: 0.85rem;
 }
+.survivors { margin-left: 8px; font-size: 0.75rem; white-space: nowrap; }
+
 .ship-group td {
   padding-top: 12px; font-size: 0.7rem; text-transform: uppercase;
   letter-spacing: 0.08em; color: #484f58; border-bottom: 1px solid #21262d;

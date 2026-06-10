@@ -20,36 +20,90 @@ const WEAPON_VS_ARMOR = {
 const SHIELD_BURN = { plasma: 1.5, ion: 2.0 };
 
 // Shots per round vs specific targets. Sources: ship descriptions (exact where
-// stated) and the guide's hard-counter list (estimated values marked ~).
+// stated) and the guide's hard-counter
 const RAPID_FIRE = {
   interceptor:     { fighter: 5, probe: 5, spy_probe: 5, scout: 5 },
   cruiser:         { fighter: 5, scout: 5, interceptor: 5 },           // desc: ×5 fighters; guide: hunts scouts+interceptors too
   torpedo_frigate: { battleship: 3, dreadnought: 2, titan: 2 },
   battleship:      { cruiser: 4, missile_cruiser: 4 },
   missile_cruiser: { fighter: 5, interceptor: 4, bomber: 3 },
-  dreadnought:     { battleship: 4, cruiser: 4, bomber: 4, fighter: 4, carrier: 4 }, // ~4, guide: "crushes the large-ship class"
-  titan:           '*4', // guide: "rapid fire against almost everything" — ~4 vs all
+  // Dreadnought & titan values are exact, read from the in-game ship screens.
+  dreadnought:     { cruiser: 5, bomber: 4, battleship: 3, missile_cruiser: 3, fighter: 3, interceptor: 2, carrier: 2 },
+  titan:           { scout: 20, fighter: 15, interceptor: 10, cruiser: 8, battleship: 5, missile_cruiser: 5, bomber: 5, carrier: 5, dreadnought: 3 },
 };
 
 function rapidFireShots(attackerKey, targetKey) {
   const rf = RAPID_FIRE[attackerKey];
   if (!rf) return 1;
-  if (rf === '*4') return 4;
   return rf[targetKey] || 1;
 }
+
+// Combat research from /api/research. perLvl rates are exact where the tech
+// description states them, estimated (est: true) where the game hides them.
+// All max level 5. Bonuses within a category add up, then apply as one multiplier.
+const TECHS = [
+  { key: 'kinetic_weapons',    name: 'Kinetic Weapons',     group: 'Weapons', perLvl: 0.03, applies: 'weapon', weapon: 'kinetic' },
+  { key: 'laser_weapons',      name: 'Laser Weapons',       group: 'Weapons', perLvl: 0.03, applies: 'weapon', weapon: 'laser' },
+  { key: 'plasma_weapons',     name: 'Plasma Weapons',      group: 'Weapons', perLvl: 0.03, applies: 'weapon', weapon: 'plasma' },
+  { key: 'missile_systems',    name: 'Missile Systems',     group: 'Weapons', perLvl: 0.02, applies: 'weapon', weapon: 'missile' },
+  { key: 'torpedo_systems',    name: 'Torpedo Systems',     group: 'Weapons', perLvl: 0.02, applies: 'weapon', weapon: 'missile' },
+  { key: 'ion_cannons',        name: 'Ion Cannons',         group: 'Weapons', perLvl: 0.02, applies: 'weapon', weapon: 'ion' },
+  { key: 'fighter_doctrine',   name: 'Fighter Doctrine',    group: 'Weapons', perLvl: 0.02, applies: 'weapon', weapon: 'laser' },
+  { key: 'bomber_wing',        name: 'Bomber Wing',         group: 'Weapons', perLvl: 0.02, applies: 'ship', ship: 'bomber' },
+  { key: 'weapons_overcharge', name: 'Weapons Overcharge',  group: 'Weapons', perLvl: 0.05, applies: 'weapon_all', est: true },
+  { key: 'basic_armor',        name: 'Basic Armor Plating', group: 'Hull',    perLvl: 0.05, applies: 'hull', est: true },
+  { key: 'composite_armor',    name: 'Composite Armor',     group: 'Hull',    perLvl: 0.05, applies: 'hull', est: true },
+  { key: 'heavy_armor',        name: 'Heavy Armor',         group: 'Hull',    perLvl: 0.05, applies: 'hull_capital', est: true },
+  { key: 'ship_mastery',       name: 'Ship Mastery',        group: 'Hull',    perLvl: 0.03, applies: 'hull', est: true },
+  { key: 'advanced_shielding', name: 'Advanced Shielding',  group: 'Shield',  perLvl: 0.10, applies: 'shield' },
+  { key: 'adaptive_shields',   name: 'Adaptive Shields',    group: 'Shield',  perLvl: 0.05, applies: 'shield', est: true },
+];
+const TECH_MAX_LEVEL = 5;
+
+// levels: { techKey: level } → additive bonus pools used by buildInstances
+function computeMods(levels) {
+  const mods = {
+    weapon: { kinetic: 0, laser: 0, plasma: 0, missile: 0, ion: 0 },
+    weaponAll: 0,
+    ship: {},          // per-ship-key attack bonus (e.g. bomber_wing)
+    hull: 0,
+    hullCapital: 0,    // extra hull for capital ships only
+    shield: 0,
+  };
+  for (const tech of TECHS) {
+    const bonus = (levels[tech.key] || 0) * tech.perLvl;
+    if (!bonus) continue;
+    if (tech.applies === 'weapon') mods.weapon[tech.weapon] += bonus;
+    else if (tech.applies === 'weapon_all') mods.weaponAll += bonus;
+    else if (tech.applies === 'ship') mods.ship[tech.ship] = (mods.ship[tech.ship] || 0) + bonus;
+    else if (tech.applies === 'hull') mods.hull += bonus;
+    else if (tech.applies === 'hull_capital') mods.hullCapital += bonus;
+    else if (tech.applies === 'shield') mods.shield += bonus;
+  }
+  return mods;
+}
+
+const NO_MODS = computeMods({});
 
 let shipDefs = {};   // key → def (from storage, built by background scrape)
 
 // ── Simulation engine ──────────────────────────────────────────────────────
 
-// fleet: { shipKey: quantity } → array of live ship instances
-function buildInstances(fleet) {
+// fleet: { shipKey: quantity } → array of live ship instances.
+// mods: output of computeMods (research bonuses).
+function buildInstances(fleet, mods) {
+  const m = mods || NO_MODS;
   const out = [];
   for (const [key, qty] of Object.entries(fleet)) {
     const def = shipDefs[key];
     if (!def || !qty) continue;
+    const attackBonus = (m.weapon[def.weaponType] || 0) + m.weaponAll + (m.ship[key] || 0);
+    const hullBonus = m.hull + (def.shipSize === 'capital' ? m.hullCapital : 0);
+    const maxHp = def.hp * (1 + hullBonus);
+    const maxShield = def.shieldHp * (1 + m.shield);
+    const attack = def.attack * (1 + attackBonus);
     for (let i = 0; i < qty; i++) {
-      out.push({ key, hp: def.hp, shield: def.shieldHp, def });
+      out.push({ key, hp: maxHp, shield: maxShield, maxShield, attack, def });
     }
   }
   return out;
@@ -58,13 +112,28 @@ function buildInstances(fleet) {
 // One side fires at the other. Targets are picked from the alive-at-round-start
 // snapshot; hull damage lands immediately but deaths are culled after both
 // sides have fired (simultaneous fire per the guide).
+//
+// Targeting: weakest of 2 random candidates, plus a 3rd candidate 50% of the
+// time. This partial focus-fire was calibrated against two real battle
+// reports: 10 interceptors vs 8 scouts + 4 fighters → 0 attacker losses,
+// and 22 scouts vs 5 fighters + 4 scouts → ~2 attacker losses.
+function pickTarget(targets) {
+  let t = targets[Math.floor(Math.random() * targets.length)];
+  const candidates = Math.random() < 0.5 ? 3 : 2;
+  for (let c = 1; c < candidates; c++) {
+    const cand = targets[Math.floor(Math.random() * targets.length)];
+    if (cand.hp + cand.shield < t.hp + t.shield) t = cand;
+  }
+  return t;
+}
+
 function fireVolley(shooters, targets, opts) {
   if (!targets.length) return;
   for (const s of shooters) {
     if (s.hp <= 0) continue;            // killed earlier this round still fires? No — guide: simultaneous.
-    const atk = s.def.attack;
+    const atk = s.attack;
     if (!atk || !s.def.weaponType) continue;
-    const t = targets[Math.floor(Math.random() * targets.length)];
+    const t = pickTarget(targets);
     const shots = rapidFireShots(s.key, t.key);
     const mult = (WEAPON_VS_ARMOR[s.def.weaponType] || {})[t.def.armorType] ?? 1.0;
     const burn = SHIELD_BURN[s.def.weaponType] || 1.0;
@@ -92,15 +161,15 @@ function applyPending(instances) {
 }
 
 function simulateOnce(attackerFleet, defenderFleet, opts) {
-  let attackers = buildInstances(attackerFleet);
-  let defenders = buildInstances(defenderFleet);
+  let attackers = buildInstances(attackerFleet, opts.attackerMods);
+  let defenders = buildInstances(defenderFleet, opts.defenderMods);
   let rounds = 0;
 
   while (attackers.length && defenders.length && rounds < opts.maxRounds) {
     rounds++;
     if (opts.shieldRegen) {
-      for (const s of attackers) s.shield = s.def.shieldHp;
-      for (const s of defenders) s.shield = s.def.shieldHp;
+      for (const s of attackers) s.shield = s.maxShield;
+      for (const s of defenders) s.shield = s.maxShield;
     }
     fireVolley(attackers, defenders, opts);
     fireVolley(defenders, attackers, opts);
@@ -199,8 +268,9 @@ function buildFleetInputs(tbodyId, side) {
 
     const tdStats = document.createElement('td');
     tdStats.className = 'ship-stats';
-    tdStats.textContent = `ATK ${def.attack} · HP ${def.hp} · SH ${def.shieldHp}` +
-      (def.weaponType ? ` · ${def.weaponType}` : '') + ` · ${def.armorType}`;
+    tdStats.dataset.statsSide = side;
+    tdStats.dataset.key = def.key;
+    tdStats.textContent = statText(def, NO_MODS);
 
     const tdInput = document.createElement('td');
     const input = document.createElement('input');
@@ -209,7 +279,11 @@ function buildFleetInputs(tbodyId, side) {
     input.value = 0;
     input.dataset.side = side;
     input.dataset.key = def.key;
-    tdInput.appendChild(input);
+    const surv = document.createElement('span');
+    surv.className = 'survivors';
+    surv.dataset.survSide = side;
+    surv.dataset.key = def.key;
+    tdInput.append(input, surv);
 
     tr.append(tdName, tdStats, tdInput);
     tbody.appendChild(tr);
@@ -218,11 +292,87 @@ function buildFleetInputs(tbodyId, side) {
 
 function readFleet(side) {
   const fleet = {};
-  document.querySelectorAll(`input[data-side="${side}"]`).forEach(input => {
+  document.querySelectorAll(`input[data-side="${side}"][data-key]`).forEach(input => {
     const qty = parseInt(input.value, 10);
     if (qty > 0) fleet[input.dataset.key] = qty;
   });
   return fleet;
+}
+
+// Stat line for a ship row, with research modifiers applied (same math as the engine).
+function statText(def, mods) {
+  const attackBonus = (mods.weapon[def.weaponType] || 0) + mods.weaponAll + (mods.ship[def.key] || 0);
+  const hullBonus = mods.hull + (def.shipSize === 'capital' ? mods.hullCapital : 0);
+  const atk = Math.round(def.attack * (1 + attackBonus));
+  const hp = Math.round(def.hp * (1 + hullBonus));
+  const sh = Math.round(def.shieldHp * (1 + mods.shield));
+  return `ATK ${atk} · HP ${hp} · SH ${sh}` +
+    (def.weaponType ? ` · ${def.weaponType}` : '') + ` · ${def.armorType}`;
+}
+
+// Refresh the stat line of every ship row on one side after a tech change.
+function updateFleetStats(side) {
+  const mods = readMods(side);
+  document.querySelectorAll(`td.ship-stats[data-stats-side="${side}"]`).forEach(td => {
+    const def = shipDefs[td.dataset.key];
+    if (!def) return;
+    const text = statText(def, mods);
+    td.textContent = text;
+    // Highlight only ships whose stats actually changed
+    td.style.color = text !== statText(def, NO_MODS) ? '#7ee787' : '';
+  });
+}
+
+function buildTechInputs(containerId, side) {
+  const container = document.getElementById(containerId);
+  container.textContent = '';
+  let lastGroup = null;
+  for (const tech of TECHS) {
+    if (tech.group !== lastGroup) {
+      lastGroup = tech.group;
+      const g = document.createElement('div');
+      g.className = 'tech-group';
+      g.textContent = tech.group;
+      container.appendChild(g);
+    }
+    const label = document.createElement('span');
+    label.className = 'tech-label';
+    const effect = tech.applies === 'ship' ? `${tech.ship} damage`
+      : tech.applies === 'weapon' ? `${tech.weapon} damage`
+      : tech.applies === 'weapon_all' ? 'all weapon damage'
+      : tech.applies === 'hull_capital' ? 'capital ship HP'
+      : tech.applies === 'hull' ? 'ship HP' : 'shield HP';
+    label.title = `+${(tech.perLvl * 100).toFixed(0)}% ${effect} per level` + (tech.est ? ' (estimated — exact value unpublished)' : '');
+    label.textContent = tech.name;
+    if (tech.est) {
+      const est = document.createElement('span');
+      est.className = 'est';
+      est.textContent = ' ~';
+      label.appendChild(est);
+    }
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'tech-input';
+    input.min = 0;
+    input.max = TECH_MAX_LEVEL;
+    input.value = 0;
+    input.dataset.techSide = side;
+    input.dataset.tech = tech.key;
+    input.addEventListener('input', () => updateFleetStats(side));
+
+    container.append(label, input);
+  }
+}
+
+// Research level inputs for one side → mods for the engine.
+function readMods(side) {
+  const levels = {};
+  document.querySelectorAll(`input[data-tech-side="${side}"]`).forEach(input => {
+    const lvl = Math.min(TECH_MAX_LEVEL, Math.max(0, parseInt(input.value, 10) || 0));
+    levels[input.dataset.tech] = lvl;
+  });
+  return computeMods(levels);
 }
 
 function makeStatCard(label, value, valueClass) {
@@ -255,6 +405,8 @@ function renderResults(result, opts) {
 
   renderLossTable('attacker-losses', result.attackerLosses);
   renderLossTable('defender-losses', result.defenderLosses);
+  updateSurvivors('attacker', result.attackerLosses);
+  updateSurvivors('defender', result.defenderLosses);
   renderCostCards('attacker-cost', result.attackerLosses);
   renderCostCards('defender-cost', result.defenderLosses);
 
@@ -268,6 +420,20 @@ function renderResults(result, opts) {
     makeStatCard('Debris silicates', fmt((a.silicates + d.silicates) * opts.debrisRate), 'silicates'),
     makeStatCard('Debris alloys',    fmt((a.alloys + d.alloys) * opts.debrisRate),       'alloys'),
   );
+}
+
+// Show average survivors next to each ship quantity input after a run.
+function updateSurvivors(side, losses) {
+  document.querySelectorAll(`.survivors[data-surv-side="${side}"]`).forEach(span => {
+    const l = losses[span.dataset.key];
+    if (!l) {
+      span.textContent = '';
+      return;
+    }
+    const alive = l.sent - l.lost;
+    span.textContent = `→ ${alive.toFixed(1)} alive`;
+    span.style.color = alive >= l.sent * 0.99 ? '#56d364' : alive > 0 ? '#e3b341' : '#ff7b72';
+  });
 }
 
 function renderLossTable(tbodyId, losses) {
@@ -325,6 +491,8 @@ async function init() {
 
   buildFleetInputs('attacker-ships', 'attacker');
   buildFleetInputs('defender-ships', 'defender');
+  buildTechInputs('attacker-techs', 'attacker');
+  buildTechInputs('defender-techs', 'defender');
   status.textContent = `${defs.length} ship types loaded.`;
 }
 
@@ -340,10 +508,12 @@ document.getElementById('btn-run').addEventListener('click', () => {
 
   const opts = {
     sims: Math.max(1, parseInt(document.getElementById('opt-sims').value, 10) || 500),
-    maxRounds: Math.max(1, parseInt(document.getElementById('opt-rounds').value, 10) || 6),
+    maxRounds: Math.max(1, parseInt(document.getElementById('opt-rounds').value, 10) || 10),
     variance: (parseInt(document.getElementById('opt-variance').value, 10) || 0) / 100,
     debrisRate: (parseInt(document.getElementById('opt-debris').value, 10) || 0) / 100,
     shieldRegen: document.getElementById('opt-shield-regen').checked,
+    attackerMods: readMods('attacker'),
+    defenderMods: readMods('defender'),
   };
 
   // Let the status paint before the (potentially long) synchronous run
@@ -351,11 +521,13 @@ document.getElementById('btn-run').addEventListener('click', () => {
     const result = runSimulations(attackerFleet, defenderFleet, opts);
     renderResults(result, opts);
     status.textContent = `Done — ${opts.sims} simulations.`;
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
   }, 10);
 });
 
 document.getElementById('btn-clear').addEventListener('click', () => {
   document.querySelectorAll('.fleet-table input').forEach(i => { i.value = 0; });
+  document.querySelectorAll('.survivors').forEach(s => { s.textContent = ''; });
   document.getElementById('results').style.display = 'none';
 });
 

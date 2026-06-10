@@ -14,23 +14,12 @@
     <span id="sim-status"></span>
   </div>
 
-  <div class="sim-layout">
-    <div class="fleet-box">
-      <h2 class="fleet-title attacker">Attacker fleet</h2>
-      <table class="fleet-table"><tbody id="attacker-ships"></tbody></table>
-    </div>
-    <div class="fleet-box">
-      <h2 class="fleet-title defender">Defender fleet</h2>
-      <table class="fleet-table"><tbody id="defender-ships"></tbody></table>
-    </div>
-  </div>
-
   <div class="sim-options">
     <label>Simulations
       <input id="opt-sims" type="number" value="500" min="1" max="10000" />
     </label>
     <label>Max rounds
-      <input id="opt-rounds" type="number" value="6" min="1" max="20" />
+      <input id="opt-rounds" type="number" value="10" min="1" max="20" />
     </label>
     <label>Damage variance ±%
       <input id="opt-variance" type="number" value="10" min="0" max="50" />
@@ -44,6 +33,25 @@
     </label>
     <button id="btn-run">Run simulation</button>
     <button id="btn-clear">Clear fleets</button>
+  </div>
+
+  <div class="sim-layout">
+    <div class="fleet-box">
+      <h2 class="fleet-title attacker">Attacker fleet</h2>
+      <details class="tech-panel">
+        <summary>Research levels</summary>
+        <div class="tech-grid" id="attacker-techs"></div>
+      </details>
+      <table class="fleet-table"><tbody id="attacker-ships"></tbody></table>
+    </div>
+    <div class="fleet-box">
+      <h2 class="fleet-title defender">Defender fleet</h2>
+      <details class="tech-panel">
+        <summary>Research levels</summary>
+        <div class="tech-grid" id="defender-techs"></div>
+      </details>
+      <table class="fleet-table"><tbody id="defender-ships"></tbody></table>
+    </div>
   </div>
 
   <div class="tip-box">
