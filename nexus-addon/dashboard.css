@@ -2,6 +2,14 @@
 body { background: #0d1117; color: #e6edf3; font-family: system-ui, sans-serif; padding: 24px; }
 h1 { font-size: 1.4rem; margin-bottom: 4px; color: #58a6ff; }
 
+.tabs { display: flex; gap: 4px; margin: 12px 0 16px; border-bottom: 1px solid #30363d; }
+.tab {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: #8b949e; padding: 8px 16px; cursor: pointer; font-size: 0.9rem;
+}
+.tab:hover { color: #e6edf3; }
+.tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+
 .status-bar {
   font-size: 0.75rem; color: #8b949e; margin-bottom: 20px;
   display: flex; gap: 16px; align-items: center;
@@ -71,6 +79,9 @@ td.silicates { color: #56d364; }
 .badge.ancient_signal, .badge.anomaly_rift, .badge.anomaly_detected { background: #1f2d3d; color: #79c0ff; }
 .badge.resource_cache, .badge.abandoned_cargo, .badge.debris_fragment { background: #1a2d1a; color: #56d364; }
 .badge.rogue_drone, .badge.booby_trap { background: #2d1a1a; color: #ff7b72; }
+.badge.attacker_won { background: #1a2d1a; color: #56d364; }
+.badge.defender_won { background: #2d1a1a; color: #ff7b72; }
+.badge.draw { background: #2d2a1a; color: #e3b341; }
 
 .pagination { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
 .pagination span { color: #8b949e; }
