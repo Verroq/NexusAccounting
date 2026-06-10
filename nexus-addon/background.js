@@ -1,6 +1,7 @@
 const GAME_URL = 'https://s0.nexuslegacy.space';
 const SHIPYARD_PATH = '/api/planets/29925/shipyard';
 const REPORTS_PATH = '/api/fleet/survey-reports';
+const PIRATES_PATH = '/api/fleet/pirate-reports';
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes — forces a full re-scrape.
@@ -73,9 +74,10 @@ async function scrape() {
   }
 
   try {
-    const [shipyardData, reportData] = await Promise.all([
+    const [shipyardData, reportData, pirateData] = await Promise.all([
       apiFetch(SHIPYARD_PATH, token),
       apiFetch(REPORTS_PATH, token),
+      apiFetch(PIRATES_PATH, token),
     ]);
 
     // Build ship catalog keyed by shipDefId
@@ -200,6 +202,122 @@ async function scrape() {
       totals.last_report = timestamps[timestamps.length - 1];
     }
 
+    // ── Pirate raids ─────────────────────────────────────────────────────────
+
+    const pirateReports = pirateData.reports || [];
+
+    const pstored = await browser.storage.local.get([
+      'pirate_seen_ids', 'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
+      'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports',
+    ]);
+
+    const pirateSeen = new Set(pstored.pirate_seen_ids || []);
+    const pirateTotals = pstored.pirate_totals || {
+      ore: 0, hydrogen: 0, silicates: 0, raids: 0,
+      ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0,
+      first_report: null, last_report: null,
+    };
+
+    const pirateDailyMap = {};
+    for (const d of (pstored.pirate_daily || [])) pirateDailyMap[d.day] = { ...d };
+
+    const pirateLost = pstored.pirate_resources_lost || {
+      ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
+    };
+
+    const outcomeMap = {};
+    for (const o of (pstored.pirate_outcomes || [])) outcomeMap[o.outcome] = { ...o };
+
+    const pirateDebris = pstored.pirate_debris_total || { ore: 0, alloys: 0, silicates: 0 };
+    const pirateRecent = [...(pstored.pirate_recent_reports || [])];
+
+    const newPirateReports = pirateReports.filter(r => !pirateSeen.has(r.id));
+
+    for (const r of newPirateReports) {
+      pirateSeen.add(r.id);
+      const loot = r.loot || {};
+      const ore = loot.ore || 0;
+      const hydrogen = loot.hydrogen || 0;
+      const silicates = loot.silicates || 0;
+
+      // attackerLosses items: { shipDefId, lost, damaged, destroyed } —
+      // only destroyed ships are gone for good, damaged ones survive.
+      const destroyedDetail = {};
+      let nDestroyed = 0, nDamaged = 0;
+      for (const item of (r.attackerLosses || [])) {
+        const destroyed = item.destroyed ?? item.lost ?? 0;
+        nDestroyed += destroyed;
+        nDamaged += item.damaged || 0;
+        if (item.shipDefId != null && destroyed) {
+          destroyedDetail[item.shipDefId] = (destroyedDetail[item.shipDefId] || 0) + destroyed;
+        }
+      }
+      const piratesDestroyed = (r.pirateLosses || [])
+        .reduce((sum, i) => sum + (i.destroyed ?? i.lost ?? 0), 0);
+
+      pirateTotals.ore += ore;
+      pirateTotals.hydrogen += hydrogen;
+      pirateTotals.silicates += silicates;
+      pirateTotals.raids += 1;
+      pirateTotals.ships_destroyed += nDestroyed;
+      pirateTotals.ships_damaged += nDamaged;
+      pirateTotals.pirates_destroyed += piratesDestroyed;
+
+      const day = r.createdAt.slice(0, 10);
+      if (!pirateDailyMap[day]) pirateDailyMap[day] = { day, ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0 };
+      pirateDailyMap[day].ore += ore;
+      pirateDailyMap[day].hydrogen += hydrogen;
+      pirateDailyMap[day].silicates += silicates;
+      pirateDailyMap[day].raids += 1;
+      pirateDailyMap[day].ships_destroyed += nDestroyed;
+
+      const outcome = r.outcome || 'unknown';
+      if (!outcomeMap[outcome]) outcomeMap[outcome] = { outcome, count: 0, ore: 0, hydrogen: 0, silicates: 0 };
+      outcomeMap[outcome].count += 1;
+      outcomeMap[outcome].ore += ore;
+      outcomeMap[outcome].hydrogen += hydrogen;
+      outcomeMap[outcome].silicates += silicates;
+
+      const debris = r.debris || {};
+      pirateDebris.ore += debris.ore || 0;
+      pirateDebris.alloys += debris.alloys || 0;
+      pirateDebris.silicates += debris.silicates || 0;
+
+      for (const [defId, qty] of Object.entries(destroyedDetail)) {
+        const ship = ships[defId];
+        if (ship) {
+          pirateLost.ore += qty * ship.costOre;
+          pirateLost.silicates += qty * ship.costSilicates;
+          pirateLost.hydrogen += qty * ship.costHydrogen;
+          pirateLost.alloys += qty * ship.costAlloys;
+          for (const [k, v] of Object.entries(ship.rareCosts)) {
+            pirateLost.rare[k] = (pirateLost.rare[k] || 0) + qty * v;
+          }
+        }
+      }
+
+      pirateRecent.unshift({
+        id: r.id,
+        created_at: r.createdAt,
+        camp_id: r.campId,
+        outcome,
+        ore, hydrogen, silicates,
+        ships_lost: nDestroyed,
+        ships_damaged: nDamaged,
+        pirates_destroyed: piratesDestroyed,
+        debris_ore: debris.ore || 0,
+        debris_alloys: debris.alloys || 0,
+        debris_silicates: debris.silicates || 0,
+        ships_lost_detail: destroyedDetail,
+      });
+    }
+
+    const pirateTimestamps = pirateReports.map(r => r.createdAt).sort();
+    if (pirateTimestamps.length) {
+      pirateTotals.first_report = pirateTimestamps[0];
+      pirateTotals.last_report = pirateTimestamps[pirateTimestamps.length - 1];
+    }
+
     await browser.storage.local.set({
       ships,
       seen_ids: [...seenIds],
@@ -209,12 +327,19 @@ async function scrape() {
       resources_lost: resourcesLost,
       event_breakdown: Object.values(eventMap).sort((a, b) => b.count - a.count),
       recent_reports: recentReports.slice(0, recordsCap),
+      pirate_seen_ids: [...pirateSeen],
+      pirate_totals: pirateTotals,
+      pirate_daily: Object.values(pirateDailyMap).sort((a, b) => a.day.localeCompare(b.day)),
+      pirate_resources_lost: pirateLost,
+      pirate_outcomes: Object.values(outcomeMap).sort((a, b) => b.count - a.count),
+      pirate_debris_total: pirateDebris,
+      pirate_recent_reports: pirateRecent.slice(0, recordsCap),
       last_scrape: new Date().toISOString(),
       last_error: null,
       schema_version: SCHEMA_VERSION,
     });
 
-    console.log(`[NexusAccounting] Scraped ${newReports.length} new reports (${reports.length} total).`);
+    console.log(`[NexusAccounting] Scraped ${newReports.length} new survey reports (${reports.length} total), ${newPirateReports.length} new pirate reports (${pirateReports.length} total).`);
   } catch (err) {
     console.error('[NexusAccounting] Scrape failed:', err);
     await browser.storage.local.set({ last_error: err.message });
