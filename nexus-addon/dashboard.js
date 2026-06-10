@@ -721,5 +721,5 @@ document.getElementById('import-file').addEventListener('change', async function
 loadAll();
 
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.totals) loadAll();
+  if (area === 'local' && (changes.last_scrape || changes.totals || changes.pirate_totals)) loadAll();
 });
