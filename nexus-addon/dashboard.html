@@ -6,7 +6,12 @@
   <link rel="stylesheet" href="dashboard.css" />
 </head>
 <body>
-  <h1>Nexus Accounting — Survey Reports</h1>
+  <h1>Nexus Accounting</h1>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="surveys">Surveys</button>
+    <button class="tab" data-tab="pirates">Pirates</button>
+  </nav>
 
   <div class="status-bar">
     <span id="status-text">Loading…</span>
@@ -83,6 +88,49 @@
           </tr>
         </thead>
         <tbody id="reports-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="pirates-content" style="display:none;">
+    <div class="section-label">Loot collected</div>
+    <div class="stats" id="p-stats-collected"></div>
+
+    <div class="section-label">Resources lost (ship build costs)</div>
+    <div class="stats" id="p-stats-lost"></div>
+
+    <div class="section-label">Debris fields generated</div>
+    <div class="stats" id="p-stats-debris"></div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h2>Loot per period</h2>
+        <canvas id="chart-pirate-loot"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Outcome breakdown</h2>
+        <canvas id="chart-pirate-outcomes"></canvas>
+      </div>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Recent Raids</h2>
+        <div class="pagination">
+          <button id="p-btn-prev">← Prev</button>
+          <span id="p-page-info">Page 1</span>
+          <button id="p-btn-next">Next →</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>Camp</th><th>Outcome</th>
+            <th>Ore</th><th>Hydrogen</th><th>Silicates</th>
+            <th>Ships destroyed</th><th>Ships damaged</th><th>Pirates destroyed</th>
+          </tr>
+        </thead>
+        <tbody id="p-reports-tbody"></tbody>
       </table>
     </div>
   </div>
