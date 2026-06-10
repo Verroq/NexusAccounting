@@ -138,7 +138,7 @@ function pickTarget(targets) {
 function fireVolley(shooters, targets, opts) {
   if (!targets.length) return;
   for (const s of shooters) {
-    if (s.hp <= 0) continue;            // killed earlier this round still fires? No — guide: simultaneous.
+    if (s.hp <= 0) continue;            // destroyed in prior rounds only; this round's hull damage is applied after both volleys (simultaneous fire).
     const atk = s.attack;
     if (!atk || !s.def.weaponType) continue;
     const t = pickTarget(targets);
