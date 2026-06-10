@@ -483,7 +483,7 @@ async function init() {
   const { ships } = await browser.storage.local.get('ships');
 
   const defs = Object.values(ships || {});
-  if (!defs.length || defs[0].hp === undefined) {
+  if (!defs.length || defs.some(d => d.hp === undefined)) {
     status.textContent = 'Ship combat stats missing — open the dashboard and click "Scrape Now" first.';
     status.className = 'error';
     return;
