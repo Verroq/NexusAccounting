@@ -1,0 +1,48 @@
+.sim-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+.fleet-box {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px;
+}
+.fleet-title { font-size: 1rem; margin-bottom: 10px; }
+.fleet-title.attacker { color: #ff7b72; }
+.fleet-title.defender { color: #79c0ff; }
+
+.fleet-table td { padding: 4px 8px; }
+.fleet-table .ship-name { width: 40%; }
+.fleet-table .ship-stats { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
+.fleet-table input {
+  width: 80px; background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 4px 8px; border-radius: 6px; font-size: 0.85rem;
+}
+.ship-group td {
+  padding-top: 12px; font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 0.08em; color: #484f58; border-bottom: 1px solid #21262d;
+}
+
+.sim-options {
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  margin: 16px 0; font-size: 0.85rem; color: #8b949e;
+}
+.sim-options label { display: flex; align-items: center; gap: 6px; }
+.sim-options input[type="number"] {
+  width: 70px; background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 4px 8px; border-radius: 6px; font-size: 0.85rem;
+}
+.sim-options button {
+  background: #238636; border: 1px solid #2ea043; color: #fff;
+  padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+}
+.sim-options button:hover { background: #2ea043; }
+.sim-options button#btn-clear { background: #21262d; border-color: #30363d; color: #e6edf3; }
+.sim-options button#btn-clear:hover { background: #30363d; }
+
+.tip-box {
+  background: #161b22; border: 1px solid #30363d; border-left: 3px solid #e3b341;
+  border-radius: 6px; padding: 10px 14px; font-size: 0.8rem; color: #8b949e;
+  margin-bottom: 20px;
+}
+
+.win-attacker { color: #ff7b72; }
+.win-defender { color: #79c0ff; }
+.win-draw { color: #e3b341; }
+
+@media (max-width: 900px) { .sim-layout { grid-template-columns: 1fr; } }

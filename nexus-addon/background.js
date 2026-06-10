@@ -89,6 +89,15 @@ async function scrape() {
         costHydrogen: s.costHydrogen || 0,
         costAlloys: s.costAlloys || 0,
         rareCosts: s.rareCosts || {},
+        // Combat stats for the simulator
+        hp: s.hp || 0,
+        shieldHp: s.shieldHp || 0,
+        attack: s.attack || 0,
+        weaponType: s.weaponType || null,
+        armorType: s.armorType || 'light',
+        shipClass: s.shipClass || 'utility',
+        shipSize: s.shipSize || 'small',
+        sortOrder: s.sortOrder || 0,
       };
     }
 

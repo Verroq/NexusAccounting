@@ -25,7 +25,7 @@
   "icons": {
     "128": "icons/icon128.png"
   },
-  "web_accessible_resources": ["dashboard.html"],
+  "web_accessible_resources": ["dashboard.html", "simulator.html"],
   "browser_specific_settings": {
     "gecko": {
       "id": "nexus-accounting@verrok",
