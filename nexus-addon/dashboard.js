@@ -679,7 +679,7 @@ document.getElementById('btn-export').addEventListener('click', async function (
   a.href = url;
   a.download = `nexus-accounting-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   this.textContent = 'Exported ✓';
   setTimeout(() => { this.textContent = 'Export JSON'; }, 2000);
 });
