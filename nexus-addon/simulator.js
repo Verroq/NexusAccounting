@@ -38,9 +38,10 @@ function rapidFireShots(attackerKey, targetKey) {
   return rf[targetKey] || 1;
 }
 
-// Combat research from /api/research. perLvl rates are exact where the tech
-// description states them, estimated (est: true) where the game hides them.
-// All max level 5. Bonuses within a category add up, then apply as one multiplier.
+// Combat research from /api/research. All rates exact, read from the in-game
+// research screens. All max level 5. Bonuses within a category add up, then
+// apply as one multiplier. `also` is a second effect of the same tech
+// (Advanced Shielding boosts shield HP and reduces damage).
 const TECHS = [
   { key: 'kinetic_weapons',    name: 'Kinetic Weapons',     group: 'Weapons', perLvl: 0.03, applies: 'weapon', weapon: 'kinetic' },
   { key: 'laser_weapons',      name: 'Laser Weapons',       group: 'Weapons', perLvl: 0.03, applies: 'weapon', weapon: 'laser' },
@@ -50,13 +51,15 @@ const TECHS = [
   { key: 'ion_cannons',        name: 'Ion Cannons',         group: 'Weapons', perLvl: 0.02, applies: 'weapon', weapon: 'ion' },
   { key: 'fighter_doctrine',   name: 'Fighter Doctrine',    group: 'Weapons', perLvl: 0.02, applies: 'weapon', weapon: 'laser' },
   { key: 'bomber_wing',        name: 'Bomber Wing',         group: 'Weapons', perLvl: 0.02, applies: 'ship', ship: 'bomber' },
-  { key: 'weapons_overcharge', name: 'Weapons Overcharge',  group: 'Weapons', perLvl: 0.05, applies: 'weapon_all', est: true },
-  { key: 'basic_armor',        name: 'Basic Armor Plating', group: 'Hull',    perLvl: 0.05, applies: 'hull', est: true },
-  { key: 'composite_armor',    name: 'Composite Armor',     group: 'Hull',    perLvl: 0.05, applies: 'hull', est: true },
-  { key: 'heavy_armor',        name: 'Heavy Armor',         group: 'Hull',    perLvl: 0.05, applies: 'hull_capital', est: true },
-  { key: 'ship_mastery',       name: 'Ship Mastery',        group: 'Hull',    perLvl: 0.03, applies: 'hull', est: true },
-  { key: 'advanced_shielding', name: 'Advanced Shielding',  group: 'Shield',  perLvl: 0.10, applies: 'shield' },
-  { key: 'adaptive_shields',   name: 'Adaptive Shields',    group: 'Shield',  perLvl: 0.05, applies: 'shield', est: true },
+  { key: 'weapons_overcharge', name: 'Weapons Overcharge',  group: 'Weapons', perLvl: 0.03, applies: 'weapon_all' },
+  { key: 'basic_armor',        name: 'Basic Armor Plating', group: 'Hull',    perLvl: 0.02, applies: 'hull' },
+  { key: 'composite_armor',    name: 'Composite Armor',     group: 'Hull',    perLvl: 0.03, applies: 'hull' },
+  { key: 'heavy_armor',        name: 'Heavy Armor',         group: 'Hull',    perLvl: 0.03, applies: 'hull' },
+  { key: 'ship_mastery',       name: 'Ship Mastery',        group: 'Hull',    perLvl: 0.02, applies: 'hull' },
+  { key: 'shield_theory',      name: 'Shield Theory',       group: 'Shield',  perLvl: 0.02, applies: 'damage_reduction' },
+  { key: 'advanced_shielding', name: 'Advanced Shielding',  group: 'Shield',  perLvl: 0.10, applies: 'shield',
+    also: { perLvl: 0.02, applies: 'damage_reduction' } },
+  { key: 'adaptive_shields',   name: 'Adaptive Shields',    group: 'Shield',  perLvl: 0.03, applies: 'damage_reduction' },
 ];
 const TECH_MAX_LEVEL = 5;
 
@@ -65,20 +68,25 @@ function computeMods(levels) {
   const mods = {
     weapon: { kinetic: 0, laser: 0, plasma: 0, missile: 0, ion: 0 },
     weaponAll: 0,
-    ship: {},          // per-ship-key attack bonus (e.g. bomber_wing)
+    ship: {},            // per-ship-key attack bonus (e.g. bomber_wing)
     hull: 0,
-    hullCapital: 0,    // extra hull for capital ships only
     shield: 0,
+    damageReduction: 0,  // fraction of incoming damage negated
+  };
+  const apply = (effect, lvl) => {
+    const bonus = lvl * effect.perLvl;
+    if (!bonus) return;
+    if (effect.applies === 'weapon') mods.weapon[effect.weapon] += bonus;
+    else if (effect.applies === 'weapon_all') mods.weaponAll += bonus;
+    else if (effect.applies === 'ship') mods.ship[effect.ship] = (mods.ship[effect.ship] || 0) + bonus;
+    else if (effect.applies === 'hull') mods.hull += bonus;
+    else if (effect.applies === 'shield') mods.shield += bonus;
+    else if (effect.applies === 'damage_reduction') mods.damageReduction += bonus;
   };
   for (const tech of TECHS) {
-    const bonus = (levels[tech.key] || 0) * tech.perLvl;
-    if (!bonus) continue;
-    if (tech.applies === 'weapon') mods.weapon[tech.weapon] += bonus;
-    else if (tech.applies === 'weapon_all') mods.weaponAll += bonus;
-    else if (tech.applies === 'ship') mods.ship[tech.ship] = (mods.ship[tech.ship] || 0) + bonus;
-    else if (tech.applies === 'hull') mods.hull += bonus;
-    else if (tech.applies === 'hull_capital') mods.hullCapital += bonus;
-    else if (tech.applies === 'shield') mods.shield += bonus;
+    const lvl = levels[tech.key] || 0;
+    apply(tech, lvl);
+    if (tech.also) apply(tech.also, lvl);
   }
   return mods;
 }
@@ -98,12 +106,12 @@ function buildInstances(fleet, mods) {
     const def = shipDefs[key];
     if (!def || !qty) continue;
     const attackBonus = (m.weapon[def.weaponType] || 0) + m.weaponAll + (m.ship[key] || 0);
-    const hullBonus = m.hull + (def.shipSize === 'capital' ? m.hullCapital : 0);
-    const maxHp = def.hp * (1 + hullBonus);
+    const maxHp = def.hp * (1 + m.hull);
     const maxShield = def.shieldHp * (1 + m.shield);
     const attack = def.attack * (1 + attackBonus);
+    const drMult = 1 - m.damageReduction;
     for (let i = 0; i < qty; i++) {
-      out.push({ key, hp: maxHp, shield: maxShield, maxShield, attack, def });
+      out.push({ key, hp: maxHp, shield: maxShield, maxShield, attack, drMult, def });
     }
   }
   return out;
@@ -139,7 +147,7 @@ function fireVolley(shooters, targets, opts) {
     const burn = SHIELD_BURN[s.def.weaponType] || 1.0;
     for (let i = 0; i < shots; i++) {
       const variance = 1 + (Math.random() * 2 - 1) * opts.variance;
-      let dmg = atk * mult * variance;
+      let dmg = atk * mult * variance * t.drMult;
       if (t.shield > 0) {
         const absorbed = Math.min(t.shield, dmg * burn);
         t.shield -= absorbed;
@@ -302,11 +310,11 @@ function readFleet(side) {
 // Stat line for a ship row, with research modifiers applied (same math as the engine).
 function statText(def, mods) {
   const attackBonus = (mods.weapon[def.weaponType] || 0) + mods.weaponAll + (mods.ship[def.key] || 0);
-  const hullBonus = mods.hull + (def.shipSize === 'capital' ? mods.hullCapital : 0);
   const atk = Math.round(def.attack * (1 + attackBonus));
-  const hp = Math.round(def.hp * (1 + hullBonus));
+  const hp = Math.round(def.hp * (1 + mods.hull));
   const sh = Math.round(def.shieldHp * (1 + mods.shield));
-  return `ATK ${atk} · HP ${hp} · SH ${sh}` +
+  const dr = mods.damageReduction > 0 ? ` · DR ${Math.round(mods.damageReduction * 100)}%` : '';
+  return `ATK ${atk} · HP ${hp} · SH ${sh}${dr}` +
     (def.weaponType ? ` · ${def.weaponType}` : '') + ` · ${def.armorType}`;
 }
 
@@ -337,19 +345,14 @@ function buildTechInputs(containerId, side) {
     }
     const label = document.createElement('span');
     label.className = 'tech-label';
-    const effect = tech.applies === 'ship' ? `${tech.ship} damage`
-      : tech.applies === 'weapon' ? `${tech.weapon} damage`
-      : tech.applies === 'weapon_all' ? 'all weapon damage'
-      : tech.applies === 'hull_capital' ? 'capital ship HP'
-      : tech.applies === 'hull' ? 'ship HP' : 'shield HP';
-    label.title = `+${(tech.perLvl * 100).toFixed(0)}% ${effect} per level` + (tech.est ? ' (estimated — exact value unpublished)' : '');
+    const effectText = e => e.applies === 'ship' ? `+${(e.perLvl * 100).toFixed(0)}% ${e.ship} damage`
+      : e.applies === 'weapon' ? `+${(e.perLvl * 100).toFixed(0)}% ${e.weapon} damage`
+      : e.applies === 'weapon_all' ? `+${(e.perLvl * 100).toFixed(0)}% all weapon damage`
+      : e.applies === 'hull' ? `+${(e.perLvl * 100).toFixed(0)}% ship HP`
+      : e.applies === 'shield' ? `+${(e.perLvl * 100).toFixed(0)}% shield HP`
+      : `${(e.perLvl * 100).toFixed(0)}% damage reduction`;
+    label.title = effectText(tech) + (tech.also ? ` and ${effectText(tech.also)}` : '') + ' per level';
     label.textContent = tech.name;
-    if (tech.est) {
-      const est = document.createElement('span');
-      est.className = 'est';
-      est.textContent = ' ~';
-      label.appendChild(est);
-    }
 
     const input = document.createElement('input');
     input.type = 'number';
