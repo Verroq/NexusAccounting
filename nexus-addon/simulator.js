@@ -510,8 +510,8 @@ document.getElementById('btn-run').addEventListener('click', () => {
   status.textContent = 'Simulating…';
 
   const opts = {
-    sims: Math.max(1, parseInt(document.getElementById('opt-sims').value, 10) || 500),
-    maxRounds: Math.max(1, parseInt(document.getElementById('opt-rounds').value, 10) || 10),
+    sims: Math.min(10000, Math.max(1, parseInt(document.getElementById('opt-sims').value, 10) || 500)),
+    maxRounds: Math.min(20, Math.max(1, parseInt(document.getElementById('opt-rounds').value, 10) || 10)),
     variance: (parseInt(document.getElementById('opt-variance').value, 10) || 0) / 100,
     debrisRate: (parseInt(document.getElementById('opt-debris').value, 10) || 0) / 100,
     shieldRegen: document.getElementById('opt-shield-regen').checked,
