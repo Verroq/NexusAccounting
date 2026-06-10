@@ -1,0 +1,73 @@
+# Changelog
+
+All notable changes to the Nexus Accounting Firefox addon.
+
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [1.2.1] - 2026-06-10
+
+### Added
+- **Realtime updates**: the addon now intercepts the game's own API responses
+  (survey reports, pirate reports, shipyard) via `webRequest.filterResponseData`
+  and processes them immediately — the dashboard updates seconds after you open
+  a report in game. The 15-minute scrape remains as fallback for when no game
+  tab is open.
+- **JSON export/import** on the dashboard: full backup of all aggregated data
+  to a dated file, restore with confirmation. Protects history the game API no
+  longer returns.
+- Simulator: **research levels** (0–5) per side with exact in-game rates —
+  weapon damage techs, hull techs, shield HP, and damage reduction
+  (Shield Theory / Adaptive Shields / Advanced Shielding, stacks to 35%).
+- Simulator: ship stat lines update live as research levels change.
+- Simulator: average survivors shown next to each ship input after a run;
+  auto-scroll to results.
+
+### Changed
+- Simulator targeting calibrated against real battle reports (partial
+  focus-fire); default round cap raised to 10; options moved above the fleets.
+- Dreadnought and Titan rapid-fire values are now exact (from in-game ship
+  screens).
+- "Resources collected" cards ordered Ore / Silicates / Hydrogen to match
+  the resources-lost cards.
+- Background page is persistent and requires the `webRequest` /
+  `webRequestBlocking` permissions (needed for response interception).
+
+### Fixed
+- `package.json` license said MIT while the project is MPL-2.0.
+
+## [1.2.0] - 2026-06-10
+
+### Added
+- **Combat simulator** (`simulator.html`, linked from the dashboard):
+  Monte Carlo battle engine modeled on the official combat guide — round-based
+  simultaneous fire, weapon-vs-armor matchups, rapid fire, plasma/ion shield
+  burn, win/hold/mutual-destruction rates, expected losses and debris value.
+  Debris rate (30% of destroyed ship cost) verified against real pirate
+  reports.
+- Ship catalog now stores combat stats (HP, shield, attack, weapon/armor type)
+  for the simulator.
+
+## [1.1.0] - 2026-06-10
+
+### Added
+- **Pirates tab**: aggregates pirate camp raids from
+  `/api/fleet/pirate-reports` — loot collected, attacker ships destroyed and
+  damaged (build-cost valuation of losses), pirates destroyed, outcome
+  breakdown, debris fields generated, daily/hourly views and raid history
+  table.
+
+## [1.0.1] - 2026-06-10
+
+### Fixed
+- Skip uninvestigated anomalies and uncollected loot until fully resolved —
+  reports are counted once, with their final loot.
+- `ships_lost` counted array entries instead of summing quantities.
+- Pagination buttons (CSP-safe event listeners instead of inline `onclick`).
+
+## [1.0.0] - 2026-06-09
+
+### Added
+- Initial release: tracks Nexus Legacy survey reports — resources collected
+  (ore, silicates, hydrogen), missions, ships lost with build-cost valuation,
+  event type breakdown, daily/hourly charts, report history with configurable
+  records cap, 15-minute background scrape with manual "Scrape Now".
