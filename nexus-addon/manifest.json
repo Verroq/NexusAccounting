@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Nexus Accounting",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Tracks survey and pirate raid data from Nexus Legacy — aggregates resources collected and ships lost over time with daily and hourly breakdowns.",
   "author": "Verrok",
   "homepage_url": "https://github.com/Verroq/NexusAccounting",
