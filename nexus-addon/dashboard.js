@@ -658,42 +658,92 @@ function renderPagedTable(reports, page, infoId, prevId, nextId, tbodyId, rowFn)
 let chartMining;
 let miningPage = 1;
 
+// Latest day/hour slice of mining reports for the daily/hourly view modes.
+function getMiningBucketReports(mode) {
+  const keyFn = r => mode === 'daily'
+    ? r.created_at.slice(0, 10)
+    : r.created_at.slice(0, 13) + ':00';
+  const reports = store.mining_recent_reports || [];
+  if (!reports.length) return [];
+  const latestKey = reports.reduce((best, r) => {
+    const k = keyFn(r);
+    return k > best ? k : best;
+  }, '');
+  return reports.filter(r => keyFn(r) === latestKey);
+}
+
+function getMiningTotalsForMode(mode) {
+  if (mode === 'all') {
+    return store.mining_totals || {
+      ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
+      deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
+      stolen: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} },
+    };
+  }
+  return getMiningBucketReports(mode).reduce((t, r) => ({
+    ore: t.ore + (r.ore || 0),
+    silicates: t.silicates + (r.silicates || 0),
+    hydrogen: t.hydrogen + (r.hydrogen || 0),
+    deliveries: t.deliveries + 1,
+    cycles: t.cycles + (r.cycles || 0),
+    drill_breakdowns: t.drill_breakdowns + (r.drill_breakdowns || 0),
+    ships_lost: t.ships_lost + (r.ships_lost || 0),
+    stolen_total: t.stolen_total + (r.stolen_total || 0),
+  }), { ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0, stolen_total: 0 });
+}
+
+function getMiningSeriesForMode(mode) {
+  if (mode !== 'hourly') return store.mining_daily || [];
+  const hourlyMap = {};
+  for (const r of (store.mining_recent_reports || [])) {
+    const hour = r.created_at.slice(0, 13) + ':00';
+    if (!hourlyMap[hour]) hourlyMap[hour] = { hour, ore: 0, silicates: 0, hydrogen: 0 };
+    hourlyMap[hour].ore += r.ore || 0;
+    hourlyMap[hour].silicates += r.silicates || 0;
+    hourlyMap[hour].hydrogen += r.hydrogen || 0;
+  }
+  return Object.values(hourlyMap).sort((a, b) => a.hour.localeCompare(b.hour));
+}
+
 function renderMiningTab() {
-  const t = store.mining_totals || {
-    ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
-    deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
-    stolen: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} },
-  };
+  const mode = getMode();
+  const periodLabel = mode === 'all' ? '' : mode === 'daily' ? ' (latest day)' : ' (latest hour)';
+  const t = getMiningTotalsForMode(mode);
 
   const delivered = document.getElementById('m-stats-delivered');
   delivered.textContent = '';
-  if (!t.deliveries) {
+  if (!store.mining_totals || !store.mining_totals.deliveries) {
     const p = document.createElement('p');
     p.style.cssText = 'color:#484f58;padding:8px 0';
     p.textContent = 'No mining deliveries recorded yet.';
     delivered.appendChild(p);
   } else {
     delivered.append(
-      makeStatCard('Ore', fmt(t.ore), 'ore'),
-      makeStatCard('Silicates', fmt(t.silicates), 'silicates'),
-      makeStatCard('Hydrogen', fmt(t.hydrogen), 'hydrogen'),
-      makeStatCard('Alloys', fmt(t.alloys), 'alloys'),
+      makeStatCard(`Ore${periodLabel}`, fmt(t.ore), 'ore'),
+      makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
+      makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
     );
-    appendRareCards(delivered, t.rare, '');
+    // Alloys and rares are only tracked in the all-time totals.
+    if (mode === 'all') {
+      delivered.appendChild(makeStatCard('Alloys', fmt(t.alloys), 'alloys'));
+      appendRareCards(delivered, t.rare, '');
+    }
   }
 
   const ops = document.getElementById('m-stats-ops');
   ops.textContent = '';
-  const stolenTotal = t.stolen
-    ? (t.stolen.ore + t.stolen.silicates + t.stolen.hydrogen + t.stolen.alloys +
-       Object.values(t.stolen.rare || {}).reduce((s, v) => s + v, 0))
-    : 0;
+  const stolenTotal = mode === 'all'
+    ? (t.stolen
+        ? (t.stolen.ore + t.stolen.silicates + t.stolen.hydrogen + t.stolen.alloys +
+           Object.values(t.stolen.rare || {}).reduce((s, v) => s + v, 0))
+        : 0)
+    : t.stolen_total;
   ops.append(
-    makeStatCard('Deliveries', fmt(t.deliveries), 'missions'),
-    makeStatCard('Mining cycles', fmt(t.cycles), ''),
-    makeStatCard('Drill breakdowns', fmt(t.drill_breakdowns), '', 'color:#e3b341'),
-    makeStatCard('Ships lost', fmt(t.ships_lost), '', 'color:#ff7b72'),
-    makeStatCard('Cargo stolen', fmt(stolenTotal), '', 'color:#ff7b72'),
+    makeStatCard(`Deliveries${periodLabel}`, fmt(t.deliveries), 'missions'),
+    makeStatCard(`Mining cycles${periodLabel}`, fmt(t.cycles), ''),
+    makeStatCard(`Drill breakdowns${periodLabel}`, fmt(t.drill_breakdowns), '', 'color:#e3b341'),
+    makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
+    makeStatCard(`Cargo stolen${periodLabel}`, fmt(stolenTotal), '', 'color:#ff7b72'),
   );
 
   const lostEl = document.getElementById('m-stats-lost');
@@ -707,12 +757,13 @@ function renderMiningTab() {
   );
   appendRareCards(lostEl, rl.rare, ' lost');
 
-  const series = store.mining_daily || [];
+  const series = getMiningSeriesForMode(mode);
+  const labelKey = getLabelKey(mode);
   if (chartMining) chartMining.destroy();
   chartMining = new Chart(document.getElementById('chart-mining'), {
     type: 'line',
     data: {
-      labels: series.map(r => r.day),
+      labels: series.map(r => r[labelKey]),
       datasets: [
         { label: 'Ore',       data: series.map(r => r.ore),       borderColor: '#f0883e', backgroundColor: '#f0883e22', fill: true, tension: 0.3 },
         { label: 'Silicates', data: series.map(r => r.silicates), borderColor: '#56d364', backgroundColor: '#56d36422', fill: true, tension: 0.3 },
@@ -809,33 +860,81 @@ function renderDebrisTab() {
 let chartExpeditions;
 let expPage = 1;
 
+// Latest day/hour slice of expedition/wormhole reports for the view modes.
+function getExpBucketReports(mode) {
+  const keyFn = r => mode === 'daily'
+    ? r.created_at.slice(0, 10)
+    : r.created_at.slice(0, 13) + ':00';
+  const reports = store.exp_recent_reports || [];
+  if (!reports.length) return [];
+  const latestKey = reports.reduce((best, r) => {
+    const k = keyFn(r);
+    return k > best ? k : best;
+  }, '');
+  return reports.filter(r => keyFn(r) === latestKey);
+}
+
+// Per-report records carry the full loot map, so all resources (rares included)
+// work in every view mode.
+function getExpTotalsForMode(mode) {
+  if (mode === 'all') {
+    return store.exp_totals || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
+  }
+  const t = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
+  for (const r of getExpBucketReports(mode)) {
+    for (const [k, v] of Object.entries(r.loot || {})) {
+      if (k in t && k !== 'rare' && k !== 'missions' && k !== 'ships_lost') t[k] += v;
+      else if (!['ore', 'silicates', 'hydrogen', 'alloys'].includes(k)) t.rare[k] = (t.rare[k] || 0) + v;
+    }
+    t.missions += 1;
+    t.ships_lost += r.ships_lost || 0;
+  }
+  return t;
+}
+
+function getExpSeriesForMode(mode) {
+  if (mode !== 'hourly') return store.exp_daily || [];
+  const hourlyMap = {};
+  for (const r of (store.exp_recent_reports || [])) {
+    const hour = r.created_at.slice(0, 13) + ':00';
+    if (!hourlyMap[hour]) hourlyMap[hour] = { hour, ore: 0, silicates: 0, hydrogen: 0 };
+    hourlyMap[hour].ore += r.loot?.ore || 0;
+    hourlyMap[hour].silicates += r.loot?.silicates || 0;
+    hourlyMap[hour].hydrogen += r.loot?.hydrogen || 0;
+  }
+  return Object.values(hourlyMap).sort((a, b) => a.hour.localeCompare(b.hour));
+}
+
 function renderExpeditionsTab() {
-  const t = store.exp_totals || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
+  const mode = getMode();
+  const periodLabel = mode === 'all' ? '' : mode === 'daily' ? ' (latest day)' : ' (latest hour)';
+  const t = getExpTotalsForMode(mode);
   const el = document.getElementById('e-stats-collected');
   el.textContent = '';
-  if (!t.missions) {
+  if (!store.exp_totals || !store.exp_totals.missions) {
     const p = document.createElement('p');
     p.style.cssText = 'color:#484f58;padding:8px 0';
     p.textContent = 'No expedition or wormhole reports recorded yet.';
     el.appendChild(p);
   } else {
     el.append(
-      makeStatCard('Ore', fmt(t.ore), 'ore'),
-      makeStatCard('Silicates', fmt(t.silicates), 'silicates'),
-      makeStatCard('Hydrogen', fmt(t.hydrogen), 'hydrogen'),
-      makeStatCard('Alloys', fmt(t.alloys), 'alloys'),
-      makeStatCard('Missions', fmt(t.missions), 'missions'),
-      makeStatCard('Ships lost', fmt(t.ships_lost), '', 'color:#ff7b72'),
+      makeStatCard(`Ore${periodLabel}`, fmt(t.ore), 'ore'),
+      makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
+      makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
+      makeStatCard(`Alloys${periodLabel}`, fmt(t.alloys), 'alloys'),
+      makeStatCard(`Missions${periodLabel}`, fmt(t.missions), 'missions'),
+      makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
     );
-    appendRareCards(el, t.rare, '');
+    appendRareCards(el, t.rare, periodLabel);
   }
 
-  const series = store.exp_daily || [];
+  const series = getExpSeriesForMode(mode);
+  const labelKey = getLabelKey(mode);
   if (chartExpeditions) chartExpeditions.destroy();
   chartExpeditions = new Chart(document.getElementById('chart-expeditions'), {
     type: 'line',
     data: {
-      labels: series.map(r => r.day),
+      labels: series.map(r => r[labelKey]),
       datasets: [
         { label: 'Ore',       data: series.map(r => r.ore),       borderColor: '#f0883e', backgroundColor: '#f0883e22', fill: true, tension: 0.3 },
         { label: 'Silicates', data: series.map(r => r.silicates), borderColor: '#56d364', backgroundColor: '#56d36422', fill: true, tension: 0.3 },
@@ -1195,7 +1294,9 @@ document.getElementById('btn-scrape').addEventListener('click', async function (
 document.getElementById('mode-select').addEventListener('change', () => {
   currentPage = 1;
   pirateCurrentPage = 1;
-  if (store.totals || store.pirate_totals) renderAll();
+  miningPage = 1;
+  expPage = 1;
+  renderAll();
 });
 
 document.getElementById('btn-reset').addEventListener('click', async function () {
