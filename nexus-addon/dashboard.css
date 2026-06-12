@@ -83,6 +83,10 @@ td.silicates { color: #56d364; }
 .badge.defender_won { background: #2d1a1a; color: #ff7b72; }
 .badge.draw { background: #2d2a1a; color: #e3b341; }
 
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: #e6edf3; }
+th.sortable .arrow { margin-left: 4px; color: #58a6ff; }
+
 .finder-controls {
   display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
   margin: 16px 0; font-size: 0.85rem; color: #8b949e;

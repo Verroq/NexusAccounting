@@ -997,7 +997,7 @@ document.getElementById('f-search').addEventListener('click', async function () 
   const wantType = document.getElementById('f-type').value;
   const minSize = parseInt(document.getElementById('f-min-size').value, 10) || 0;
   const minMoons = parseInt(document.getElementById('f-min-moons').value, 10) || 0;
-  const unownedOnly = document.getElementById('f-unowned').checked;
+  const ownership = document.getElementById('f-ownership').value; // '' | 'unowned' | 'owned'
 
   const candidates = galaxySystems.filter(s =>
     s.armId === region.armId && s.sectorId >= region.min && s.sectorId <= region.max &&
@@ -1034,7 +1034,8 @@ document.getElementById('f-search').addEventListener('click', async function () 
       for (const p of (data.planets || [])) {
         if (wantType && p.planetType !== wantType) continue;
         if (p.size < minSize) continue;
-        if (unownedOnly && p.userId != null) continue;
+        if (ownership === 'unowned' && p.userId != null) continue;
+        if (ownership === 'owned' && p.userId == null) continue;
         const nMoons = moonCount(p, moons);
         if (nMoons < minMoons) continue;
         finderHits.push({
@@ -1073,11 +1074,41 @@ document.getElementById('f-search').addEventListener('click', async function () 
   renderFinderResults();
 });
 
+let finderSort = { key: 'size', dir: -1 };
+
+document.getElementById('f-results-head').addEventListener('click', e => {
+  const th = e.target.closest('th.sortable');
+  if (!th) return;
+  const key = th.dataset.key;
+  finderSort = { key, dir: finderSort.key === key ? -finderSort.dir : -1 };
+  renderFinderResults();
+});
+
 function renderFinderResults() {
   const tbody = document.getElementById('f-results-tbody');
   tbody.textContent = '';
   document.getElementById('f-match-count').textContent = `${finderHits.length} planets`;
-  const sorted = finderHits.slice().sort((a, b) => b.moons - a.moons || b.size - a.size);
+
+  // Header arrows
+  document.querySelectorAll('#f-results-head th.sortable').forEach(th => {
+    const old = th.querySelector('.arrow');
+    if (old) old.remove();
+    if (th.dataset.key === finderSort.key) {
+      const arrow = document.createElement('span');
+      arrow.className = 'arrow';
+      arrow.textContent = finderSort.dir === -1 ? '▼' : '▲';
+      th.appendChild(arrow);
+    }
+  });
+
+  const { key, dir } = finderSort;
+  const sorted = finderHits.slice().sort((a, b) => {
+    const va = a[key], vb = b[key];
+    let cmp;
+    if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb;
+    else cmp = String(va ?? '').localeCompare(String(vb ?? ''));
+    return cmp * dir || b.size - a.size;
+  });
   for (const h of sorted) {
     const tr = document.createElement('tr');
     const cells = [h.planet, h.system, String(h.sector), h.type.replace(/_/g, ' '),
@@ -1135,6 +1166,9 @@ document.querySelectorAll('.tab').forEach(btn => {
     for (const [tab, id] of Object.entries(TAB_CONTENT)) {
       document.getElementById(id).style.display = tab === activeTab ? '' : 'none';
     }
+    // View mode and records cap are meaningless on the finder and debris tabs.
+    document.querySelector('.controls').style.display =
+      (activeTab === 'finder' || activeTab === 'debris') ? 'none' : '';
     renderAll();
   });
 });

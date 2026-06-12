@@ -261,9 +261,12 @@
       <label>Min moons
         <input id="f-min-moons" type="number" min="0" value="0" />
       </label>
-      <label class="checkbox-label">
-        <input id="f-unowned" type="checkbox" checked />
-        Unowned only
+      <label>Ownership
+        <select id="f-ownership">
+          <option value="">any</option>
+          <option value="unowned" selected>unowned only</option>
+          <option value="owned">owned only</option>
+        </select>
       </label>
       <button id="f-search">Search</button>
       <span id="f-progress" style="color:#8b949e; font-size:0.8rem;"></span>
@@ -281,10 +284,16 @@
         <span id="f-match-count" style="color:#8b949e; font-size:0.8rem;"></span>
       </div>
       <table>
-        <thead>
+        <thead id="f-results-head">
           <tr>
-            <th>Planet</th><th>System</th><th>Sector</th><th>Type</th>
-            <th>Size</th><th>Temp</th><th>Moons</th><th>Owner</th>
+            <th class="sortable" data-key="planet">Planet</th>
+            <th class="sortable" data-key="system">System</th>
+            <th class="sortable" data-key="sector">Sector</th>
+            <th class="sortable" data-key="type">Type</th>
+            <th class="sortable" data-key="size">Size</th>
+            <th class="sortable" data-key="temp">Temp</th>
+            <th class="sortable" data-key="moons">Moons</th>
+            <th class="sortable" data-key="owner">Owner</th>
           </tr>
         </thead>
         <tbody id="f-results-tbody"></tbody>
