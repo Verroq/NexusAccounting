@@ -711,10 +711,10 @@ async function scrape() {
       apiFetch(PIRATES_PATH, token),
       apiFetch(SPY_PATH, token),
       apiFetch(CAMP_SCOUT_PATH, token),
-      apiFetch(MINING_PATH, token),
-      apiFetch(EXPEDITION_PATH, token),
-      apiFetch(WORMHOLE_PATH, token),
-      apiFetch(SYSTEM_DEBRIS_PATH, token),
+      apiFetch(MINING_PATH, token).catch(() => ({ reports: [] })),
+      apiFetch(EXPEDITION_PATH, token).catch(() => ({ reports: [] })),
+      apiFetch(WORMHOLE_PATH, token).catch(() => ({ runs: [] })),
+      apiFetch(SYSTEM_DEBRIS_PATH, token).catch(() => ({ debris: [] })),
     ]);
 
     await enqueue(async () => {
