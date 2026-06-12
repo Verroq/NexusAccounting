@@ -1,6 +1,9 @@
 const GAME_URL = 'https://s0.nexuslegacy.space';
 const REPORTS_PATH = '/api/fleet/survey-reports';
 const PIRATES_PATH = '/api/fleet/pirate-reports';
+const SPY_PATH = '/api/fleet/spy-reports';
+const CAMP_SCOUT_PATH = '/api/fleet/camp-scout-reports';
+const INTEL_KEEP = 50;
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes — forces a full re-scrape.
@@ -386,6 +389,67 @@ async function processPirateReports(pirateReports, ships) {
   return newPirateReports.length;
 }
 
+// Tolerant fleet extraction: any array of { key, quantity } shaped items.
+function extractFleet(arr) {
+  const out = [];
+  for (const i of (arr || [])) {
+    if (i && typeof i.key === 'string' && (i.quantity || 0) > 0) {
+      out.push({ key: i.key, quantity: i.quantity });
+    }
+  }
+  return out;
+}
+
+// Spy reports → defender intel for the simulator (latest INTEL_KEEP kept).
+async function processSpyReports(reports) {
+  if (!reports.length) return 0;
+  const { spy_reports } = await browser.storage.local.get('spy_reports');
+  const byId = {};
+  for (const r of (spy_reports || [])) byId[r.id] = r;
+  for (const r of reports) {
+    byId[r.id] = {
+      id: r.id,
+      created_at: r.createdAt,
+      outcome: r.outcome,
+      target_name: r.targetPlanetName || r.targetStationName || r.targetFieldName || 'unknown target',
+      target_user: r.targetUsername || null,
+      fleet: extractFleet(r.fleetData),
+      buildings: r.buildingData || [],
+      defense: r.defenseData || null,
+      resources: r.resourceData || {},
+    };
+  }
+  const merged = Object.values(byId)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, INTEL_KEEP);
+  await browser.storage.local.set({ spy_reports: merged });
+  return merged.length;
+}
+
+// Camp scout reports → pirate camp intel (shape unseen so far — parsed tolerantly).
+async function processCampScoutReports(reports) {
+  if (!reports.length) return 0;
+  const { camp_scout_reports } = await browser.storage.local.get('camp_scout_reports');
+  const byId = {};
+  for (const r of (camp_scout_reports || [])) byId[r.id] = r;
+  for (const r of reports) {
+    const fleet = extractFleet(r.pirateFleet) .length ? extractFleet(r.pirateFleet)
+      : extractFleet(r.fleet).length ? extractFleet(r.fleet)
+      : extractFleet(r.campFleet);
+    byId[r.id] = {
+      id: r.id,
+      created_at: r.createdAt,
+      camp_id: r.campId ?? null,
+      fleet,
+    };
+  }
+  const merged = Object.values(byId)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    .slice(0, INTEL_KEEP);
+  await browser.storage.local.set({ camp_scout_reports: merged });
+  return merged.length;
+}
+
 // ── Full scrape (15-min alarm fallback + manual button) ────────────────────
 
 async function scrape() {
@@ -405,10 +469,12 @@ async function scrape() {
 
   try {
     const planetId = await getHomePlanetId(token);
-    const [shipyardData, reportData, pirateData] = await Promise.all([
+    const [shipyardData, reportData, pirateData, spyData, campScoutData] = await Promise.all([
       apiFetch(`/api/planets/${planetId}/shipyard`, token),
       apiFetch(REPORTS_PATH, token),
       apiFetch(PIRATES_PATH, token),
+      apiFetch(SPY_PATH, token),
+      apiFetch(CAMP_SCOUT_PATH, token),
     ]);
 
     await enqueue(async () => {
@@ -416,6 +482,8 @@ async function scrape() {
       await browser.storage.local.set({ ships });
       const nSurveys = await processSurveyReports(reportData.reports || [], ships);
       const nPirates = await processPirateReports(pirateData.reports || [], ships);
+      await processSpyReports(spyData.reports || []);
+      await processCampScoutReports(campScoutData.reports || []);
       console.log(`[NexusAccounting] Scraped ${nSurveys} new survey reports, ${nPirates} new pirate reports.`);
     });
   } catch (err) {
@@ -434,6 +502,8 @@ async function scrape() {
 const WATCHED_URLS = [
   `${GAME_URL}/api/fleet/survey-reports*`,
   `${GAME_URL}/api/fleet/pirate-reports*`,
+  `${GAME_URL}/api/fleet/spy-reports*`,
+  `${GAME_URL}/api/fleet/camp-scout-reports*`,
   `${GAME_URL}/api/planets/*/shipyard*`,
 ];
 
@@ -480,6 +550,14 @@ function routeIntercepted(url, json) {
   enqueue(async () => {
     if (url.includes('/shipyard')) {
       await browser.storage.local.set({ ships: buildShipCatalog(json) });
+      return;
+    }
+    if (url.includes('/spy-reports')) {
+      await processSpyReports(json.reports || []);
+      return;
+    }
+    if (url.includes('/camp-scout-reports')) {
+      await processCampScoutReports(json.reports || []);
       return;
     }
     const { ships } = await browser.storage.local.get('ships');

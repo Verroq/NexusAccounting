@@ -47,11 +47,24 @@
       <table class="fleet-table"><tbody id="attacker-ships"></tbody></table>
     </div>
     <div class="fleet-box">
-      <h2 class="fleet-title defender">Defender fleet</h2>
+      <h2 class="fleet-title defender">Defender fleet
+        <select id="report-select" class="inline-btn" style="max-width:260px;">
+          <option value="">Fill from intel report…</option>
+        </select>
+      </h2>
       <details class="tech-panel">
         <summary>Research levels</summary>
         <div class="tech-grid" id="defender-techs"></div>
       </details>
+      <div class="tech-panel" style="padding:8px 10px;">
+        <span class="tech-label" title="Defense turret building level. Fights as a structure: estimated 150 ATK and 2,500 HP per level, laser/heavy. Bombers get exact ×5 rapid fire against it.">Turret lvl ~</span>
+        <input type="number" id="def-turret" class="tech-input" min="0" value="0" />
+        <span class="tech-label" title="Shield generator level. Adds an estimated 1,500 planetary shield HP per level to the turret structure; regenerates every round per the guide.">Shield gen lvl ~</span>
+        <input type="number" id="def-shield" class="tech-input" min="0" value="0" />
+        <span class="tech-label" title="Electronic Warfare level. Reduces attacker damage by an estimated 3% per level.">EW lvl ~</span>
+        <input type="number" id="def-ew" class="tech-input" min="0" value="0" />
+      </div>
+      <div id="target-intel" style="display:none;" class="tech-panel"></div>
       <table class="fleet-table"><tbody id="defender-ships"></tbody></table>
     </div>
   </div>
