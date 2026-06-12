@@ -1330,6 +1330,35 @@ document.getElementById('btn-save-cap').addEventListener('click', async function
   setTimeout(() => { this.textContent = 'Save'; }, 1500);
 });
 
+// ── Rebuild aggregates ─────────────────────────────────────────────────────
+
+document.getElementById('btn-rebuild').addEventListener('click', async function () {
+  const s = await browser.storage.local.get([
+    'survey_archive', 'pirate_archive', 'mining_archive', 'exp_archive',
+    'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports',
+  ]);
+  const n = (s.survey_archive || s.recent_reports || []).length +
+            (s.pirate_archive || s.pirate_recent_reports || []).length +
+            (s.mining_archive || s.mining_recent_reports || []).length +
+            (s.exp_archive || s.exp_recent_reports || []).length;
+  if (!confirm(
+    `Recompute all aggregated stats from the ${n} archived report records?\n\n` +
+    'Mining alloys/rares, stolen-cargo breakdown and mining loss valuation ' +
+    'cannot be reconstructed and will reset.')) return;
+
+  this.disabled = true;
+  this.textContent = 'Rebuilding…';
+  try {
+    await browser.runtime.sendMessage({ type: 'REBUILD_AGGREGATES' });
+    await loadAll();
+    this.textContent = 'Rebuilt ✓';
+  } catch (e) {
+    this.textContent = 'Error';
+  } finally {
+    setTimeout(() => { this.disabled = false; this.textContent = 'Rebuild stats'; }, 2000);
+  }
+});
+
 // ── Export / Import ────────────────────────────────────────────────────────
 
 document.getElementById('btn-export').addEventListener('click', async function () {
