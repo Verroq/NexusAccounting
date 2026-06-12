@@ -3,7 +3,7 @@ const REPORTS_PATH = '/api/fleet/survey-reports';
 const PIRATES_PATH = '/api/fleet/pirate-reports';
 const SPY_PATH = '/api/fleet/spy-reports';
 const CAMP_SCOUT_PATH = '/api/fleet/camp-scout-reports';
-const INTEL_KEEP = 50;
+const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes — forces a full re-scrape.
