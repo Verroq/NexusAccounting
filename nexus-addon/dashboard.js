@@ -641,12 +641,14 @@ function appendRareCards(container, rare, suffix) {
 
 function renderPagedTable(reports, page, infoId, prevId, nextId, tbodyId, rowFn) {
   const totalPages = Math.ceil(reports.length / PER_PAGE);
-  document.getElementById(infoId).textContent = `Page ${page} / ${Math.max(1, totalPages)} (${reports.length} total)`;
-  document.getElementById(prevId).disabled = page <= 1;
-  document.getElementById(nextId).disabled = page >= totalPages;
+  const maxPage = Math.max(1, totalPages);
+  const safePage = Math.min(Math.max(1, page), maxPage);
+  document.getElementById(infoId).textContent = `Page ${safePage} / ${maxPage} (${reports.length} total)`;
+  document.getElementById(prevId).disabled = safePage <= 1;
+  document.getElementById(nextId).disabled = safePage >= totalPages;
   const tbody = document.getElementById(tbodyId);
   tbody.textContent = '';
-  for (const r of reports.slice((page - 1) * PER_PAGE, page * PER_PAGE)) {
+  for (const r of reports.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE)) {
     tbody.appendChild(rowFn(r));
   }
 }
