@@ -685,7 +685,8 @@ function renderMiningTab() {
   const ops = document.getElementById('m-stats-ops');
   ops.textContent = '';
   const stolenTotal = t.stolen
-    ? (t.stolen.ore + t.stolen.silicates + t.stolen.hydrogen + t.stolen.alloys)
+    ? (t.stolen.ore + t.stolen.silicates + t.stolen.hydrogen + t.stolen.alloys +
+       Object.values(t.stolen.rare || {}).reduce((s, v) => s + v, 0))
     : 0;
   ops.append(
     makeStatCard('Deliveries', fmt(t.deliveries), 'missions'),
