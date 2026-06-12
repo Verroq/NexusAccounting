@@ -1111,8 +1111,8 @@ function renderFinderResults() {
   });
   for (const h of sorted) {
     const tr = document.createElement('tr');
-    const cells = [h.planet, h.system, String(h.sector), h.type.replace(/_/g, ' '),
-                   String(h.size), `${h.temp}°`, String(h.moons), h.owner || '—'];
+    const cells = [h.planet, h.system, String(h.sector), String(h.type ?? '—').replace(/_/g, ' '),
+                   String(h.size), (h.temp == null ? '—' : `${h.temp}°`), String(h.moons), h.owner || '—'];
     cells.forEach((v, i) => {
       const td = document.createElement('td');
       td.textContent = v;
