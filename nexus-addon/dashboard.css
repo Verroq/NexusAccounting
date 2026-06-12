@@ -83,6 +83,25 @@ td.silicates { color: #56d364; }
 .badge.defender_won { background: #2d1a1a; color: #ff7b72; }
 .badge.draw { background: #2d2a1a; color: #e3b341; }
 
+.finder-controls {
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  margin: 16px 0; font-size: 0.85rem; color: #8b949e;
+}
+.finder-controls label { display: flex; align-items: center; gap: 6px; }
+.finder-controls input[type="number"] {
+  width: 60px; background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 4px 8px; border-radius: 6px; font-size: 0.85rem;
+}
+.finder-controls select {
+  background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 4px 8px; border-radius: 6px; font-size: 0.85rem;
+}
+.finder-controls button {
+  background: #238636; border: 1px solid #2ea043; color: #fff;
+  padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;
+}
+.finder-controls button:hover { background: #2ea043; }
+
 .pagination { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
 .pagination span { color: #8b949e; }
 .pagination button {

@@ -3,6 +3,10 @@ const REPORTS_PATH = '/api/fleet/survey-reports';
 const PIRATES_PATH = '/api/fleet/pirate-reports';
 const SPY_PATH = '/api/fleet/spy-reports';
 const CAMP_SCOUT_PATH = '/api/fleet/camp-scout-reports';
+const MINING_PATH = '/api/fleet/mining-reports';
+const EXPEDITION_PATH = '/api/fleet/expedition-reports';
+const WORMHOLE_PATH = '/api/fleet/wormhole-runs';
+const SYSTEM_DEBRIS_PATH = '/api/fleet/system-debris';
 const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
@@ -28,7 +32,21 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SCRAPE_NOW') return scrape().then(() => ({ ok: true }));
   if (msg.type === 'GET_STATUS') return getStatus();
   if (msg.type === 'GET_FLEET') return getFleet();
+  if (msg.type === 'GET_ARMS') return apiGet('/api/galaxy/arms');
+  if (msg.type === 'GET_GALAXY_MAP') return apiGet('/api/galaxy/map');
+  if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
 });
+
+// Authenticated GET for dashboard pages (they have no cookie access of their own).
+async function apiGet(path) {
+  const token = await getToken();
+  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  try {
+    return await apiFetch(path, token);
+  } catch (err) {
+    return { error: err.message };
+  }
+}
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 
@@ -450,6 +468,223 @@ async function processCampScoutReports(reports) {
   return merged.length;
 }
 
+// Sum numeric resource entries, ignoring internal "_"-prefixed keys
+// (mining resourcesDelivered carries _cyclesDone etc.).
+function numericResources(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (!k.startsWith('_') && typeof v === 'number' && v > 0) out[k] = v;
+  }
+  return out;
+}
+
+const CORE_RESOURCES = ['ore', 'silicates', 'hydrogen', 'alloys'];
+
+function addResources(target, res) {
+  for (const [k, v] of Object.entries(res)) {
+    if (CORE_RESOURCES.includes(k)) target[k] += v;
+    else target.rare[k] = (target.rare[k] || 0) + v;
+  }
+}
+
+async function processMiningReports(reports, ships) {
+  const stored = await browser.storage.local.get([
+    'mining_seen_ids', 'mining_totals', 'mining_daily', 'mining_resources_lost',
+    'mining_recent_reports', 'records_cap',
+  ]);
+  const recordsCap = stored.records_cap ?? 500;
+
+  const seen = new Set(stored.mining_seen_ids || []);
+  const totals = stored.mining_totals || {
+    ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
+    deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
+    stolen: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} },
+  };
+  const dailyMap = {};
+  for (const d of (stored.mining_daily || [])) dailyMap[d.day] = { ...d };
+  const lost = stored.mining_resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+  const recent = [...(stored.mining_recent_reports || [])];
+
+  const fresh = reports.filter(r => !seen.has(r.id));
+
+  for (const r of fresh) {
+    if (seen.has(r.id)) continue; // duplicate id within one batch
+    seen.add(r.id);
+    const delivered = numericResources(r.resourcesDelivered);
+    const stolen = numericResources(r.cargoStolen);
+    const nLost = (r.shipsLost || []).reduce((sum, i) => sum + (i.quantity || 1), 0);
+    const lostDetail = parseShipsLost(r.shipsLost);
+
+    addResources(totals, delivered);
+    addResources(totals.stolen, stolen);
+    totals.deliveries += 1;
+    totals.cycles += r.cycleCount || 0;
+    totals.drill_breakdowns += r.drillBreakdowns || 0;
+    totals.ships_lost += nLost;
+
+    const day = r.createdAt.slice(0, 10);
+    if (!dailyMap[day]) dailyMap[day] = { day, ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, ships_lost: 0 };
+    dailyMap[day].ore += delivered.ore || 0;
+    dailyMap[day].silicates += delivered.silicates || 0;
+    dailyMap[day].hydrogen += delivered.hydrogen || 0;
+    dailyMap[day].deliveries += 1;
+    dailyMap[day].ships_lost += nLost;
+
+    for (const [defId, qty] of Object.entries(lostDetail)) {
+      const ship = ships[defId];
+      if (ship) {
+        lost.ore += qty * ship.costOre;
+        lost.silicates += qty * ship.costSilicates;
+        lost.hydrogen += qty * ship.costHydrogen;
+        lost.alloys += qty * ship.costAlloys;
+        for (const [k, v] of Object.entries(ship.rareCosts)) {
+          lost.rare[k] = (lost.rare[k] || 0) + qty * v;
+        }
+      }
+    }
+
+    recent.unshift({
+      id: r.id,
+      created_at: r.createdAt,
+      location: r.locationName || '—',
+      planet: r.planetName || '—',
+      report_type: r.reportType || 'delivery',
+      ore: delivered.ore || 0,
+      silicates: delivered.silicates || 0,
+      hydrogen: delivered.hydrogen || 0,
+      cycles: r.cycleCount || 0,
+      drill_breakdowns: r.drillBreakdowns || 0,
+      ships_lost: nLost,
+      stolen_total: Object.values(stolen).reduce((s, v) => s + v, 0),
+      combat_outcome: r.combatOutcome || null,
+    });
+  }
+
+  await browser.storage.local.set({
+    mining_seen_ids: [...seen],
+    mining_totals: totals,
+    mining_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
+    mining_resources_lost: lost,
+    mining_recent_reports: recent.slice(0, recordsCap),
+    last_scrape: new Date().toISOString(),
+    last_error: null,
+  });
+
+  return fresh.length;
+}
+
+// Expedition reports + wormhole runs share one tab. Their shapes have never
+// been observed (endpoints empty so far) — loot is extracted tolerantly.
+function extractLoot(r) {
+  const src = r.loot || r.resourcesGained || r.resources || r.reward || r.rewards || {};
+  return numericResources(src);
+}
+
+async function processExpeditionReports(reports, runs, ships) {
+  const items = [
+    ...(reports || []).map(r => ({ r, kind: 'expedition', uid: `exp-${r.id}` })),
+    ...(runs || []).map(r => ({ r, kind: 'wormhole', uid: `wh-${r.id}` })),
+  ];
+  if (!items.length) return 0;
+
+  const stored = await browser.storage.local.get([
+    'exp_seen_ids', 'exp_totals', 'exp_daily', 'exp_recent_reports', 'records_cap',
+  ]);
+  const recordsCap = stored.records_cap ?? 500;
+
+  const seen = new Set(stored.exp_seen_ids || []);
+  const totals = stored.exp_totals || {
+    ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0,
+  };
+  const dailyMap = {};
+  for (const d of (stored.exp_daily || [])) dailyMap[d.day] = { ...d };
+  const recent = [...(stored.exp_recent_reports || [])];
+
+  let added = 0;
+  for (const { r, kind, uid } of items) {
+    if (seen.has(uid) || !r.createdAt) continue;
+    seen.add(uid);
+    added++;
+    const loot = extractLoot(r);
+    const nLost = (r.shipsLost || []).reduce((sum, i) => sum + (i.quantity || 1), 0);
+
+    addResources(totals, loot);
+    totals.missions += 1;
+    totals.ships_lost += nLost;
+
+    const day = r.createdAt.slice(0, 10);
+    if (!dailyMap[day]) dailyMap[day] = { day, ore: 0, silicates: 0, hydrogen: 0, missions: 0, ships_lost: 0 };
+    dailyMap[day].ore += loot.ore || 0;
+    dailyMap[day].silicates += loot.silicates || 0;
+    dailyMap[day].hydrogen += loot.hydrogen || 0;
+    dailyMap[day].missions += 1;
+    dailyMap[day].ships_lost += nLost;
+
+    recent.unshift({
+      id: uid,
+      created_at: r.createdAt,
+      kind,
+      event: r.eventType || r.outcome || r.result || null,
+      location: r.systemName || r.locationName || r.targetName || '—',
+      loot,
+      ships_lost: nLost,
+    });
+  }
+
+  if (added) {
+    await browser.storage.local.set({
+      exp_seen_ids: [...seen],
+      exp_totals: totals,
+      exp_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
+      exp_recent_reports: recent.slice(0, recordsCap),
+      last_scrape: new Date().toISOString(),
+      last_error: null,
+    });
+  }
+  return added;
+}
+
+// system-debris is live state, not history. Snapshot it and treat decreases
+// between snapshots as "collected by someone" (us or another player).
+async function processSystemDebris(debrisArr) {
+  const stored = await browser.storage.local.get(['debris_fields', 'debris_collected_est']);
+  const prev = {};
+  for (const f of (stored.debris_fields || [])) prev[f.id] = f;
+  const collected = stored.debris_collected_est || { ore: 0, silicates: 0, alloys: 0, hydrogen: 0 };
+
+  const now = new Date().toISOString();
+  const next = {};
+  for (const d of (debrisArr || [])) {
+    const id = String(d.id ?? `${d.systemId ?? '?'}-${d.position ?? ''}`);
+    const res = numericResources(d);
+    delete res.id;
+    next[id] = {
+      id,
+      system: d.systemName || d.locationName || (d.systemId != null ? `System #${d.systemId}` : 'unknown'),
+      ore: res.ore || 0,
+      silicates: res.silicates || 0,
+      alloys: res.alloys || 0,
+      hydrogen: res.hydrogen || 0,
+      first_seen: prev[id]?.first_seen || now,
+      updated_at: now,
+    };
+  }
+
+  for (const [id, old] of Object.entries(prev)) {
+    const cur = next[id];
+    for (const k of ['ore', 'silicates', 'alloys', 'hydrogen']) {
+      const dec = (old[k] || 0) - (cur ? (cur[k] || 0) : 0);
+      if (dec > 0) collected[k] += dec;
+    }
+  }
+
+  await browser.storage.local.set({
+    debris_fields: Object.values(next),
+    debris_collected_est: collected,
+    debris_last_check: now,
+  });
+}
+
 // ── Full scrape (15-min alarm fallback + manual button) ────────────────────
 
 async function scrape() {
@@ -469,12 +704,17 @@ async function scrape() {
 
   try {
     const planetId = await getHomePlanetId(token);
-    const [shipyardData, reportData, pirateData, spyData, campScoutData] = await Promise.all([
+    const [shipyardData, reportData, pirateData, spyData, campScoutData,
+           miningData, expeditionData, wormholeData, systemDebrisData] = await Promise.all([
       apiFetch(`/api/planets/${planetId}/shipyard`, token),
       apiFetch(REPORTS_PATH, token),
       apiFetch(PIRATES_PATH, token),
       apiFetch(SPY_PATH, token),
       apiFetch(CAMP_SCOUT_PATH, token),
+      apiFetch(MINING_PATH, token),
+      apiFetch(EXPEDITION_PATH, token),
+      apiFetch(WORMHOLE_PATH, token),
+      apiFetch(SYSTEM_DEBRIS_PATH, token),
     ]);
 
     await enqueue(async () => {
@@ -482,9 +722,12 @@ async function scrape() {
       await browser.storage.local.set({ ships });
       const nSurveys = await processSurveyReports(reportData.reports || [], ships);
       const nPirates = await processPirateReports(pirateData.reports || [], ships);
+      const nMining = await processMiningReports(miningData.reports || [], ships);
+      await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships);
+      await processSystemDebris(systemDebrisData.debris || []);
       await processSpyReports(spyData.reports || []);
       await processCampScoutReports(campScoutData.reports || []);
-      console.log(`[NexusAccounting] Scraped ${nSurveys} new survey reports, ${nPirates} new pirate reports.`);
+      console.log(`[NexusAccounting] Scraped ${nSurveys} surveys, ${nPirates} pirate, ${nMining} mining reports.`);
     });
   } catch (err) {
     console.error('[NexusAccounting] Scrape failed:', err);
@@ -504,6 +747,10 @@ const WATCHED_URLS = [
   `${GAME_URL}/api/fleet/pirate-reports*`,
   `${GAME_URL}/api/fleet/spy-reports*`,
   `${GAME_URL}/api/fleet/camp-scout-reports*`,
+  `${GAME_URL}/api/fleet/mining-reports*`,
+  `${GAME_URL}/api/fleet/expedition-reports*`,
+  `${GAME_URL}/api/fleet/wormhole-runs*`,
+  `${GAME_URL}/api/fleet/system-debris*`,
   `${GAME_URL}/api/planets/*/shipyard*`,
 ];
 
@@ -560,11 +807,18 @@ function routeIntercepted(url, json) {
       await processCampScoutReports(json.reports || []);
       return;
     }
+    if (url.includes('/system-debris')) {
+      await processSystemDebris(json.debris || []);
+      return;
+    }
     const { ships } = await browser.storage.local.get('ships');
     if (!ships) return; // no catalog yet — the next full scrape bootstraps it
     let n = 0;
     if (url.includes('/survey-reports')) n = await processSurveyReports(json.reports || [], ships);
     else if (url.includes('/pirate-reports')) n = await processPirateReports(json.reports || [], ships);
+    else if (url.includes('/mining-reports')) n = await processMiningReports(json.reports || [], ships);
+    else if (url.includes('/expedition-reports')) n = await processExpeditionReports(json.reports || [], [], ships);
+    else if (url.includes('/wormhole-runs')) n = await processExpeditionReports([], json.runs || [], ships);
     if (n) console.log(`[NexusAccounting] Realtime: ${n} new reports from ${url}`);
   });
 }
