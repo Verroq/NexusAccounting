@@ -1,5 +1,4 @@
 const GAME_URL = 'https://s0.nexuslegacy.space';
-const SHIPYARD_PATH = '/api/planets/29925/shipyard';
 const REPORTS_PATH = '/api/fleet/survey-reports';
 const PIRATES_PATH = '/api/fleet/pirate-reports';
 const ALARM = 'nexus-scrape';
@@ -25,6 +24,7 @@ browser.browserAction.onClicked.addListener(() => {
 browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SCRAPE_NOW') return scrape().then(() => ({ ok: true }));
   if (msg.type === 'GET_STATUS') return getStatus();
+  if (msg.type === 'GET_FLEET') return getFleet();
 });
 
 // ── Auth ───────────────────────────────────────────────────────────────────
@@ -45,6 +45,38 @@ async function apiFetch(path, token) {
   });
   if (!r.ok) throw new Error(`API ${path} → ${r.status}`);
   return r.json();
+}
+
+// Home planet id, discovered once via /api/planets and cached.
+async function getHomePlanetId(token) {
+  const { planet_id } = await browser.storage.local.get('planet_id');
+  if (planet_id) return planet_id;
+  const data = await apiFetch('/api/planets', token);
+  const planets = data.planets || [];
+  const home = planets.find(p => p.isHomeworld) || planets[0];
+  if (!home) throw new Error('No planets found for this account');
+  await browser.storage.local.set({ planet_id: home.id });
+  console.log(`[NexusAccounting] Home planet: ${home.name} (#${home.id})`);
+  return home.id;
+}
+
+// Current stationed fleet as { shipKey: usableQuantity } — for the simulator.
+async function getFleet() {
+  const token = await getToken();
+  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  try {
+    const planetId = await getHomePlanetId(token);
+    const data = await apiFetch(`/api/planets/${planetId}/fleet`, token);
+    const fleet = {};
+    for (const f of (data.fleet || [])) {
+      const key = f.definition?.key;
+      const qty = (f.quantity || 0) - (f.damagedQuantity || 0);
+      if (key && qty > 0) fleet[key] = (fleet[key] || 0) + qty;
+    }
+    return { fleet };
+  } catch (err) {
+    return { error: err.message };
+  }
 }
 
 // ── Processing queue ───────────────────────────────────────────────────────
@@ -325,6 +357,10 @@ async function processPirateReports(pirateReports, ships) {
       debris_alloys: debris.alloys || 0,
       debris_silicates: debris.silicates || 0,
       ships_lost_detail: destroyedDetail,
+      // Fleet compositions kept so the simulator can replay this battle
+      // and measure engine accuracy against the real outcome.
+      attacker_fleet: (r.attackerFleet || []).map(i => ({ key: i.key, quantity: i.quantity || 1 })),
+      pirate_fleet: (r.pirateFleet || []).map(i => ({ key: i.key, quantity: i.quantity || 1 })),
     });
   }
 
@@ -368,8 +404,9 @@ async function scrape() {
   }
 
   try {
+    const planetId = await getHomePlanetId(token);
     const [shipyardData, reportData, pirateData] = await Promise.all([
-      apiFetch(SHIPYARD_PATH, token),
+      apiFetch(`/api/planets/${planetId}/shipyard`, token),
       apiFetch(REPORTS_PATH, token),
       apiFetch(PIRATES_PATH, token),
     ]);
@@ -383,6 +420,8 @@ async function scrape() {
     });
   } catch (err) {
     console.error('[NexusAccounting] Scrape failed:', err);
+    // Cached planet may be gone (recolonized) — rediscover on next scrape.
+    if (err.message.includes('→ 404')) await browser.storage.local.remove('planet_id');
     await browser.storage.local.set({ last_error: err.message });
   }
 }
