@@ -15,8 +15,16 @@ const SCHEMA_VERSION = 3;
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
-browser.runtime.onInstalled.addListener(async () => {
+browser.runtime.onInstalled.addListener(async details => {
   browser.alarms.create(ALARM, { periodInMinutes: INTERVAL_MIN });
+  // Snapshot existing data before the new version touches it.
+  if (details.reason === 'update') {
+    try {
+      await backupToDownloads(`pre-update-${details.previousVersion || 'unknown'}`);
+    } catch (err) {
+      console.warn('[NexusAccounting] Pre-update backup failed:', err);
+    }
+  }
   await scrape();
 });
 
@@ -32,6 +40,8 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SCRAPE_NOW') return scrape().then(() => ({ ok: true }));
   if (msg.type === 'GET_STATUS') return getStatus();
   if (msg.type === 'GET_FLEET') return getFleet();
+  if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
+  if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
   if (msg.type === 'GET_ARMS') return apiGet('/api/galaxy/arms');
   if (msg.type === 'GET_GALAXY_MAP') return apiGet('/api/galaxy/map');
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
@@ -154,7 +164,7 @@ function buildShipCatalog(shipyardData) {
 async function processSurveyReports(reports, ships) {
   const stored = await browser.storage.local.get([
     'seen_ids', 'totals', 'daily', 'hourly', 'resources_lost',
-    'event_breakdown', 'recent_reports', 'records_cap',
+    'event_breakdown', 'recent_reports', 'records_cap', 'survey_archive',
   ]);
   const recordsCap = stored.records_cap ?? 500;
 
@@ -257,6 +267,12 @@ async function processSurveyReports(reports, ships) {
     totals.last_report = timestamps[timestamps.length - 1];
   }
 
+  // Uncapped archive: every report ever seen, so "Rebuild stats" is lossless.
+  const addedSurveys = recentReports.length - (stored.recent_reports || []).length;
+  const surveyArchive = stored.survey_archive
+    ? [...recentReports.slice(0, addedSurveys), ...stored.survey_archive]
+    : [...recentReports];
+
   await browser.storage.local.set({
     seen_ids: [...seenIds],
     totals,
@@ -265,6 +281,7 @@ async function processSurveyReports(reports, ships) {
     resources_lost: resourcesLost,
     event_breakdown: Object.values(eventMap).sort((a, b) => b.count - a.count),
     recent_reports: recentReports.slice(0, recordsCap),
+    survey_archive: surveyArchive,
     last_scrape: new Date().toISOString(),
     last_error: null,
     schema_version: SCHEMA_VERSION,
@@ -277,6 +294,7 @@ async function processPirateReports(pirateReports, ships) {
   const pstored = await browser.storage.local.get([
     'pirate_seen_ids', 'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports', 'records_cap',
+    'pirate_archive',
   ]);
   const recordsCap = pstored.records_cap ?? 500;
 
@@ -399,6 +417,9 @@ async function processPirateReports(pirateReports, ships) {
     pirate_outcomes: Object.values(outcomeMap).sort((a, b) => b.count - a.count),
     pirate_debris_total: pirateDebris,
     pirate_recent_reports: pirateRecent.slice(0, recordsCap),
+    pirate_archive: pstored.pirate_archive
+      ? [...pirateRecent.slice(0, pirateRecent.length - (pstored.pirate_recent_reports || []).length), ...pstored.pirate_archive]
+      : [...pirateRecent],
     last_scrape: new Date().toISOString(),
     last_error: null,
     schema_version: SCHEMA_VERSION,
@@ -490,7 +511,7 @@ function addResources(target, res) {
 async function processMiningReports(reports, ships) {
   const stored = await browser.storage.local.get([
     'mining_seen_ids', 'mining_totals', 'mining_daily', 'mining_resources_lost',
-    'mining_recent_reports', 'records_cap',
+    'mining_recent_reports', 'records_cap', 'mining_archive',
   ]);
   const recordsCap = stored.records_cap ?? 500;
 
@@ -566,6 +587,9 @@ async function processMiningReports(reports, ships) {
     mining_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
     mining_resources_lost: lost,
     mining_recent_reports: recent.slice(0, recordsCap),
+    mining_archive: stored.mining_archive
+      ? [...recent.slice(0, recent.length - (stored.mining_recent_reports || []).length), ...stored.mining_archive]
+      : [...recent],
     last_scrape: new Date().toISOString(),
     last_error: null,
   });
@@ -589,6 +613,7 @@ async function processExpeditionReports(reports, runs, ships) {
 
   const stored = await browser.storage.local.get([
     'exp_seen_ids', 'exp_totals', 'exp_daily', 'exp_recent_reports', 'records_cap',
+    'exp_archive',
   ]);
   const recordsCap = stored.records_cap ?? 500;
 
@@ -637,6 +662,9 @@ async function processExpeditionReports(reports, runs, ships) {
       exp_totals: totals,
       exp_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
       exp_recent_reports: recent.slice(0, recordsCap),
+      exp_archive: stored.exp_archive
+        ? [...recent.slice(0, recent.length - (stored.exp_recent_reports || []).length), ...stored.exp_archive]
+        : [...recent],
       last_scrape: new Date().toISOString(),
       last_error: null,
     });
@@ -685,6 +713,326 @@ async function processSystemDebris(debrisArr) {
   });
 }
 
+// ── Aggregate rebuild ──────────────────────────────────────────────────────
+// Recomputes every aggregate from the stored per-report records, repairing
+// drift after partial failures. Limits: history beyond the records cap is
+// lost from totals, and mining alloys/rares/stolen-breakdown and mining loss
+// valuation cannot be reconstructed (per-report records lack the detail).
+
+function costFromDetail(detail, ships, into) {
+  for (const [defId, qty] of Object.entries(detail || {})) {
+    const ship = ships[defId];
+    if (!ship) continue;
+    into.ore += qty * ship.costOre;
+    into.silicates += qty * ship.costSilicates;
+    into.hydrogen += qty * ship.costHydrogen;
+    into.alloys += qty * ship.costAlloys;
+    for (const [k, v] of Object.entries(ship.rareCosts || {})) {
+      into.rare[k] = (into.rare[k] || 0) + qty * v;
+    }
+  }
+}
+
+async function rebuildAggregates() {
+  const s = await browser.storage.local.get([
+    'recent_reports', 'pirate_recent_reports', 'mining_recent_reports',
+    'exp_recent_reports', 'survey_archive', 'pirate_archive', 'mining_archive',
+    'exp_archive', 'ships',
+  ]);
+  const ships = s.ships || {};
+  const out = {};
+  // Archives hold every report ever seen; capped recents are the fallback
+  // for data collected before archives existed.
+  const surveyRecords = s.survey_archive || s.recent_reports || [];
+  const pirateRecords = s.pirate_archive || s.pirate_recent_reports || [];
+  const miningRecords = s.mining_archive || s.mining_recent_reports || [];
+  const expRecords = s.exp_archive || s.exp_recent_reports || [];
+
+  // Surveys
+  {
+    const totals = { ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0, first_report: null, last_report: null };
+    const daily = {}, hourly = {}, events = {};
+    const lost = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+    for (const r of surveyRecords) {
+      totals.ore += r.ore || 0;
+      totals.hydrogen += r.hydrogen || 0;
+      totals.silicates += r.silicates || 0;
+      totals.missions += 1;
+      totals.ships_lost += r.ships_lost || 0;
+      if (!totals.first_report || r.created_at < totals.first_report) totals.first_report = r.created_at;
+      if (!totals.last_report || r.created_at > totals.last_report) totals.last_report = r.created_at;
+
+      const day = r.created_at.slice(0, 10);
+      if (!daily[day]) daily[day] = { day, ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0 };
+      daily[day].ore += r.ore || 0;
+      daily[day].hydrogen += r.hydrogen || 0;
+      daily[day].silicates += r.silicates || 0;
+      daily[day].missions += 1;
+      daily[day].ships_lost += r.ships_lost || 0;
+
+      const hour = r.created_at.slice(0, 13) + ':00';
+      if (!hourly[hour]) hourly[hour] = { hour, ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0 };
+      hourly[hour].ore += r.ore || 0;
+      hourly[hour].hydrogen += r.hydrogen || 0;
+      hourly[hour].silicates += r.silicates || 0;
+      hourly[hour].missions += 1;
+      hourly[hour].ships_lost += r.ships_lost || 0;
+
+      const et = r.event_type || 'unknown';
+      if (!events[et]) events[et] = { event_type: et, count: 0, ore: 0, hydrogen: 0, silicates: 0 };
+      events[et].count += 1;
+      events[et].ore += r.ore || 0;
+      events[et].hydrogen += r.hydrogen || 0;
+      events[et].silicates += r.silicates || 0;
+
+      costFromDetail(r.ships_lost_detail, ships, lost);
+    }
+    out.totals = totals;
+    out.daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
+    out.hourly = Object.values(hourly).sort((a, b) => a.hour.localeCompare(b.hour));
+    out.event_breakdown = Object.values(events).sort((a, b) => b.count - a.count);
+    out.resources_lost = lost;
+  }
+
+  // Pirates
+  {
+    const totals = {
+      ore: 0, hydrogen: 0, silicates: 0, raids: 0,
+      ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0,
+      first_report: null, last_report: null,
+    };
+    const daily = {}, outcomes = {};
+    const lost = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+    const debris = { ore: 0, alloys: 0, silicates: 0 };
+    for (const r of pirateRecords) {
+      totals.ore += r.ore || 0;
+      totals.hydrogen += r.hydrogen || 0;
+      totals.silicates += r.silicates || 0;
+      totals.raids += 1;
+      totals.ships_destroyed += r.ships_lost || 0;
+      totals.ships_damaged += r.ships_damaged || 0;
+      totals.pirates_destroyed += r.pirates_destroyed || 0;
+      if (!totals.first_report || r.created_at < totals.first_report) totals.first_report = r.created_at;
+      if (!totals.last_report || r.created_at > totals.last_report) totals.last_report = r.created_at;
+
+      const day = r.created_at.slice(0, 10);
+      if (!daily[day]) daily[day] = { day, ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0 };
+      daily[day].ore += r.ore || 0;
+      daily[day].hydrogen += r.hydrogen || 0;
+      daily[day].silicates += r.silicates || 0;
+      daily[day].raids += 1;
+      daily[day].ships_destroyed += r.ships_lost || 0;
+
+      const o = r.outcome || 'unknown';
+      if (!outcomes[o]) outcomes[o] = { outcome: o, count: 0, ore: 0, hydrogen: 0, silicates: 0 };
+      outcomes[o].count += 1;
+      outcomes[o].ore += r.ore || 0;
+      outcomes[o].hydrogen += r.hydrogen || 0;
+      outcomes[o].silicates += r.silicates || 0;
+
+      debris.ore += r.debris_ore || 0;
+      debris.alloys += r.debris_alloys || 0;
+      debris.silicates += r.debris_silicates || 0;
+
+      costFromDetail(r.ships_lost_detail, ships, lost);
+    }
+    out.pirate_totals = totals;
+    out.pirate_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
+    out.pirate_outcomes = Object.values(outcomes).sort((a, b) => b.count - a.count);
+    out.pirate_resources_lost = lost;
+    out.pirate_debris_total = debris;
+  }
+
+  // Mining (alloys/rare/stolen breakdown and loss valuation are not rebuildable)
+  {
+    const totals = {
+      ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
+      deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
+      stolen: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} },
+    };
+    const daily = {};
+    for (const r of miningRecords) {
+      totals.ore += r.ore || 0;
+      totals.silicates += r.silicates || 0;
+      totals.hydrogen += r.hydrogen || 0;
+      totals.deliveries += 1;
+      totals.cycles += r.cycles || 0;
+      totals.drill_breakdowns += r.drill_breakdowns || 0;
+      totals.ships_lost += r.ships_lost || 0;
+      totals.stolen.ore += r.stolen_total || 0; // breakdown unknown — lump into ore
+
+      const day = r.created_at.slice(0, 10);
+      if (!daily[day]) daily[day] = { day, ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, ships_lost: 0 };
+      daily[day].ore += r.ore || 0;
+      daily[day].silicates += r.silicates || 0;
+      daily[day].hydrogen += r.hydrogen || 0;
+      daily[day].deliveries += 1;
+      daily[day].ships_lost += r.ships_lost || 0;
+    }
+    out.mining_totals = totals;
+    out.mining_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
+    out.mining_resources_lost = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+  }
+
+  // Expeditions (full loot map per record — fully rebuildable)
+  {
+    const totals = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
+    const daily = {};
+    for (const r of expRecords) {
+      addResources(totals, r.loot || {});
+      totals.missions += 1;
+      totals.ships_lost += r.ships_lost || 0;
+
+      const day = r.created_at.slice(0, 10);
+      if (!daily[day]) daily[day] = { day, ore: 0, silicates: 0, hydrogen: 0, missions: 0, ships_lost: 0 };
+      daily[day].ore += r.loot?.ore || 0;
+      daily[day].silicates += r.loot?.silicates || 0;
+      daily[day].hydrogen += r.loot?.hydrogen || 0;
+      daily[day].missions += 1;
+      daily[day].ships_lost += r.ships_lost || 0;
+    }
+    out.exp_totals = totals;
+    out.exp_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
+  }
+
+  await browser.storage.local.set(out);
+  await browser.storage.local.remove('stats_drift');
+  console.log('[NexusAccounting] Aggregates rebuilt from stored records.');
+}
+
+// ── Backups ─────────────────────────────────────────────────────────────────
+// Full storage snapshots written to Downloads/NexusAccounting/: weekly while
+// scraping runs, and before every destructive operation (reset, import,
+// schema-fallback wipe). Same format as the manual dashboard export.
+
+const BACKUP_INTERVAL_MS = 7 * 24 * 3600 * 1000;
+
+async function backupToDownloads(reason) {
+  const data = await browser.storage.local.get(null);
+  if (data.records_cap === Infinity) data.records_cap = 0;
+  const payload = {
+    nexus_accounting_backup: 1,
+    exported_at: new Date().toISOString(),
+    reason,
+    data,
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  try {
+    await browser.downloads.download({
+      url,
+      filename: `NexusAccounting/nexus-accounting-${reason}-${new Date().toISOString().slice(0, 10)}.json`,
+      conflictAction: 'uniquify',
+      saveAs: false,
+    });
+    await browser.storage.local.set({ last_backup: new Date().toISOString() });
+    console.log(`[NexusAccounting] Backup written (${reason}).`);
+  } finally {
+    // Give the download manager time to read the blob before revoking.
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+}
+
+async function maybeAutoBackup() {
+  const { last_backup } = await browser.storage.local.get('last_backup');
+  if (last_backup && Date.now() - new Date(last_backup).getTime() < BACKUP_INTERVAL_MS) return;
+  try {
+    await backupToDownloads('auto');
+  } catch (err) {
+    console.warn('[NexusAccounting] Auto-backup failed:', err);
+  }
+}
+
+// ── Drift detection ─────────────────────────────────────────────────────────
+// Recompute archive-derived sums and compare with the stored totals. Only
+// fields that are fully reconstructible from archives are compared, so a
+// legitimate rebuild never reports drift.
+
+async function checkDrift() {
+  const s = await browser.storage.local.get([
+    'survey_archive', 'pirate_archive', 'mining_archive', 'exp_archive',
+    'totals', 'pirate_totals', 'mining_totals', 'exp_totals',
+  ]);
+
+  const sum = (arr, field) => (arr || []).reduce((t, r) => t + (r[field] || 0), 0);
+  const problems = [];
+
+  if (s.totals && s.survey_archive) {
+    for (const f of ['ore', 'hydrogen', 'silicates', 'ships_lost']) {
+      if (sum(s.survey_archive, f) !== (s.totals[f] || 0)) problems.push(`surveys.${f}`);
+    }
+    if (s.survey_archive.length !== (s.totals.missions || 0)) problems.push('surveys.missions');
+  }
+  if (s.pirate_totals && s.pirate_archive) {
+    for (const f of ['ore', 'hydrogen', 'silicates']) {
+      if (sum(s.pirate_archive, f) !== (s.pirate_totals[f] || 0)) problems.push(`pirates.${f}`);
+    }
+    if (s.pirate_archive.length !== (s.pirate_totals.raids || 0)) problems.push('pirates.raids');
+  }
+  if (s.mining_totals && s.mining_archive) {
+    for (const f of ['ore', 'silicates', 'hydrogen']) {
+      if (sum(s.mining_archive, f) !== (s.mining_totals[f] || 0)) problems.push(`mining.${f}`);
+    }
+    if (s.mining_archive.length !== (s.mining_totals.deliveries || 0)) problems.push('mining.deliveries');
+  }
+  if (s.exp_totals && s.exp_archive) {
+    if (s.exp_archive.length !== (s.exp_totals.missions || 0)) problems.push('expeditions.missions');
+  }
+
+  if (problems.length) {
+    await browser.storage.local.set({
+      stats_drift: { detected_at: new Date().toISOString(), fields: problems },
+    });
+    console.warn('[NexusAccounting] Stats drift detected:', problems.join(', '));
+  } else {
+    await browser.storage.local.remove('stats_drift');
+  }
+}
+
+// ── Schema migrations ───────────────────────────────────────────────────────
+// When a stored data shape changes, bump SCHEMA_VERSION and add a migration
+// keyed by the NEW version that transforms existing data in place. Purely
+// additive changes (new keys with defaults) need no bump at all. Since report
+// archives exist, a record-shape migration is usually just "transform the
+// archives, then rebuildAggregates()". Data is only wiped as a last resort,
+// when a migration step is missing — and the user's records cap survives even
+// that.
+
+const MIGRATIONS = {
+  // 4: async () => {
+  //   const { survey_archive } = await browser.storage.local.get('survey_archive');
+  //   ...transform records...
+  //   await browser.storage.local.set({ survey_archive });
+  //   await rebuildAggregates();
+  // },
+};
+
+async function ensureSchema() {
+  const { schema_version } = await browser.storage.local.get('schema_version');
+  const from = schema_version ?? 0;
+  if (from >= SCHEMA_VERSION) return;
+
+  for (let v = from + 1; v <= SCHEMA_VERSION; v++) {
+    if (MIGRATIONS[v]) {
+      console.log(`[NexusAccounting] Migrating storage to schema ${v}.`);
+      await MIGRATIONS[v]();
+    } else if (from !== 0) {
+      // No migration path from this version — snapshot, then wipe and re-scrape.
+      console.log(`[NexusAccounting] No migration to schema ${v}, resetting storage.`);
+      try {
+        await backupToDownloads('pre-schema-wipe');
+      } catch (err) {
+        console.warn('[NexusAccounting] Pre-wipe backup failed:', err);
+      }
+      const { records_cap } = await browser.storage.local.get('records_cap');
+      await browser.storage.local.clear();
+      if (records_cap !== undefined) await browser.storage.local.set({ records_cap });
+      break;
+    }
+  }
+  await browser.storage.local.set({ schema_version: SCHEMA_VERSION });
+}
+
 // ── Full scrape (15-min alarm fallback + manual button) ────────────────────
 
 async function scrape() {
@@ -695,12 +1043,7 @@ async function scrape() {
     return;
   }
 
-  // Wipe stored data when schema changes so everything is recomputed cleanly.
-  const { schema_version } = await browser.storage.local.get('schema_version');
-  if (schema_version !== SCHEMA_VERSION) {
-    console.log(`[NexusAccounting] Schema ${schema_version} → ${SCHEMA_VERSION}, resetting storage.`);
-    await browser.storage.local.clear();
-  }
+  await ensureSchema();
 
   try {
     const planetId = await getHomePlanetId(token);
@@ -727,8 +1070,10 @@ async function scrape() {
       await processSystemDebris(systemDebrisData.debris || []);
       await processSpyReports(spyData.reports || []);
       await processCampScoutReports(campScoutData.reports || []);
+      await checkDrift();
       console.log(`[NexusAccounting] Scraped ${nSurveys} surveys, ${nPirates} pirate, ${nMining} mining reports.`);
     });
+    await maybeAutoBackup();
   } catch (err) {
     console.error('[NexusAccounting] Scrape failed:', err);
     // Cached planet may be gone (recolonized) — rediscover on next scrape.

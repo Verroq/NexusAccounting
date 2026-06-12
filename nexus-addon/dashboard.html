@@ -21,6 +21,7 @@
     <span id="status-text">Loading…</span>
     <button id="btn-scrape">Scrape Now</button>
     <button id="btn-reset" style="color:#ff7b72; border-color:#ff7b7244;">Reset all data</button>
+    <button id="btn-rebuild" title="Recompute all aggregated stats from the stored report records — repairs drift after partial failures.">Rebuild stats</button>
     <button id="btn-export">Export JSON</button>
     <button id="btn-import">Import JSON</button>
     <input id="import-file" type="file" accept=".json,application/json" style="display:none;" />
@@ -300,6 +301,9 @@
       </table>
     </div>
   </div>
+
+  <div id="storage-footer" style="margin-top:24px; padding-top:10px; border-top:1px solid #21262d;
+       color:#484f58; font-size:0.75rem;"></div>
 
   <script src="chart.umd.js"></script>
   <script src="dashboard.js"></script>

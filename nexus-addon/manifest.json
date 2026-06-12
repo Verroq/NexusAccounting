@@ -9,6 +9,7 @@
     "cookies",
     "storage",
     "alarms",
+    "downloads",
     "webRequest",
     "webRequestBlocking",
     "https://s0.nexuslegacy.space/*",
