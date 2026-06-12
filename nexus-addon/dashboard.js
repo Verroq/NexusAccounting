@@ -21,13 +21,30 @@ async function loadAll() {
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports',
     'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports',
     'debris_fields', 'debris_collected_est', 'debris_last_check',
-    'exp_totals', 'exp_daily', 'exp_recent_reports',
+    'exp_totals', 'exp_daily', 'exp_recent_reports', 'stats_drift',
   ]);
 
   const cap = store.records_cap ?? 500;
   document.getElementById('records-cap').value = cap === Infinity ? 0 : cap;
   updateStatus(store.last_scrape, store.last_error);
   renderAll();
+  updateStorageFooter();
+}
+
+// Archived record counts + rough storage size, shown in the footer.
+async function updateStorageFooter() {
+  const el = document.getElementById('storage-footer');
+  if (!el) return;
+  const all = await browser.storage.local.get(null);
+  const reports = (all.survey_archive?.length || all.recent_reports?.length || 0) +
+    (all.pirate_archive?.length || all.pirate_recent_reports?.length || 0) +
+    (all.mining_archive?.length || all.mining_recent_reports?.length || 0) +
+    (all.exp_archive?.length || all.exp_recent_reports?.length || 0);
+  let bytes = 0;
+  try { bytes = JSON.stringify(all).length; } catch { /* ignore */ }
+  const size = bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+  const backup = all.last_backup ? new Date(all.last_backup).toLocaleDateString() : 'never';
+  el.textContent = `${reports.toLocaleString()} reports archived · ~${size} stored · last auto-backup: ${backup}`;
 }
 
 function updateStatus(lastScrape, lastError) {
@@ -42,6 +59,14 @@ function updateStatus(lastScrape, lastError) {
     el.textContent = `Last scrape: ${new Date(lastScrape).toLocaleString()}`;
   } else {
     el.textContent = 'Never scraped.';
+  }
+  if (store.stats_drift) {
+    const warn = document.createElement('span');
+    warn.className = 'error';
+    warn.style.marginLeft = '10px';
+    warn.title = `Fields out of sync: ${(store.stats_drift.fields || []).join(', ')}`;
+    warn.textContent = '⚠ Stats drift detected — click "Rebuild stats".';
+    el.appendChild(warn);
   }
 }
 
@@ -1300,7 +1325,8 @@ document.getElementById('mode-select').addEventListener('change', () => {
 });
 
 document.getElementById('btn-reset').addEventListener('click', async function () {
-  if (!confirm('Drop all survey and pirate records? This cannot be undone.')) return;
+  if (!confirm('Drop all recorded data? A backup is written to Downloads/NexusAccounting first.')) return;
+  await browser.runtime.sendMessage({ type: 'BACKUP_NOW', reason: 'pre-reset' });
   const { records_cap } = await browser.storage.local.get('records_cap');
   await browser.storage.local.clear();
   if (records_cap) await browser.storage.local.set({ records_cap });
@@ -1385,6 +1411,35 @@ document.getElementById('btn-import').addEventListener('click', () => {
   document.getElementById('import-file').click();
 });
 
+// Shape checks on a backup before anything is cleared. Catches truncated or
+// hand-edited files; unknown keys are allowed through untouched.
+function validateBackupData(data) {
+  const arrays = [
+    'recent_reports', 'daily', 'hourly', 'event_breakdown', 'seen_ids',
+    'pirate_recent_reports', 'pirate_seen_ids', 'pirate_daily', 'pirate_outcomes',
+    'mining_recent_reports', 'mining_seen_ids', 'mining_daily',
+    'exp_recent_reports', 'exp_seen_ids', 'exp_daily',
+    'survey_archive', 'pirate_archive', 'mining_archive', 'exp_archive',
+    'spy_reports', 'camp_scout_reports', 'debris_fields',
+  ];
+  const objects = [
+    'totals', 'pirate_totals', 'mining_totals', 'exp_totals', 'ships',
+    'resources_lost', 'pirate_resources_lost', 'mining_resources_lost',
+    'pirate_debris_total', 'debris_collected_est',
+  ];
+  for (const k of arrays) {
+    if (k in data && !Array.isArray(data[k])) throw new Error(`backup field "${k}" should be a list`);
+  }
+  for (const k of objects) {
+    if (k in data && (typeof data[k] !== 'object' || data[k] === null || Array.isArray(data[k]))) {
+      throw new Error(`backup field "${k}" should be an object`);
+    }
+  }
+  if ('records_cap' in data && typeof data.records_cap !== 'number') {
+    throw new Error('backup field "records_cap" should be a number');
+  }
+}
+
 document.getElementById('import-file').addEventListener('change', async function () {
   const file = this.files[0];
   this.value = '';                    // allow re-selecting the same file
@@ -1396,9 +1451,11 @@ document.getElementById('import-file').addEventListener('change', async function
     if (!payload || payload.nexus_accounting_backup !== 1 || !payload.data || Array.isArray(payload.data) || typeof payload.data !== 'object') {
       throw new Error('not a Nexus Accounting backup file');
     }
+    validateBackupData(payload.data);
     const exportedAt = payload.exported_at ? new Date(payload.exported_at).toLocaleString() : 'unknown date';
-    if (!confirm(`Replace ALL current data with backup from ${exportedAt}? This cannot be undone.`)) return;
+    if (!confirm(`Replace ALL current data with backup from ${exportedAt}?\n\nA snapshot of the current data is written to Downloads/NexusAccounting first.`)) return;
 
+    await browser.runtime.sendMessage({ type: 'BACKUP_NOW', reason: 'pre-import' });
     const data = payload.data;
     if (data.records_cap === 0) data.records_cap = Infinity;
     await browser.storage.local.clear();

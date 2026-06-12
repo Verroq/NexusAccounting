@@ -15,8 +15,16 @@ const SCHEMA_VERSION = 3;
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
-browser.runtime.onInstalled.addListener(async () => {
+browser.runtime.onInstalled.addListener(async details => {
   browser.alarms.create(ALARM, { periodInMinutes: INTERVAL_MIN });
+  // Snapshot existing data before the new version touches it.
+  if (details.reason === 'update') {
+    try {
+      await backupToDownloads(`pre-update-${details.previousVersion || 'unknown'}`);
+    } catch (err) {
+      console.warn('[NexusAccounting] Pre-update backup failed:', err);
+    }
+  }
   await scrape();
 });
 
@@ -33,6 +41,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_STATUS') return getStatus();
   if (msg.type === 'GET_FLEET') return getFleet();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
+  if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
   if (msg.type === 'GET_ARMS') return apiGet('/api/galaxy/arms');
   if (msg.type === 'GET_GALAXY_MAP') return apiGet('/api/galaxy/map');
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
@@ -887,7 +896,97 @@ async function rebuildAggregates() {
   }
 
   await browser.storage.local.set(out);
+  await browser.storage.local.remove('stats_drift');
   console.log('[NexusAccounting] Aggregates rebuilt from stored records.');
+}
+
+// ── Backups ─────────────────────────────────────────────────────────────────
+// Full storage snapshots written to Downloads/NexusAccounting/: weekly while
+// scraping runs, and before every destructive operation (reset, import,
+// schema-fallback wipe). Same format as the manual dashboard export.
+
+const BACKUP_INTERVAL_MS = 7 * 24 * 3600 * 1000;
+
+async function backupToDownloads(reason) {
+  const data = await browser.storage.local.get(null);
+  if (data.records_cap === Infinity) data.records_cap = 0;
+  const payload = {
+    nexus_accounting_backup: 1,
+    exported_at: new Date().toISOString(),
+    reason,
+    data,
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  try {
+    await browser.downloads.download({
+      url,
+      filename: `NexusAccounting/nexus-accounting-${reason}-${new Date().toISOString().slice(0, 10)}.json`,
+      conflictAction: 'uniquify',
+      saveAs: false,
+    });
+    await browser.storage.local.set({ last_backup: new Date().toISOString() });
+    console.log(`[NexusAccounting] Backup written (${reason}).`);
+  } finally {
+    // Give the download manager time to read the blob before revoking.
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+}
+
+async function maybeAutoBackup() {
+  const { last_backup } = await browser.storage.local.get('last_backup');
+  if (last_backup && Date.now() - new Date(last_backup).getTime() < BACKUP_INTERVAL_MS) return;
+  try {
+    await backupToDownloads('auto');
+  } catch (err) {
+    console.warn('[NexusAccounting] Auto-backup failed:', err);
+  }
+}
+
+// ── Drift detection ─────────────────────────────────────────────────────────
+// Recompute archive-derived sums and compare with the stored totals. Only
+// fields that are fully reconstructible from archives are compared, so a
+// legitimate rebuild never reports drift.
+
+async function checkDrift() {
+  const s = await browser.storage.local.get([
+    'survey_archive', 'pirate_archive', 'mining_archive', 'exp_archive',
+    'totals', 'pirate_totals', 'mining_totals', 'exp_totals',
+  ]);
+
+  const sum = (arr, field) => (arr || []).reduce((t, r) => t + (r[field] || 0), 0);
+  const problems = [];
+
+  if (s.totals && s.survey_archive) {
+    for (const f of ['ore', 'hydrogen', 'silicates', 'ships_lost']) {
+      if (sum(s.survey_archive, f) !== (s.totals[f] || 0)) problems.push(`surveys.${f}`);
+    }
+    if (s.survey_archive.length !== (s.totals.missions || 0)) problems.push('surveys.missions');
+  }
+  if (s.pirate_totals && s.pirate_archive) {
+    for (const f of ['ore', 'hydrogen', 'silicates']) {
+      if (sum(s.pirate_archive, f) !== (s.pirate_totals[f] || 0)) problems.push(`pirates.${f}`);
+    }
+    if (s.pirate_archive.length !== (s.pirate_totals.raids || 0)) problems.push('pirates.raids');
+  }
+  if (s.mining_totals && s.mining_archive) {
+    for (const f of ['ore', 'silicates', 'hydrogen']) {
+      if (sum(s.mining_archive, f) !== (s.mining_totals[f] || 0)) problems.push(`mining.${f}`);
+    }
+    if (s.mining_archive.length !== (s.mining_totals.deliveries || 0)) problems.push('mining.deliveries');
+  }
+  if (s.exp_totals && s.exp_archive) {
+    if (s.exp_archive.length !== (s.exp_totals.missions || 0)) problems.push('expeditions.missions');
+  }
+
+  if (problems.length) {
+    await browser.storage.local.set({
+      stats_drift: { detected_at: new Date().toISOString(), fields: problems },
+    });
+    console.warn('[NexusAccounting] Stats drift detected:', problems.join(', '));
+  } else {
+    await browser.storage.local.remove('stats_drift');
+  }
 }
 
 // ── Schema migrations ───────────────────────────────────────────────────────
@@ -918,8 +1017,13 @@ async function ensureSchema() {
       console.log(`[NexusAccounting] Migrating storage to schema ${v}.`);
       await MIGRATIONS[v]();
     } else if (from !== 0) {
-      // No migration path from this version — wipe and re-scrape.
+      // No migration path from this version — snapshot, then wipe and re-scrape.
       console.log(`[NexusAccounting] No migration to schema ${v}, resetting storage.`);
+      try {
+        await backupToDownloads('pre-schema-wipe');
+      } catch (err) {
+        console.warn('[NexusAccounting] Pre-wipe backup failed:', err);
+      }
       const { records_cap } = await browser.storage.local.get('records_cap');
       await browser.storage.local.clear();
       if (records_cap !== undefined) await browser.storage.local.set({ records_cap });
@@ -966,8 +1070,10 @@ async function scrape() {
       await processSystemDebris(systemDebrisData.debris || []);
       await processSpyReports(spyData.reports || []);
       await processCampScoutReports(campScoutData.reports || []);
+      await checkDrift();
       console.log(`[NexusAccounting] Scraped ${nSurveys} surveys, ${nPirates} pirate, ${nMining} mining reports.`);
     });
+    await maybeAutoBackup();
   } catch (err) {
     console.error('[NexusAccounting] Scrape failed:', err);
     // Cached planet may be gone (recolonized) — rediscover on next scrape.
