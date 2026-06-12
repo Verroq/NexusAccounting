@@ -37,7 +37,9 @@
 
   <div class="sim-layout">
     <div class="fleet-box">
-      <h2 class="fleet-title attacker">Attacker fleet</h2>
+      <h2 class="fleet-title attacker">Attacker fleet
+        <button id="btn-load-fleet" class="inline-btn">Load my fleet</button>
+      </h2>
       <details class="tech-panel">
         <summary>Research levels</summary>
         <div class="tech-grid" id="attacker-techs"></div>
@@ -45,11 +47,24 @@
       <table class="fleet-table"><tbody id="attacker-ships"></tbody></table>
     </div>
     <div class="fleet-box">
-      <h2 class="fleet-title defender">Defender fleet</h2>
+      <h2 class="fleet-title defender">Defender fleet
+        <select id="report-select" class="inline-btn" style="max-width:260px;">
+          <option value="">Fill from intel report…</option>
+        </select>
+      </h2>
       <details class="tech-panel">
         <summary>Research levels</summary>
         <div class="tech-grid" id="defender-techs"></div>
       </details>
+      <div class="tech-panel" style="padding:8px 10px;">
+        <span class="tech-label" title="Defense turret building level. Fights as a structure: estimated 150 ATK and 2,500 HP per level, laser/heavy. Bombers get exact ×5 rapid fire against it.">Turret lvl ~</span>
+        <input type="number" id="def-turret" class="tech-input" min="0" value="0" />
+        <span class="tech-label" title="Shield generator level. Adds an estimated 1,500 planetary shield HP per level to the turret structure; regenerates every round per the guide.">Shield gen lvl ~</span>
+        <input type="number" id="def-shield" class="tech-input" min="0" value="0" />
+        <span class="tech-label" title="Electronic Warfare level. Reduces attacker damage by an estimated 3% per level.">EW lvl ~</span>
+        <input type="number" id="def-ew" class="tech-input" min="0" value="0" />
+      </div>
+      <div id="target-intel" style="display:none;" class="tech-panel"></div>
       <table class="fleet-table"><tbody id="defender-ships"></tbody></table>
     </div>
   </div>
@@ -81,6 +96,32 @@
 
     <div class="section-label">Average debris field generated</div>
     <div class="stats" id="debris-stats"></div>
+  </div>
+
+  <div class="reports-section">
+    <div class="reports-header">
+      <h2>Engine accuracy vs recorded raids</h2>
+      <button id="btn-validate" class="inline-btn">Validate</button>
+    </div>
+    <p style="color:#8b949e; font-size:0.8rem; margin-bottom:10px;">
+      Replays every recorded pirate raid through the engine (200 runs each, no research
+      bonuses — levels at battle time are unknown) and compares predictions with what
+      actually happened. "Removed" counts attacker ships knocked out of the battle
+      (destroyed + damaged).
+    </p>
+    <div id="validation-results" style="display:none;">
+      <div class="stats" id="validation-summary" style="margin-bottom:12px;"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>Attacker</th><th>Pirates</th>
+            <th>Actual outcome</th><th>Predicted win</th>
+            <th>Actual removed</th><th>Predicted removed</th><th>Outcome</th>
+          </tr>
+        </thead>
+        <tbody id="validation-tbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <script src="simulator.js"></script>

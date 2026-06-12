@@ -27,6 +27,7 @@ const RAPID_FIRE = {
   torpedo_frigate: { battleship: 3, dreadnought: 2, titan: 2 },
   battleship:      { cruiser: 4, missile_cruiser: 4 },
   missile_cruiser: { fighter: 5, interceptor: 4, bomber: 3 },
+  bomber:          { defense_turret: 5 }, // exact: "×5 rapid fire vs defense buildings"
   // Dreadnought & titan values are exact, read from the in-game ship screens.
   dreadnought:     { cruiser: 5, bomber: 4, battleship: 3, missile_cruiser: 3, fighter: 3, interceptor: 2, carrier: 2 },
   titan:           { scout: 20, fighter: 15, interceptor: 10, cruiser: 8, battleship: 5, missile_cruiser: 5, bomber: 5, carrier: 5, dreadnought: 3 },
@@ -168,16 +169,50 @@ function applyPending(instances) {
   return instances.filter(s => s.hp > 0);
 }
 
+// Planetary defense estimates — the game hides building combat stats.
+// Turret fights as one structure; bombers get their exact ×5 vs it.
+const DEFENSE_EST = {
+  turretAtkPerLvl: 150,
+  turretHpPerLvl: 2500,
+  shieldHpPerLvl: 1500,  // shield generator, regenerates every round per the guide
+  ewDrPerLvl: 0.03,      // Electronic Warfare: attacker damage reduction
+};
+
+function buildDefenseInstance(defense) {
+  if (!defense || !(defense.turret > 0)) return null;
+  const maxShield = (defense.shieldGen || 0) * DEFENSE_EST.shieldHpPerLvl;
+  const attack = defense.turret * DEFENSE_EST.turretAtkPerLvl;
+  return {
+    key: 'defense_turret',
+    hp: defense.turret * DEFENSE_EST.turretHpPerLvl,
+    shield: maxShield,
+    maxShield,
+    attack,
+    drMult: 1,
+    def: { key: 'defense_turret', weaponType: 'laser', armorType: 'heavy' },
+  };
+}
+
 function simulateOnce(attackerFleet, defenderFleet, opts) {
   let attackers = buildInstances(attackerFleet, opts.attackerMods);
   let defenders = buildInstances(defenderFleet, opts.defenderMods);
   let rounds = 0;
+
+  const turret = buildDefenseInstance(opts.defense);
+  if (turret) defenders.push(turret);
+  if (opts.defense?.ew) {
+    // EW reduces attacker accuracy — everything on the defending side takes less damage.
+    const ewMult = Math.max(0, 1 - opts.defense.ew * DEFENSE_EST.ewDrPerLvl);
+    for (const s of defenders) s.drMult *= ewMult;
+  }
 
   while (attackers.length && defenders.length && rounds < opts.maxRounds) {
     rounds++;
     if (opts.shieldRegen) {
       for (const s of attackers) s.shield = s.maxShield;
       for (const s of defenders) s.shield = s.maxShield;
+    } else if (turret && turret.hp > 0) {
+      turret.shield = turret.maxShield; // planetary shield always regenerates
     }
     fireVolley(attackers, defenders, opts);
     fireVolley(defenders, attackers, opts);
@@ -496,6 +531,7 @@ async function init() {
   buildFleetInputs('defender-ships', 'defender');
   buildTechInputs('attacker-techs', 'attacker');
   buildTechInputs('defender-techs', 'defender');
+  await loadIntelReports();
   status.textContent = `${defs.length} ship types loaded.`;
 }
 
@@ -503,8 +539,9 @@ document.getElementById('btn-run').addEventListener('click', () => {
   const attackerFleet = readFleet('attacker');
   const defenderFleet = readFleet('defender');
   const status = document.getElementById('sim-status');
-  if (!Object.keys(attackerFleet).length || !Object.keys(defenderFleet).length) {
-    status.textContent = 'Both fleets need at least one ship.';
+  const hasTurret = (parseInt(document.getElementById('def-turret').value, 10) || 0) > 0;
+  if (!Object.keys(attackerFleet).length || (!Object.keys(defenderFleet).length && !hasTurret)) {
+    status.textContent = 'Attacker needs ships; defender needs ships or a turret level.';
     return;
   }
   status.textContent = 'Simulating…';
@@ -517,6 +554,11 @@ document.getElementById('btn-run').addEventListener('click', () => {
     shieldRegen: document.getElementById('opt-shield-regen').checked,
     attackerMods: readMods('attacker'),
     defenderMods: readMods('defender'),
+    defense: {
+      turret: Math.max(0, parseInt(document.getElementById('def-turret').value, 10) || 0),
+      shieldGen: Math.max(0, parseInt(document.getElementById('def-shield').value, 10) || 0),
+      ew: Math.max(0, parseInt(document.getElementById('def-ew').value, 10) || 0),
+    },
   };
 
   // Let the status paint before the (potentially long) synchronous run
@@ -532,6 +574,223 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   document.querySelectorAll('.fleet-table input').forEach(i => { i.value = 0; });
   document.querySelectorAll('.survivors').forEach(s => { s.textContent = ''; });
   document.getElementById('results').style.display = 'none';
+});
+
+// ── Load my fleet ──────────────────────────────────────────────────────────
+
+document.getElementById('btn-load-fleet').addEventListener('click', async function () {
+  this.disabled = true;
+  const status = document.getElementById('sim-status');
+  try {
+    const res = await browser.runtime.sendMessage({ type: 'GET_FLEET' });
+    if (res.error) {
+      status.textContent = `Load fleet failed: ${res.error}`;
+      return;
+    }
+    document.querySelectorAll('input[data-side="attacker"][data-key]').forEach(input => {
+      input.value = res.fleet[input.dataset.key] || 0;
+    });
+    const total = Object.values(res.fleet).reduce((s, n) => s + n, 0);
+    status.textContent = `Loaded ${total} stationed ships into attacker fleet.`;
+  } finally {
+    this.disabled = false;
+  }
+});
+
+// ── Intel reports (spy + camp scout) → defender auto-fill ──────────────────
+
+let intelReports = [];
+
+async function loadIntelReports() {
+  const { spy_reports, camp_scout_reports } =
+    await browser.storage.local.get(['spy_reports', 'camp_scout_reports']);
+  intelReports = [];
+  for (const r of (camp_scout_reports || [])) {
+    if (!r.fleet?.length) continue;
+    intelReports.push({
+      id: `camp-${r.id}`,
+      label: `Camp #${r.camp_id ?? '?'} — ${new Date(r.created_at).toLocaleDateString()}`,
+      fleet: r.fleet, buildings: [], resources: null,
+    });
+  }
+  for (const r of (spy_reports || [])) {
+    intelReports.push({
+      id: `spy-${r.id}`,
+      label: `Spy: ${r.target_name}${r.target_user ? ` (${r.target_user})` : ''} — ${new Date(r.created_at).toLocaleDateString()}`,
+      fleet: r.fleet || [], buildings: r.buildings || [], resources: r.resources,
+    });
+  }
+  const sel = document.getElementById('report-select');
+  while (sel.options.length > 1) sel.remove(1);
+  for (const r of intelReports) {
+    const o = document.createElement('option');
+    o.value = r.id;
+    o.textContent = r.label;
+    sel.appendChild(o);
+  }
+}
+
+document.getElementById('report-select').addEventListener('change', function () {
+  const r = intelReports.find(x => x.id === this.value);
+  if (!r) return;
+
+  document.querySelectorAll('input[data-side="defender"][data-key]').forEach(input => {
+    const item = r.fleet.find(f => f.key === input.dataset.key);
+    input.value = item ? item.quantity : 0;
+  });
+
+  let turret = 0, shieldGen = 0, ew = 0;
+  for (const b of (r.buildings || [])) {
+    const k = (b.key || '').toLowerCase();
+    const lvl = b.level || 0;
+    if (k.includes('turret') || k.includes('railgun') || k.includes('defense')) turret = Math.max(turret, lvl);
+    else if (k.includes('shield')) shieldGen = Math.max(shieldGen, lvl);
+    else if (k.includes('ew') || k.includes('electronic')) ew = Math.max(ew, lvl);
+  }
+  document.getElementById('def-turret').value = turret;
+  document.getElementById('def-shield').value = shieldGen;
+  document.getElementById('def-ew').value = ew;
+
+  renderTargetIntel(r);
+  const total = r.fleet.reduce((s, f) => s + f.quantity, 0);
+  document.getElementById('sim-status').textContent =
+    `Defender filled from report: ${total} ships, turret ${turret}, shield ${shieldGen}, EW ${ew}.`;
+});
+
+const LOOT_FACTOR = 0.5; // assumed share of resources lootable in a raid
+
+function renderTargetIntel(r) {
+  const panel = document.getElementById('target-intel');
+  panel.textContent = '';
+  if (!r.resources || !Object.keys(r.resources).length) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = '';
+
+  const note = text => {
+    const div = document.createElement('div');
+    div.style.marginBottom = '4px';
+    div.textContent = text;
+    return div;
+  };
+
+  let numericTotal = 0;
+  let qualitative = false;
+  const parts = [];
+  for (const [k, v] of Object.entries(r.resources)) {
+    if (typeof v === 'number') {
+      numericTotal += v;
+      if (v) parts.push(`${k}: ${fmt(v)}`);
+    } else if (v && v !== 'none') {
+      qualitative = true;
+      parts.push(`${k}: ${v}`);
+    }
+  }
+
+  panel.appendChild(note(`Target resources — ${parts.join(' · ') || 'none reported'}`));
+
+  if (numericTotal > 0) {
+    const loot = numericTotal * LOOT_FACTOR;
+    const options = [];
+    for (const key of ['freighter', 'bulk_carrier', 'ore_freighter']) {
+      const d = shipDefs[key];
+      if (d?.cargoCapacity) options.push(`${Math.ceil(loot / d.cargoCapacity)}× ${d.name}`);
+    }
+    panel.appendChild(note(`Cargo for ~${LOOT_FACTOR * 100}% loot (${fmt(loot)}): ${options.join(' or ')}`));
+  } else if (qualitative) {
+    panel.appendChild(note('Amounts are qualitative — higher spy power gives numbers and a cargo estimate.'));
+  }
+}
+
+// ── Engine validation against recorded raids ───────────────────────────────
+
+const VALIDATE_OPTS = { sims: 200, maxRounds: 10, variance: 0.1, debrisRate: 0.3, shieldRegen: false };
+
+function fleetArrayToMap(arr) {
+  const fleet = {};
+  for (const i of (arr || [])) {
+    if (shipDefs[i.key] && i.quantity > 0) fleet[i.key] = (fleet[i.key] || 0) + i.quantity;
+  }
+  return fleet;
+}
+
+function fleetLabel(arr) {
+  return (arr || []).map(i => `${i.quantity}× ${i.key.replace(/_/g, ' ')}`).join(', ');
+}
+
+document.getElementById('btn-validate').addEventListener('click', async function () {
+  this.disabled = true;
+  this.textContent = 'Validating…';
+  const tbody = document.getElementById('validation-tbody');
+  const summary = document.getElementById('validation-summary');
+
+  try {
+    const { pirate_recent_reports } = await browser.storage.local.get('pirate_recent_reports');
+    const replayable = (pirate_recent_reports || [])
+      .filter(r => r.attacker_fleet?.length && r.pirate_fleet?.length)
+      .slice(0, 50);
+
+    summary.textContent = '';
+    tbody.textContent = '';
+    document.getElementById('validation-results').style.display = '';
+
+    if (!replayable.length) {
+      summary.appendChild(makeStatCard('Replayable raids',
+        '0 — older records lack fleet data; new raids will include it', ''));
+      return;
+    }
+
+    let outcomeHits = 0;
+    let lossErrSum = 0;
+
+    for (const r of replayable) {
+      const result = runSimulations(
+        fleetArrayToMap(r.attacker_fleet),
+        fleetArrayToMap(r.pirate_fleet),
+        VALIDATE_OPTS
+      );
+      const winRate = result.outcomes.attacker_won / VALIDATE_OPTS.sims;
+      const predictedWon = winRate >= 0.5;
+      const actualWon = r.outcome === 'attacker_won';
+      const match = predictedWon === actualWon;
+      if (match) outcomeHits++;
+
+      const actualRemoved = (r.ships_lost || 0) + (r.ships_damaged || 0);
+      const predictedRemoved = Object.values(result.attackerLosses)
+        .reduce((s, l) => s + l.lost, 0);
+      lossErrSum += Math.abs(predictedRemoved - actualRemoved);
+
+      const tr = document.createElement('tr');
+      const cells = [
+        new Date(r.created_at).toLocaleDateString(),
+        fleetLabel(r.attacker_fleet),
+        fleetLabel(r.pirate_fleet),
+        (r.outcome || 'unknown').replace(/_/g, ' '),
+        `${(winRate * 100).toFixed(0)}%`,
+        String(actualRemoved),
+        predictedRemoved.toFixed(1),
+        match ? '✓' : '✗',
+      ];
+      cells.forEach((v, idx) => {
+        const td = document.createElement('td');
+        td.textContent = v;
+        if (idx === 7) td.style.color = match ? '#56d364' : '#ff7b72';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+
+    summary.append(
+      makeStatCard('Raids replayed', String(replayable.length), 'missions'),
+      makeStatCard('Outcome accuracy', `${(outcomeHits / replayable.length * 100).toFixed(0)}%`,
+        outcomeHits === replayable.length ? 'silicates' : ''),
+      makeStatCard('Avg loss error (ships)', (lossErrSum / replayable.length).toFixed(2), ''),
+    );
+  } finally {
+    this.disabled = false;
+    this.textContent = 'Validate';
+  }
 });
 
 init();
