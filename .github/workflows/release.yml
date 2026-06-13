@@ -1,0 +1,52 @@
+# Release workflow: push a tag like v1.3.3 and this submits that version to
+# AMO (listed channel) and attaches the built xpi to a GitHub release.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   WEB_EXT_API_KEY      AMO JWT issuer (user:12345678:123)
+#   WEB_EXT_API_SECRET   AMO JWT secret
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the GitHub release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run tests
+        run: node --test tests/engine.test.js tests/processors.test.js
+
+      - name: Check tag matches manifest version
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('nexus-addon/manifest.json'))['version'])")
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "manifest version $VERSION != tag $TAG" >&2
+            exit 1
+          fi
+
+      - name: Build and submit to AMO (listed)
+        working-directory: nexus-addon
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: python3 build.py --sign
+
+      - name: Create GitHub release with the xpi
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "See nexus-addon/CHANGELOG.md for details. Distributed via AMO: https://addons.mozilla.org/firefox/addon/nexus_legacy_survey_tracker/" \
+            nexus-accounting-*.xpi

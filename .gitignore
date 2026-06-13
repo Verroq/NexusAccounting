@@ -18,3 +18,10 @@ data.db
 # Claude
 .claude/
 CLAUDE.md
+
+# Signing artifacts (signed copies are attached to GitHub releases)
+web-ext-artifacts/
+
+# AMO submission bookkeeping + signed copies (AMO distributes those)
+.amo-upload-uuid
+nexus_legacy_survey_tracker-*.xpi

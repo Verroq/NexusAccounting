@@ -4,6 +4,14 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.2] - 2026-06-13
+
+### Changed
+- Published on addons.mozilla.org (listed channel). AMO now signs,
+  distributes and auto-updates the addon; the short-lived self-hosted
+  `update_url`/`updates.json` channel from 1.3.1 is removed.
+- `build.py --sign` submits to the listed channel.
+
 ## [1.3.1] - 2026-06-13
 
 ### Added

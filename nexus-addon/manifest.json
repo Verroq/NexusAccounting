@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Nexus Accounting",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Tracks survey and pirate raid data from Nexus Legacy — aggregates resources collected and ships lost over time with daily and hourly breakdowns.",
   "author": "Verrok",
   "homepage_url": "https://github.com/Verroq/NexusAccounting",
@@ -16,7 +16,9 @@
     "https://nexuslegacy.space/*"
   ],
   "background": {
-    "scripts": ["background.js"],
+    "scripts": [
+      "background.js"
+    ],
     "persistent": true
   },
   "browser_action": {
@@ -28,13 +30,18 @@
   "icons": {
     "128": "icons/icon128.png"
   },
-  "web_accessible_resources": ["dashboard.html", "simulator.html"],
+  "web_accessible_resources": [
+    "dashboard.html",
+    "simulator.html"
+  ],
   "browser_specific_settings": {
     "gecko": {
       "id": "nexus-accounting@verrok",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
-        "required": ["none"],
+        "required": [
+          "none"
+        ],
         "optional": []
       }
     }
