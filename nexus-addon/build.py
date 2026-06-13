@@ -113,11 +113,38 @@ def sign(version):
             print(' end while the review is still pending — check the page above.)')
 
 
+def publish_chrome(version):
+    load_env()
+    needed = ['CWS_EXTENSION_ID', 'CWS_CLIENT_ID', 'CWS_CLIENT_SECRET', 'CWS_REFRESH_TOKEN']
+    missing = [k for k in needed if not os.environ.get(k)]
+    if missing:
+        sys.exit('Missing ' + ', '.join(missing) + ' (env or ../.env).')
+
+    zip_path = os.path.join(ROOT, f'nexus-accounting-{version}.zip')
+    if not os.path.exists(zip_path):
+        build(version)
+
+    cmd = [
+        'npx', '--yes', 'chrome-webstore-upload-cli@3', 'upload',
+        '--source', zip_path,
+        '--extension-id', os.environ['CWS_EXTENSION_ID'],
+        '--client-id', os.environ['CWS_CLIENT_ID'],
+        '--client-secret', os.environ['CWS_CLIENT_SECRET'],
+        '--refresh-token', os.environ['CWS_REFRESH_TOKEN'],
+        '--auto-publish',
+    ]
+    print(f'uploading {version} to the Chrome Web Store…')
+    subprocess.run(cmd, check=True)
+    print('Chrome Web Store: uploaded and submitted for review.')
+
+
 def main():
     version = read_version()
     build(version)
     if '--sign' in sys.argv:
         sign(version)
+    if '--chrome' in sys.argv:
+        publish_chrome(version)
 
 
 if __name__ == '__main__':
