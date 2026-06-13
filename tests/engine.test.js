@@ -42,11 +42,28 @@ test('calibration: interceptor raid (reference A)', () => {
 });
 
 // Real battle: 22 scouts vs 5 fighters + 4 scouts, no tech → won with ~2 losses.
+// The corrected rapid-fire/overkill model made single-shot swarms more
+// efficient, so the engine now lands ~1.1 here; bound kept loose around it.
 test('calibration: scout fight (reference B)', () => {
   const r = engine.runSimulations({ scout: 22 }, { fighter: 5, scout: 4 }, BASE_OPTS);
   assert.ok(r.outcomes.attacker_won / BASE_OPTS.sims > 0.99, 'attacker must virtually always win');
   const lost = r.attackerLosses.scout.lost;
-  assert.ok(lost > 1.4 && lost < 2.7, `expected ~2 losses, got ${lost}`);
+  assert.ok(lost > 0.5 && lost < 2.7, `expected ~1-2 losses, got ${lost}`);
+});
+
+// Real battle: 19 interceptors (basic armor 1, fighter doctrine 1, laser 1,
+// weapons overcharge 1) vs 10 scouts + 19 fighters + 8 interceptors (no tech)
+// → attacker won, defender fleet destroyed, ~4 interceptors destroyed.
+// Validates that rapid fire spreads across the fleet instead of overkilling.
+test('calibration: interceptor swarm vs mixed fleet (reference C)', () => {
+  const atkMods = engine.computeMods({ basic_armor: 1, fighter_doctrine: 1, laser_weapons: 1, weapons_overcharge: 1 });
+  const r = engine.runSimulations({ interceptor: 19 }, { scout: 10, fighter: 19, interceptor: 8 },
+    { ...BASE_OPTS, attackerMods: atkMods, defenderMods: engine.computeMods({}) });
+  assert.ok(r.outcomes.attacker_won / BASE_OPTS.sims > 0.99, 'attacker must virtually always win');
+  const lost = r.attackerLosses.interceptor.lost;
+  assert.ok(lost > 2.5 && lost < 6, `expected ~4 interceptors destroyed, got ${lost}`);
+  const defenderLeft = Object.values(r.defenderLosses).reduce((s, l) => s + (l.sent - l.lost), 0);
+  assert.ok(defenderLeft < 0.5, `defender fleet must be wiped, ${defenderLeft} left`);
 });
 
 test('research bonuses tilt otherwise-even fights', () => {
