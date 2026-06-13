@@ -28,15 +28,6 @@ function getExpTotalsForMode(mode) {
   return t;
 }
 
-function getExpSeriesForMode(mode) {
-  if (mode !== 'hourly') return store.exp_daily || [];
-  return computeHourlySeries(store.exp_recent_reports || [], {
-    ore: r => r.loot?.ore || 0,
-    silicates: r => r.loot?.silicates || 0,
-    hydrogen: r => r.loot?.hydrogen || 0,
-  });
-}
-
 function renderExpeditionsTab() {
   const mode = getMode();
   const periodLabel = periodLabelFor(mode);
@@ -61,7 +52,7 @@ function renderExpeditionsTab() {
   }
 
   if (chartExpeditions) chartExpeditions.destroy();
-  chartExpeditions = makeResourceLineChart('chart-expeditions', getExpSeriesForMode(mode), getLabelKey(mode));
+  chartExpeditions = makeResourceDoughnut('chart-expeditions', t);
 
   renderExpTable();
 }

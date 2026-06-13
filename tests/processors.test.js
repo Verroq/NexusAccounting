@@ -52,6 +52,27 @@ test('damaged ships add 50% repair cost to losses', async () => {
   assert.equal(store.resources_lost.ore, 200, 'rebuild keeps repair cost');
 });
 
+test('wormhole runs: totalLoot parsed, in-progress runs skipped', async () => {
+  const store = makeBrowserStub();
+  const bg = loadBackground();
+
+  const completed = {
+    id: 540, createdAt: '2026-06-13T12:41:16.733Z', status: 'completed', wormholeId: 64185,
+    totalLoot: { ore: 1250, alloys: 612, hydrogen: 242, silicates: 945 }, totalShipsLost: [],
+  };
+  const inProgress = {
+    id: 600, createdAt: '2026-06-13T13:00:00Z', status: 'in_progress', wormholeId: 7,
+    totalLoot: { ore: 50 },
+  };
+  const added = await bg.processExpeditionReports([], [completed, inProgress], {});
+
+  assert.equal(added, 1, 'only the completed run is counted');
+  assert.equal(store.exp_totals.ore, 1250);
+  assert.equal(store.exp_totals.alloys, 612);
+  assert.equal(store.exp_totals.missions, 1);
+  assert.equal(store.exp_recent_reports[0].location, 'Wormhole #64185');
+});
+
 test('uninvestigated and uncollected reports are deferred, not lost', async () => {
   const store = makeBrowserStub();
   const bg = loadBackground();
