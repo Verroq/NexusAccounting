@@ -1,3 +1,11 @@
+// Chrome's service worker exposes `chrome.*` (callback APIs) but not `browser.*`.
+// Load Mozilla's polyfill so the rest of the file uses the promise-based
+// `browser.*` namespace on both browsers. Firefox already provides `browser`
+// natively, so it skips this.
+if (typeof browser === 'undefined' && typeof importScripts === 'function') {
+  importScripts('browser-polyfill.js');
+}
+
 const GAME_URL = 'https://s0.nexuslegacy.space';
 const REPORTS_PATH = '/api/fleet/survey-reports';
 const PIRATES_PATH = '/api/fleet/pirate-reports';
@@ -32,7 +40,7 @@ browser.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) scrape();
 });
 
-browser.browserAction.onClicked.addListener(() => {
+browser.action.onClicked.addListener(() => {
   browser.tabs.create({ url: browser.runtime.getURL('dashboard.html') });
 });
 
@@ -954,21 +962,17 @@ async function backupToDownloads(reason) {
     reason,
     data,
   };
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  try {
-    await browser.downloads.download({
-      url,
-      filename: `NexusAccounting/nexus-accounting-${reason}-${new Date().toISOString().slice(0, 10)}.json`,
-      conflictAction: 'uniquify',
-      saveAs: false,
-    });
-    await browser.storage.local.set({ last_backup: new Date().toISOString() });
-    console.log(`[NexusAccounting] Backup written (${reason}).`);
-  } finally {
-    // Give the download manager time to read the blob before revoking.
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  }
+  // MV3 service workers have no URL.createObjectURL, so download from a data
+  // URL instead of a blob URL.
+  const url = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(payload));
+  await browser.downloads.download({
+    url,
+    filename: `NexusAccounting/nexus-accounting-${reason}-${new Date().toISOString().slice(0, 10)}.json`,
+    conflictAction: 'uniquify',
+    saveAs: false,
+  });
+  await browser.storage.local.set({ last_backup: new Date().toISOString() });
+  console.log(`[NexusAccounting] Backup written (${reason}).`);
 }
 
 async function maybeAutoBackup() {
@@ -1131,10 +1135,13 @@ async function scrape() {
   }
 }
 
-// ── Realtime intercept (StreamFilter) ──────────────────────────────────────
-// Reads the game's own API responses as the page loads them, so the dashboard
-// updates seconds after you open a report in game — no waiting for the next
-// scheduled scrape. The response is passed through untouched.
+// ── Realtime intercept (observe + re-fetch) ────────────────────────────────
+// MV3 has no response-body reading (Chrome dropped blocking webRequest;
+// Firefox's StreamFilter is MV2-only), so we OBSERVE when the game itself
+// calls a report endpoint and then re-fetch that same endpoint to pick up the
+// new data. Works identically on Chrome and Firefox; costs one extra request
+// per change. Still near-realtime — the dashboard updates seconds after you
+// open a report in game.
 
 const WATCHED_URLS = [
   `${GAME_URL}/api/fleet/survey-reports*`,
@@ -1148,43 +1155,34 @@ const WATCHED_URLS = [
   `${GAME_URL}/api/planets/*/shipyard*`,
 ];
 
-browser.webRequest.onBeforeRequest.addListener(
-  details => {
-    // tabId -1 = our own background fetches — don't re-process those.
-    if (details.tabId === -1) return {};
+// Best-effort debounce so a burst of game calls to the same endpoint triggers
+// one re-fetch. Module scope resets if the service worker sleeps, which only
+// risks an extra (deduped) re-fetch — harmless.
+const refetchPending = new Set();
 
-    const filter = browser.webRequest.filterResponseData(details.requestId);
-    const chunks = [];
-    filter.ondata = e => {
-      chunks.push(e.data);
-      filter.write(e.data);
-    };
-    filter.onerror = () => {};
-    filter.onstop = () => {
-      filter.close();
-      let json;
-      try {
-        json = JSON.parse(decodeChunks(chunks));
-      } catch {
-        return; // not JSON (error page etc.) — game got its data, we skip
-      }
-      routeIntercepted(details.url, json);
-    };
-    return {};
+browser.webRequest.onCompleted.addListener(
+  details => {
+    if (details.tabId === -1) return;                       // our own re-fetches
+    if (details.statusCode < 200 || details.statusCode >= 300) return;
+    const path = new URL(details.url).pathname;
+    if (refetchPending.has(path)) return;
+    refetchPending.add(path);
+    setTimeout(() => refetchPending.delete(path), 3000);
+    refetchEndpoint(path);
   },
-  { urls: WATCHED_URLS },
-  ['blocking']
+  { urls: WATCHED_URLS }
 );
 
-function decodeChunks(chunks) {
-  const total = chunks.reduce((sum, c) => sum + c.byteLength, 0);
-  const buf = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    buf.set(new Uint8Array(c), offset);
-    offset += c.byteLength;
+async function refetchEndpoint(path) {
+  const token = await getToken();
+  if (!token) return;
+  let json;
+  try {
+    json = await apiFetch(path, token);
+  } catch {
+    return;
   }
-  return new TextDecoder('utf-8').decode(buf);
+  routeIntercepted(GAME_URL + path, json);
 }
 
 function routeIntercepted(url, json) {

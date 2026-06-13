@@ -1,6 +1,6 @@
 {
   "name": "nexus-accounting",
-  "version": "1.3.4",
+  "version": "1.4.0",
   "description": "Firefox addon — tracks Nexus Legacy survey and pirate raid data",
   "author": "Verrok",
   "license": "MPL-2.0",

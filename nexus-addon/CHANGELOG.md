@@ -4,6 +4,19 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0] - 2026-06-15
+
+### Changed
+- Migrated to Manifest V3 and made the addon work on both Firefox and Chrome
+  from one codebase (webextension-polyfill, MV3 service worker / event page,
+  `action`, split host permissions).
+- Realtime updates now use an observe-and-re-fetch trigger
+  (`webRequest.onCompleted`) instead of Firefox-only response-body reading,
+  which MV3 removed. Still near-realtime; costs one extra request per change.
+- `build.py` emits both the `.xpi` (Firefox) and a `.zip` (Chrome Web Store).
+- Auto-backups download from a data URL (service workers have no
+  `URL.createObjectURL`).
+
 ## [1.3.4] - 2026-06-15
 
 ### Changed

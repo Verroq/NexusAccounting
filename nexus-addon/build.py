@@ -34,7 +34,7 @@ FILES = [
     'tabs/debris.js', 'tabs/expeditions.js', 'tabs/finder.js',
     'simulator.html', 'simulator.css', 'simulator.js',
     'simulator-intel.js', 'simulator-validate.js', 'engine.js',
-    'chart.umd.js',
+    'chart.umd.js', 'browser-polyfill.js',
     'icons/icon128.png',
 ]
 
@@ -45,18 +45,23 @@ def read_version():
 
 
 def build(version):
+    """Write the package as both .xpi (Firefox/AMO) and .zip (Chrome Web
+    Store) — identical contents, the manifest is MV3 for both."""
     import zipfile
-    target = os.path.join(ROOT, f'nexus-accounting-{version}.xpi')
-    for old in glob.glob(os.path.join(ROOT, 'nexus-accounting-*.xpi')):
-        if old != target:
-            os.remove(old)
-            print(f'removed {os.path.basename(old)}')
-    with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:
-        for name in FILES:
-            z.write(os.path.join(HERE, name), name)
-    size = os.path.getsize(target) // 1024
-    print(f'built {os.path.basename(target)} ({size} KB, {len(FILES)} files)')
-    return target
+    targets = []
+    for ext in ('xpi', 'zip'):
+        target = os.path.join(ROOT, f'nexus-accounting-{version}.{ext}')
+        for old in glob.glob(os.path.join(ROOT, f'nexus-accounting-*.{ext}')):
+            if old != target:
+                os.remove(old)
+                print(f'removed {os.path.basename(old)}')
+        with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:
+            for name in FILES:
+                z.write(os.path.join(HERE, name), name)
+        size = os.path.getsize(target) // 1024
+        print(f'built {os.path.basename(target)} ({size} KB, {len(FILES)} files)')
+        targets.append(target)
+    return targets[0]
 
 
 def load_env():
