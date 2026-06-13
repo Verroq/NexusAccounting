@@ -118,35 +118,45 @@ function buildInstances(fleet, mods) {
   return out;
 }
 
-// One side fires at the other. Targets are picked from the alive-at-round-start
-// snapshot; hull damage lands immediately but deaths are culled after both
-// sides have fired (simultaneous fire per the guide).
-//
+// Effective HP remaining this volley = hull + shield minus damage already
+// queued against it. Used so rapid fire spreads onto fresh targets instead
+// of overkilling one.
+function effectiveHp(t) {
+  return t.hp + t.shield - (t.pendingHull || 0);
+}
+
 // Targeting: weakest of 2 random candidates, plus a 3rd candidate 50% of the
-// time. This partial focus-fire was calibrated against two real battle
-// reports: 10 interceptors vs 8 scouts + 4 fighters → 0 attacker losses,
-// and 22 scouts vs 5 fighters + 4 scouts → ~2 attacker losses.
+// time, drawn from targets not already lethally hit this volley. This partial
+// focus-fire was calibrated against real battle reports.
 function pickTarget(targets) {
-  let t = targets[Math.floor(Math.random() * targets.length)];
+  const alive = targets.filter(t => effectiveHp(t) > 0);
+  const pool = alive.length ? alive : targets;
+  let t = pool[Math.floor(Math.random() * pool.length)];
   const candidates = Math.random() < 0.5 ? 3 : 2;
   for (let c = 1; c < candidates; c++) {
-    const cand = targets[Math.floor(Math.random() * targets.length)];
-    if (cand.hp + cand.shield < t.hp + t.shield) t = cand;
+    const cand = pool[Math.floor(Math.random() * pool.length)];
+    if (effectiveHp(cand) < effectiveHp(t)) t = cand;
   }
   return t;
 }
 
+// One side fires at the other. Hull damage is queued (pendingHull) and applied
+// after both sides have fired (simultaneous fire per the guide). Rapid fire
+// gives extra shots based on the first target's type, and EACH shot picks its
+// own target so a multi-shot attacker spreads across the enemy rather than
+// dumping everything into one ship.
 function fireVolley(shooters, targets, opts) {
   if (!targets.length) return;
   for (const s of shooters) {
     if (s.hp <= 0) continue;            // destroyed in prior rounds only; this round's hull damage is applied after both volleys (simultaneous fire).
     const atk = s.attack;
     if (!atk || !s.def.weaponType) continue;
-    const t = pickTarget(targets);
-    const shots = rapidFireShots(s.key, t.key);
-    const mult = (WEAPON_VS_ARMOR[s.def.weaponType] || {})[t.def.armorType] ?? 1.0;
+    const first = pickTarget(targets);
+    const shots = rapidFireShots(s.key, first.key);
     const burn = SHIELD_BURN[s.def.weaponType] || 1.0;
     for (let i = 0; i < shots; i++) {
+      const t = i === 0 ? first : pickTarget(targets);
+      const mult = (WEAPON_VS_ARMOR[s.def.weaponType] || {})[t.def.armorType] ?? 1.0;
       const variance = 1 + (Math.random() * 2 - 1) * opts.variance;
       let dmg = atk * mult * variance * t.drMult;
       if (t.shield > 0) {
