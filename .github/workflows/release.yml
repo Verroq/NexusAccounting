@@ -4,6 +4,10 @@
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   WEB_EXT_API_KEY      AMO JWT issuer (user:12345678:123)
 #   WEB_EXT_API_SECRET   AMO JWT secret
+#   CWS_EXTENSION_ID     Chrome Web Store item id (from the listing URL)
+#   CWS_CLIENT_ID        Google OAuth client id
+#   CWS_CLIENT_SECRET    Google OAuth client secret
+#   CWS_REFRESH_TOKEN    Google OAuth refresh token
 name: Release
 
 on:
@@ -35,18 +39,27 @@ jobs:
             exit 1
           fi
 
-      - name: Build and submit to AMO (listed)
+      - name: Build and submit to AMO (Firefox, listed)
         working-directory: nexus-addon
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
         run: python3 build.py --sign
 
-      - name: Create GitHub release with the xpi
+      - name: Publish to Chrome Web Store
+        working-directory: nexus-addon
+        env:
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: python3 build.py --chrome
+
+      - name: Create GitHub release with the packages
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --notes "See nexus-addon/CHANGELOG.md for details. Distributed via AMO: https://addons.mozilla.org/firefox/addon/nexus_legacy_survey_tracker/" \
-            nexus-accounting-*.xpi
+            --notes "See nexus-addon/CHANGELOG.md for details. Firefox via AMO, Chrome via the Web Store." \
+            nexus-accounting-*.xpi nexus-accounting-*.zip

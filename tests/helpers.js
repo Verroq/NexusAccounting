@@ -34,9 +34,10 @@ function makeBrowserStub(store = {}) {
     runtime: { onInstalled: { addListener() {} }, onMessage: { addListener() {} } },
     alarms: { create() {}, onAlarm: { addListener() {} } },
     browserAction: { onClicked: { addListener() {} } },
+    action: { onClicked: { addListener() {} } },
     cookies: { get: async () => null },
     tabs: { create() {} },
-    webRequest: { onBeforeRequest: { addListener() {} }, filterResponseData() {} },
+    webRequest: { onCompleted: { addListener() {} }, onBeforeRequest: { addListener() {} }, filterResponseData() {} },
     downloads: { download: async () => 1 },
   };
   global.Blob = class { constructor() {} };

@@ -25,3 +25,6 @@ web-ext-artifacts/
 # AMO submission bookkeeping + signed copies (AMO distributes those)
 .amo-upload-uuid
 nexus_legacy_survey_tracker-*.xpi
+
+# Chrome package (built alongside the xpi; distributed via the Web Store)
+nexus-accounting-*.zip

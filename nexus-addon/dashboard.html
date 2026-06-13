@@ -314,7 +314,8 @@
   <div id="storage-footer" style="margin-top:24px; padding-top:10px; border-top:1px solid #21262d;
        color:#484f58; font-size:0.75rem;"></div>
 
-  <!-- Load order matters: common.js first, tabs next, orchestrator last. -->
+  <!-- Load order: polyfill + common.js first, tabs next, orchestrator last. -->
+  <script src="browser-polyfill.js"></script>
   <script src="chart.umd.js"></script>
   <script src="common.js"></script>
   <script src="tabs/surveys.js"></script>

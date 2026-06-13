@@ -34,7 +34,7 @@ FILES = [
     'tabs/debris.js', 'tabs/expeditions.js', 'tabs/finder.js',
     'simulator.html', 'simulator.css', 'simulator.js',
     'simulator-intel.js', 'simulator-validate.js', 'engine.js',
-    'chart.umd.js',
+    'chart.umd.js', 'browser-polyfill.js',
     'icons/icon128.png',
 ]
 
@@ -45,18 +45,23 @@ def read_version():
 
 
 def build(version):
+    """Write the package as both .xpi (Firefox/AMO) and .zip (Chrome Web
+    Store) — identical contents, the manifest is MV3 for both."""
     import zipfile
-    target = os.path.join(ROOT, f'nexus-accounting-{version}.xpi')
-    for old in glob.glob(os.path.join(ROOT, 'nexus-accounting-*.xpi')):
-        if old != target:
-            os.remove(old)
-            print(f'removed {os.path.basename(old)}')
-    with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:
-        for name in FILES:
-            z.write(os.path.join(HERE, name), name)
-    size = os.path.getsize(target) // 1024
-    print(f'built {os.path.basename(target)} ({size} KB, {len(FILES)} files)')
-    return target
+    targets = []
+    for ext in ('xpi', 'zip'):
+        target = os.path.join(ROOT, f'nexus-accounting-{version}.{ext}')
+        for old in glob.glob(os.path.join(ROOT, f'nexus-accounting-*.{ext}')):
+            if old != target:
+                os.remove(old)
+                print(f'removed {os.path.basename(old)}')
+        with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:
+            for name in FILES:
+                z.write(os.path.join(HERE, name), name)
+        size = os.path.getsize(target) // 1024
+        print(f'built {os.path.basename(target)} ({size} KB, {len(FILES)} files)')
+        targets.append(target)
+    return targets[0]
 
 
 def load_env():
@@ -108,11 +113,38 @@ def sign(version):
             print(' end while the review is still pending — check the page above.)')
 
 
+def publish_chrome(version):
+    load_env()
+    needed = ['CWS_EXTENSION_ID', 'CWS_CLIENT_ID', 'CWS_CLIENT_SECRET', 'CWS_REFRESH_TOKEN']
+    missing = [k for k in needed if not os.environ.get(k)]
+    if missing:
+        sys.exit('Missing ' + ', '.join(missing) + ' (env or ../.env).')
+
+    zip_path = os.path.join(ROOT, f'nexus-accounting-{version}.zip')
+    if not os.path.exists(zip_path):
+        build(version)
+
+    cmd = [
+        'npx', '--yes', 'chrome-webstore-upload-cli@3', 'upload',
+        '--source', zip_path,
+        '--extension-id', os.environ['CWS_EXTENSION_ID'],
+        '--client-id', os.environ['CWS_CLIENT_ID'],
+        '--client-secret', os.environ['CWS_CLIENT_SECRET'],
+        '--refresh-token', os.environ['CWS_REFRESH_TOKEN'],
+        '--auto-publish',
+    ]
+    print(f'uploading {version} to the Chrome Web Store…')
+    subprocess.run(cmd, check=True)
+    print('Chrome Web Store: uploaded and submitted for review.')
+
+
 def main():
     version = read_version()
     build(version)
     if '--sign' in sys.argv:
         sign(version)
+    if '--chrome' in sys.argv:
+        publish_chrome(version)
 
 
 if __name__ == '__main__':
