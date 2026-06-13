@@ -101,20 +101,28 @@ function computeEventBreakdown(reports) {
   return Object.values(map).sort((a, b) => b.count - a.count);
 }
 
+// A damaged ship costs half its build cost to repair.
+const REPAIR_FACTOR = 0.5;
+
 function computeResourcesLost(reports, ships) {
   const rl = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
-  for (const r of reports) {
-    for (const [defId, qty] of Object.entries(r.ships_lost_detail || {})) {
+  const add = (detail, factor) => {
+    for (const [defId, qty] of Object.entries(detail || {})) {
       const ship = ships[defId];
       if (!ship) continue;
-      rl.ore += qty * (ship.costOre || 0);
-      rl.silicates += qty * (ship.costSilicates || 0);
-      rl.hydrogen += qty * (ship.costHydrogen || 0);
-      rl.alloys += qty * (ship.costAlloys || 0);
+      const q = qty * factor;
+      rl.ore += q * (ship.costOre || 0);
+      rl.silicates += q * (ship.costSilicates || 0);
+      rl.hydrogen += q * (ship.costHydrogen || 0);
+      rl.alloys += q * (ship.costAlloys || 0);
       for (const [k, v] of Object.entries(ship.rareCosts || {})) {
-        rl.rare[k] = (rl.rare[k] || 0) + qty * v;
+        rl.rare[k] = (rl.rare[k] || 0) + q * v;
       }
     }
+  };
+  for (const r of reports) {
+    add(r.ships_lost_detail, 1);
+    add(r.ships_damaged_detail, REPAIR_FACTOR);
   }
   return rl;
 }
