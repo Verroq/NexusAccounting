@@ -4,6 +4,31 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.1] - 2026-06-13
+
+### Added
+- **Automatic backups** to `Downloads/NexusAccounting/`: weekly while
+  scraping, and before every destructive operation — reset, import,
+  schema-fallback wipe and version updates. Requires the new `downloads`
+  permission.
+- **Rebuild stats**: recomputes every aggregate losslessly from uncapped
+  report archives (sharded by month so a scrape only rewrites the current
+  month). The records cap now only bounds the UI tables.
+- **Drift detection**: archive-derived sums are checked against stored
+  totals after each scrape; mismatches surface a warning in the status bar.
+- **Import validation**: backups are shape-checked before anything is
+  replaced.
+- Storage footer: archived report count, storage size, last backup date.
+- Node test suite (`npm test`): combat-engine calibration regression tests
+  and processor tests (dedupe, shards, migration, drift/rebuild).
+
+### Changed
+- Schema changes now migrate data in place (`MIGRATIONS` map); a wipe is the
+  last resort and preserves the records cap, which only the user changes.
+- Combat engine extracted to `engine.js`; dashboard split into `common.js`,
+  `tabs/*.js` and an orchestrator; simulator split into core, intel and
+  validation files.
+
 ## [1.3.0] - 2026-06-13
 
 ### Added
