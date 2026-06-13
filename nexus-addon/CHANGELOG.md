@@ -4,6 +4,13 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.4] - 2026-06-15
+
+### Changed
+- Net gain and resources-lost now include the repair cost of damaged ships
+  (50% of build cost), not just destroyed ones. Surveys and pirate raids
+  track damage per ship type for this.
+
 ## [1.3.3] - 2026-06-15
 
 ### Fixed
