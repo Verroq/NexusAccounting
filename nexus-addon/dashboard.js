@@ -95,6 +95,7 @@ function renderAll() {
 
   renderCollected(t, periodLabel);
   renderLost(rl, periodLabel);
+  renderNetCards('stats-net', t, rl, periodLabel);
   renderResourceChart(series, labelKey);
   renderEventsChart(events);
   renderByEventChart(events);

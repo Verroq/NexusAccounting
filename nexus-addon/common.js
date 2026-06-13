@@ -178,3 +178,27 @@ function renderPagedTable(reports, page, infoId, prevId, nextId, tbodyId, rowFn)
     tbody.appendChild(rowFn(r));
   }
 }
+
+// Net gain cards: resources collected minus ship build costs, per resource
+// plus a 1:1 summed total. Rare resource losses are not in the total (they
+// have no common valuation) — the tooltip says so.
+function renderNetCards(containerId, collected, lost, periodLabel) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.textContent = '';
+  const fields = [
+    ['Ore', (collected.ore || 0) - (lost.ore || 0), 'ore'],
+    ['Silicates', (collected.silicates || 0) - (lost.silicates || 0), 'silicates'],
+    ['Hydrogen', (collected.hydrogen || 0) - (lost.hydrogen || 0), 'hydrogen'],
+    ['Alloys', (collected.alloys || 0) - (lost.alloys || 0), 'alloys'],
+  ];
+  let total = 0;
+  for (const [label, v, cls] of fields) {
+    total += v;
+    el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), cls));
+  }
+  const totalCard = makeStatCard(`Total net${periodLabel}`, (total >= 0 ? '+' : '') + fmt(total),
+    '', total >= 0 ? 'color:#56d364' : 'color:#ff7b72');
+  totalCard.title = 'Sum of ore, silicates, hydrogen and alloys at 1:1. Rare resource losses not included.';
+  el.appendChild(totalCard);
+}
