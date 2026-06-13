@@ -6,18 +6,14 @@ let chartExpeditions;
 
 let expPage = 1;
 
-function getExpBucketReports(mode) {
-  return latestBucket(store.exp_recent_reports || [], mode);
-}
-
 // Per-report records carry the full loot map, so all resources (rares included)
-// work in every view mode.
+// work in every view mode + zone.
 function getExpTotalsForMode(mode) {
-  if (mode === 'all') {
+  if (mode === 'all' && isUnfiltered()) {
     return store.exp_totals || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
   }
   const t = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
-  for (const r of getExpBucketReports(mode)) {
+  for (const r of recordsForMode(store.exp_recent_reports, mode)) {
     for (const [k, v] of Object.entries(r.loot || {})) {
       if (k in t && k !== 'rare' && k !== 'missions' && k !== 'ships_lost') t[k] += v;
       else if (!['ore', 'silicates', 'hydrogen', 'alloys'].includes(k)) t.rare[k] = (t.rare[k] || 0) + v;
@@ -58,7 +54,7 @@ function renderExpeditionsTab() {
 }
 
 function renderExpTable() {
-  const reports = (store.exp_recent_reports || []).slice()
+  const reports = filterZone(store.exp_recent_reports || []).slice()
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   renderPagedTable(reports, expPage, 'e-page-info', 'e-btn-prev', 'e-btn-next', 'e-reports-tbody', r => {
     const tr = document.createElement('tr');
@@ -77,7 +73,7 @@ function renderExpTable() {
     tdLoot.textContent = Object.entries(r.loot || {})
       .map(([k, v]) => `${k}: ${Number(v).toLocaleString()}`)
       .join(', ') || '—';
-    tr.append(tdDate, tdKind, tdLoc, tdEvent, tdLoot, zeroCell(r.ships_lost));
+    tr.append(tdDate, tdKind, tdLoc, zoneCell(r.zone), tdEvent, tdLoot, zeroCell(r.ships_lost));
     return tr;
   });
 }

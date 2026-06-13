@@ -6,14 +6,10 @@ let pirateCurrentPage = 1;
 
 // ── Pirates tab ────────────────────────────────────────────────────────────
 
-function getPirateBucketReports(mode) {
-  return latestBucket(store.pirate_recent_reports || [], mode);
-}
-
 function getPirateTotalsForMode() {
   const mode = getMode();
-  if (mode === 'all') return store.pirate_totals || {};
-  return getPirateBucketReports(mode).reduce((t, r) => ({
+  if (mode === 'all' && isUnfiltered()) return store.pirate_totals || {};
+  return recordsForMode(store.pirate_recent_reports, mode).reduce((t, r) => ({
     ore: t.ore + (r.ore || 0),
     hydrogen: t.hydrogen + (r.hydrogen || 0),
     silicates: t.silicates + (r.silicates || 0),
@@ -26,14 +22,14 @@ function getPirateTotalsForMode() {
 
 function getPirateLostForMode() {
   const mode = getMode();
-  if (mode === 'all') return store.pirate_resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
-  return computeResourcesLost(getPirateBucketReports(mode), store.ships || {});
+  if (mode === 'all' && isUnfiltered()) return store.pirate_resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+  return computeResourcesLost(recordsForMode(store.pirate_recent_reports, mode), store.ships || {});
 }
 
 function getPirateDebrisForMode() {
   const mode = getMode();
-  if (mode === 'all') return store.pirate_debris_total || { ore: 0, alloys: 0, silicates: 0 };
-  return getPirateBucketReports(mode).reduce((t, r) => ({
+  if (mode === 'all' && isUnfiltered()) return store.pirate_debris_total || { ore: 0, alloys: 0, silicates: 0 };
+  return recordsForMode(store.pirate_recent_reports, mode).reduce((t, r) => ({
     ore: t.ore + (r.debris_ore || 0),
     alloys: t.alloys + (r.debris_alloys || 0),
     silicates: t.silicates + (r.debris_silicates || 0),
@@ -42,9 +38,9 @@ function getPirateDebrisForMode() {
 
 function getPirateOutcomesForMode() {
   const mode = getMode();
-  if (mode === 'all') return store.pirate_outcomes || [];
+  if (mode === 'all' && isUnfiltered()) return store.pirate_outcomes || [];
   const map = {};
-  for (const r of getPirateBucketReports(mode)) {
+  for (const r of recordsForMode(store.pirate_recent_reports, mode)) {
     const o = r.outcome || 'unknown';
     if (!map[o]) map[o] = { outcome: o, count: 0, ore: 0, hydrogen: 0, silicates: 0 };
     map[o].count += 1;
@@ -57,8 +53,8 @@ function getPirateOutcomesForMode() {
 
 function getPirateSeriesForMode() {
   const mode = getMode();
-  if (mode !== 'hourly') return store.pirate_daily || [];
-  return computeHourlySeries(store.pirate_recent_reports || [], {
+  if (mode !== 'hourly' && isUnfiltered()) return store.pirate_daily || [];
+  return computeSeries(filterZone(store.pirate_recent_reports || []), mode, {
     ore: r => r.ore || 0,
     hydrogen: r => r.hydrogen || 0,
     silicates: r => r.silicates || 0,
@@ -156,7 +152,7 @@ function renderPirateOutcomesChart(outcomes) {
 }
 
 function renderPirateTable() {
-  const allReports = (store.pirate_recent_reports || []).slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const allReports = filterZone(store.pirate_recent_reports || []).slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
   const totalPages = Math.ceil(allReports.length / PER_PAGE);
   document.getElementById('p-page-info').textContent = `Page ${pirateCurrentPage} / ${Math.max(1, totalPages)} (${allReports.length} total)`;
   document.getElementById('p-btn-prev').disabled = pirateCurrentPage <= 1;
@@ -198,7 +194,7 @@ function renderPirateTable() {
     const tdHyd = zeroTd(r.hydrogen);  tdHyd.className = 'hydrogen';
     const tdSil = zeroTd(r.silicates); tdSil.className = 'silicates';
 
-    tr.append(tdDate, tdCamp, tdOutcome, tdOre, tdHyd, tdSil,
+    tr.append(tdDate, tdCamp, zoneCell(r.zone), tdOutcome, tdOre, tdHyd, tdSil,
               zeroTd(r.ships_lost), zeroTd(r.ships_damaged), zeroTd(r.pirates_destroyed));
     tbody.appendChild(tr);
   }

@@ -17,6 +17,25 @@ function getMode() {
   return document.getElementById('mode-select').value; // 'all' | 'daily' | 'hourly'
 }
 
+// Selected security zone, or 'all'.
+function getZone() {
+  const el = document.getElementById('zone-select');
+  return el ? el.value : 'all';
+}
+
+// Filter records to the selected zone (passthrough when 'all'). Records from
+// before zones were tracked have no `zone` → treated as 'unknown'.
+function filterZone(reports) {
+  const z = getZone();
+  if (z === 'all') return reports || [];
+  return (reports || []).filter(r => (r.zone || 'unknown') === z);
+}
+
+// True when the precomputed all-time totals can be used as-is (no zone filter).
+function isUnfiltered() {
+  return getZone() === 'all';
+}
+
 function getLabelKey(mode) {
   return mode === 'hourly' ? 'hour' : 'day';
 }
@@ -41,6 +60,30 @@ function latestBucket(reports, mode) {
     return k > best ? k : best;
   }, '');
   return reports.filter(r => keyFn(r) === latestKey);
+}
+
+// Records to aggregate for the current mode + zone: zone-filtered all-time for
+// 'all' mode, else the latest day/hour bucket of the zone-filtered records.
+function recordsForMode(allRecords, mode) {
+  const filtered = filterZone(allRecords || []);
+  return mode === 'all' ? filtered : latestBucket(filtered, mode);
+}
+
+// Time series grouped by day (all/daily modes) or hour (hourly mode).
+// fieldGetters: { field: r => value }.
+function computeSeries(reports, mode, fieldGetters) {
+  const byHour = mode === 'hourly';
+  const keyName = byHour ? 'hour' : 'day';
+  const map = {};
+  for (const r of reports) {
+    const k = byHour ? r.created_at.slice(0, 13) + ':00' : r.created_at.slice(0, 10);
+    if (!map[k]) {
+      map[k] = { [keyName]: k };
+      for (const f of Object.keys(fieldGetters)) map[k][f] = 0;
+    }
+    for (const [f, get] of Object.entries(fieldGetters)) map[k][f] += get(r);
+  }
+  return Object.values(map).sort((a, b) => a[keyName].localeCompare(b[keyName]));
 }
 
 // Hourly series from report history. fieldGetters: { field: r => value }.
@@ -253,4 +296,19 @@ function makeResourceDoughnut(canvasId, totals) {
       },
     },
   });
+}
+
+// Colored zone badge cell for report tables.
+const ZONE_COLORS = {
+  sentinel: '#56d364', open: '#f0883e', dead: '#ff7b72', rift: '#d2a8ff', unknown: '#8b949e',
+};
+function zoneCell(zone) {
+  const z = zone || 'unknown';
+  const td = document.createElement('td');
+  const badge = document.createElement('span');
+  badge.className = 'badge';
+  badge.textContent = z;
+  badge.style.color = ZONE_COLORS[z] || ZONE_COLORS.unknown;
+  td.appendChild(badge);
+  return td;
 }

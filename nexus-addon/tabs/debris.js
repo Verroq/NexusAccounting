@@ -33,7 +33,7 @@ function renderDebrisTab() {
   if (!fields.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 7;
+    td.colSpan = 8;
     td.style.color = '#484f58';
     td.textContent = 'No debris fields currently visible.';
     tr.appendChild(td);
@@ -52,7 +52,7 @@ function renderDebrisTab() {
     tdFirst.textContent = new Date(f.first_seen).toLocaleString();
     const tdUpd = document.createElement('td');
     tdUpd.textContent = new Date(f.updated_at).toLocaleString();
-    tr.append(tdSys, tdOre, tdSil, tdAl, tdHyd, tdFirst, tdUpd);
+    tr.append(tdSys, zoneCell(f.zone), tdOre, tdSil, tdAl, tdHyd, tdFirst, tdUpd);
     tbody.appendChild(tr);
   }
 }
