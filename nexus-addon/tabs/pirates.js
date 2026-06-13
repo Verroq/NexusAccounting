@@ -107,6 +107,8 @@ function renderPiratesTab() {
       makeStatCard(`${k.replace(/_/g, ' ')}${periodLabel}`, fmt(v), 'rare')
     ));
 
+  renderNetCards('p-stats-net', t, rl, periodLabel);
+
   const debrisEl = document.getElementById('p-stats-debris');
   debrisEl.textContent = '';
   debrisEl.append(

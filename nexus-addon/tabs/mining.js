@@ -91,6 +91,12 @@ function renderMiningTab() {
   );
   appendRareCards(lostEl, rl.rare, ' lost');
 
+  // Net needs the loss valuation, which only exists all-time.
+  const netVisible = mode === 'all';
+  document.getElementById('m-net-label').style.display = netVisible ? '' : 'none';
+  document.getElementById('m-stats-net').style.display = netVisible ? '' : 'none';
+  if (netVisible) renderNetCards('m-stats-net', t, rl, '');
+
   if (chartMining) chartMining.destroy();
   chartMining = makeResourceLineChart('chart-mining', getMiningSeriesForMode(mode), getLabelKey(mode));
 
