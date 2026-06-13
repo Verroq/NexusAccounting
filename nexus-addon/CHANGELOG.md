@@ -4,6 +4,14 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.3] - 2026-06-15
+
+### Fixed
+- Combat simulator rapid fire was dumping all of a unit's shots into one
+  target, wasting most on overkill — rapid-fire swarms (e.g. interceptors)
+  badly underperformed. Each shot now picks its own target and skips ships
+  already lethally hit that round, validated against a third real battle.
+
 ## [1.3.2] - 2026-06-13
 
 ### Changed
