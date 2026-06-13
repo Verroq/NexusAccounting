@@ -28,7 +28,9 @@ function makeBrowserStub(store = {}) {
         },
         set: async obj => { Object.assign(store, obj); },
         clear: async () => { for (const k of Object.keys(store)) delete store[k]; },
-        remove: async k => { delete store[k]; },
+        remove: async keys => {
+          for (const k of (Array.isArray(keys) ? keys : [keys])) delete store[k];
+        },
       },
     },
     runtime: { onInstalled: { addListener() {} }, onMessage: { addListener() {} } },

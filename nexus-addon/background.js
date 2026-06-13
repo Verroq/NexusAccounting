@@ -19,7 +19,7 @@ const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes; add a MIGRATIONS entry for it.
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
@@ -653,11 +653,18 @@ async function processMiningReports(reports, ships) {
   return fresh.length;
 }
 
-// Expedition reports + wormhole runs share one tab. Their shapes have never
-// been observed (endpoints empty so far) — loot is extracted tolerantly.
+// Expedition reports + wormhole runs share one tab. Wormhole runs put their
+// aggregate loot in `totalLoot`; expedition shape is still unobserved, so the
+// other keys are kept as tolerant fallbacks.
 function extractLoot(r) {
-  const src = r.loot || r.resourcesGained || r.resources || r.reward || r.rewards || {};
+  const src = r.totalLoot || r.loot || r.resourcesGained || r.resources || r.reward || r.rewards || {};
   return numericResources(src);
+}
+
+// Ships lost: wormhole runs use `totalShipsLost`, others `shipsLost`.
+function extractShipsLost(r) {
+  const arr = r.totalShipsLost || r.shipsLost || [];
+  return arr.reduce((sum, i) => sum + (i.quantity || 1), 0);
 }
 
 async function processExpeditionReports(reports, runs, ships) {
@@ -683,10 +690,13 @@ async function processExpeditionReports(reports, runs, ships) {
   let added = 0;
   for (const { r, kind, uid } of items) {
     if (seen.has(uid) || !r.createdAt) continue;
+    // Skip runs still in progress — their totals are partial and `seen`
+    // would lock the partial value in. Re-counted once completed.
+    if (r.status && r.status !== 'completed') continue;
     seen.add(uid);
     added++;
     const loot = extractLoot(r);
-    const nLost = (r.shipsLost || []).reduce((sum, i) => sum + (i.quantity || 1), 0);
+    const nLost = extractShipsLost(r);
 
     addResources(totals, loot);
     totals.missions += 1;
@@ -704,8 +714,9 @@ async function processExpeditionReports(reports, runs, ships) {
       id: uid,
       created_at: r.createdAt,
       kind,
-      event: r.eventType || r.outcome || r.result || null,
-      location: r.systemName || r.locationName || r.targetName || '—',
+      event: r.eventType || r.outcome || r.result || r.status || null,
+      location: r.systemName || r.locationName || r.targetName ||
+        (r.wormholeId != null ? `Wormhole #${r.wormholeId}` : '—'),
       loot,
       ships_lost: nLost,
     });
@@ -1056,6 +1067,20 @@ const MIGRATIONS = {
       const s = await browser.storage.local.get([legacy, fallback]);
       await appendToArchive(type, s[legacy] || s[fallback] || []);
       await browser.storage.local.remove(legacy);
+    }
+  },
+  // v5: the wormhole/expedition parser was broken (loot lives in `totalLoot`,
+  // not `loot`), so stored runs have empty loot and block re-ingest via
+  // seen_ids. Drop the expedition data so it re-ingests with the fixed parser.
+  5: async () => {
+    const idx = await getArchiveIndex();
+    const shardKeys = (idx.exp?.months || []).map(m => `exp_archive_${m}`);
+    await browser.storage.local.remove([
+      ...shardKeys, 'exp_seen_ids', 'exp_totals', 'exp_daily', 'exp_recent_reports',
+    ]);
+    if (idx.exp) {
+      idx.exp = { months: [], count: 0 };
+      await browser.storage.local.set({ archive_index: idx });
     }
   },
 };

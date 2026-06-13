@@ -210,3 +210,47 @@ function renderNetCards(containerId, collected, lost, periodLabel) {
   totalCard.title = 'Sum of ore, silicates, hydrogen and alloys at 1:1. Rare resource losses not included.';
   el.appendChild(totalCard);
 }
+
+// Doughnut of a loot/resource breakdown (ore, silicates, hydrogen, alloys and
+// any rares) for the current view period. `totals` is a mode-aware totals
+// object; returns the Chart instance.
+const RESOURCE_COLORS = {
+  ore: '#f0883e', silicates: '#56d364', hydrogen: '#79c0ff', alloys: '#e3b341',
+};
+const RARE_PALETTE = ['#bc8cff', '#d2a8ff', '#ff7b72', '#ffa657', '#a5d6ff', '#7ee787'];
+
+function makeResourceDoughnut(canvasId, totals) {
+  const entries = [];
+  for (const k of ['ore', 'silicates', 'hydrogen', 'alloys']) {
+    if (totals[k] > 0) entries.push([k, totals[k], RESOURCE_COLORS[k]]);
+  }
+  let ri = 0;
+  for (const [k, v] of Object.entries(totals.rare || {})) {
+    if (v > 0) entries.push([k.replace(/_/g, ' '), v, RARE_PALETTE[ri++ % RARE_PALETTE.length]]);
+  }
+  const total = entries.reduce((s, e) => s + e[1], 0);
+  return new Chart(document.getElementById(canvasId), {
+    type: 'doughnut',
+    data: {
+      labels: entries.map(e => {
+        const pct = total ? (e[1] / total * 100).toFixed(1) : 0;
+        return `${e[0]} — ${Number(e[1]).toLocaleString()} (${pct}%)`;
+      }),
+      datasets: [{ data: entries.map(e => e[1]), backgroundColor: entries.map(e => e[2]) }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#e6edf3', font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const pct = total ? (ctx.parsed / total * 100).toFixed(1) : 0;
+              return ` ${Number(ctx.parsed).toLocaleString()} (${pct}%)`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
