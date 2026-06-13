@@ -1,0 +1,121 @@
+// Mining tab.
+
+// ── Mining tab ─────────────────────────────────────────────────────────────
+
+let chartMining;
+
+let miningPage = 1;
+
+function getMiningBucketReports(mode) {
+  return latestBucket(store.mining_recent_reports || [], mode);
+}
+
+function getMiningTotalsForMode(mode) {
+  if (mode === 'all') {
+    return store.mining_totals || {
+      ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
+      deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
+      stolen: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} },
+    };
+  }
+  return getMiningBucketReports(mode).reduce((t, r) => ({
+    ore: t.ore + (r.ore || 0),
+    silicates: t.silicates + (r.silicates || 0),
+    hydrogen: t.hydrogen + (r.hydrogen || 0),
+    deliveries: t.deliveries + 1,
+    cycles: t.cycles + (r.cycles || 0),
+    drill_breakdowns: t.drill_breakdowns + (r.drill_breakdowns || 0),
+    ships_lost: t.ships_lost + (r.ships_lost || 0),
+    stolen_total: t.stolen_total + (r.stolen_total || 0),
+  }), { ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0, stolen_total: 0 });
+}
+
+function getMiningSeriesForMode(mode) {
+  if (mode !== 'hourly') return store.mining_daily || [];
+  return computeHourlySeries(store.mining_recent_reports || [], {
+    ore: r => r.ore || 0,
+    silicates: r => r.silicates || 0,
+    hydrogen: r => r.hydrogen || 0,
+  });
+}
+
+function renderMiningTab() {
+  const mode = getMode();
+  const periodLabel = periodLabelFor(mode);
+  const t = getMiningTotalsForMode(mode);
+
+  const delivered = document.getElementById('m-stats-delivered');
+  delivered.textContent = '';
+  if (!store.mining_totals || !store.mining_totals.deliveries) {
+    const p = document.createElement('p');
+    p.style.cssText = 'color:#484f58;padding:8px 0';
+    p.textContent = 'No mining deliveries recorded yet.';
+    delivered.appendChild(p);
+  } else {
+    delivered.append(
+      makeStatCard(`Ore${periodLabel}`, fmt(t.ore), 'ore'),
+      makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
+      makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
+    );
+    // Alloys and rares are only tracked in the all-time totals.
+    if (mode === 'all') {
+      delivered.appendChild(makeStatCard('Alloys', fmt(t.alloys), 'alloys'));
+      appendRareCards(delivered, t.rare, '');
+    }
+  }
+
+  const ops = document.getElementById('m-stats-ops');
+  ops.textContent = '';
+  const stolenTotal = mode === 'all'
+    ? (t.stolen
+        ? (t.stolen.ore + t.stolen.silicates + t.stolen.hydrogen + t.stolen.alloys +
+           Object.values(t.stolen.rare || {}).reduce((s, v) => s + v, 0))
+        : 0)
+    : t.stolen_total;
+  ops.append(
+    makeStatCard(`Deliveries${periodLabel}`, fmt(t.deliveries), 'missions'),
+    makeStatCard(`Mining cycles${periodLabel}`, fmt(t.cycles), ''),
+    makeStatCard(`Drill breakdowns${periodLabel}`, fmt(t.drill_breakdowns), '', 'color:#e3b341'),
+    makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
+    makeStatCard(`Cargo stolen${periodLabel}`, fmt(stolenTotal), '', 'color:#ff7b72'),
+  );
+
+  const lostEl = document.getElementById('m-stats-lost');
+  lostEl.textContent = '';
+  const rl = store.mining_resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+  lostEl.append(
+    makeStatCard('Ore lost', fmt(rl.ore), 'ore'),
+    makeStatCard('Silicates lost', fmt(rl.silicates), 'silicates'),
+    makeStatCard('Hydrogen lost', fmt(rl.hydrogen), 'hydrogen'),
+    makeStatCard('Alloys lost', fmt(rl.alloys), 'alloys'),
+  );
+  appendRareCards(lostEl, rl.rare, ' lost');
+
+  if (chartMining) chartMining.destroy();
+  chartMining = makeResourceLineChart('chart-mining', getMiningSeriesForMode(mode), getLabelKey(mode));
+
+  renderMiningTable();
+}
+
+function renderMiningTable() {
+  const reports = (store.mining_recent_reports || []).slice()
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  renderPagedTable(reports, miningPage, 'm-page-info', 'm-btn-prev', 'm-btn-next', 'm-reports-tbody', r => {
+    const tr = document.createElement('tr');
+    const tdDate = document.createElement('td');
+    tdDate.textContent = new Date(r.created_at).toLocaleString();
+    const tdLoc = document.createElement('td');
+    tdLoc.textContent = r.location;
+    const tdOre = zeroCell(r.ore); tdOre.className = 'ore';
+    const tdSil = zeroCell(r.silicates); tdSil.className = 'silicates';
+    const tdHyd = zeroCell(r.hydrogen); tdHyd.className = 'hydrogen';
+    tr.append(tdDate, tdLoc, tdOre, tdSil, tdHyd,
+              zeroCell(r.cycles), zeroCell(r.drill_breakdowns),
+              zeroCell(r.ships_lost), zeroCell(r.stolen_total));
+    return tr;
+  });
+}
+
+document.getElementById('m-btn-prev').addEventListener('click', () => { miningPage--; renderMiningTable(); });
+
+document.getElementById('m-btn-next').addEventListener('click', () => { miningPage++; renderMiningTable(); });

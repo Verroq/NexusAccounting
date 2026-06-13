@@ -305,7 +305,15 @@
   <div id="storage-footer" style="margin-top:24px; padding-top:10px; border-top:1px solid #21262d;
        color:#484f58; font-size:0.75rem;"></div>
 
+  <!-- Load order matters: common.js first, tabs next, orchestrator last. -->
   <script src="chart.umd.js"></script>
+  <script src="common.js"></script>
+  <script src="tabs/surveys.js"></script>
+  <script src="tabs/pirates.js"></script>
+  <script src="tabs/mining.js"></script>
+  <script src="tabs/debris.js"></script>
+  <script src="tabs/expeditions.js"></script>
+  <script src="tabs/finder.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>

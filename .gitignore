@@ -1,10 +1,10 @@
 # Python app (server-side, not part of addon)
-*.py
-__pycache__/
-*.pyc
-*.pyo
-requirements.txt
-templates/
+/*.py
+/__pycache__/
+/*.pyc
+/*.pyo
+/requirements.txt
+/templates/
 
 # Data / secrets
 data.db

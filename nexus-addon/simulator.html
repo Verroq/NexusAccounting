@@ -124,6 +124,10 @@
     </div>
   </div>
 
+  <!-- Load order: engine first, simulator.js last (it calls init()). -->
+  <script src="engine.js"></script>
+  <script src="simulator-intel.js"></script>
+  <script src="simulator-validate.js"></script>
   <script src="simulator.js"></script>
 </body>
 </html>

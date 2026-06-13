@@ -16,8 +16,11 @@ FILES = [
     'manifest.json',
     'package.json',
     'background.js',
-    'dashboard.html', 'dashboard.css', 'dashboard.js',
+    'dashboard.html', 'dashboard.css', 'dashboard.js', 'common.js',
+    'tabs/surveys.js', 'tabs/pirates.js', 'tabs/mining.js',
+    'tabs/debris.js', 'tabs/expeditions.js', 'tabs/finder.js',
     'simulator.html', 'simulator.css', 'simulator.js',
+    'simulator-intel.js', 'simulator-validate.js', 'engine.js',
     'chart.umd.js',
     'icons/icon128.png',
 ]

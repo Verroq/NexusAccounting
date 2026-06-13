@@ -4,6 +4,9 @@
   "description": "Firefox addon — tracks Nexus Legacy survey and pirate raid data",
   "author": "Verrok",
   "license": "MPL-2.0",
+  "scripts": {
+    "test": "node --test ../tests/engine.test.js ../tests/processors.test.js"
+  },
   "dependencies": {
     "chart.js": "4.5.1"
   },

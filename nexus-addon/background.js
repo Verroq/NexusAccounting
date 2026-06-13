@@ -10,8 +10,8 @@ const SYSTEM_DEBRIS_PATH = '/api/fleet/system-debris';
 const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
-// Bump this when stored data shape changes — forces a full re-scrape.
-const SCHEMA_VERSION = 3;
+// Bump this when stored data shape changes; add a MIGRATIONS entry for it.
+const SCHEMA_VERSION = 4;
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
@@ -124,6 +124,53 @@ function enqueue(fn) {
   return processing;
 }
 
+// ── Report archives ─────────────────────────────────────────────────────────
+// Uncapped history, sharded by month (`survey_archive_2026-06`, …) so a scrape
+// only rewrites the current month instead of the whole history. The index
+// tracks shard months and counts per type.
+
+const ARCHIVE_TYPES = ['survey', 'pirate', 'mining', 'exp'];
+
+function emptyArchiveIndex() {
+  const idx = {};
+  for (const t of ARCHIVE_TYPES) idx[t] = { months: [], count: 0 };
+  return idx;
+}
+
+async function getArchiveIndex() {
+  const { archive_index } = await browser.storage.local.get('archive_index');
+  return archive_index || emptyArchiveIndex();
+}
+
+async function appendToArchive(type, records) {
+  if (!records.length) return;
+  const index = await getArchiveIndex();
+  const byMonth = {};
+  for (const r of records) {
+    const m = (r.created_at || '').slice(0, 7) || 'unknown';
+    (byMonth[m] = byMonth[m] || []).push(r);
+  }
+  for (const [m, recs] of Object.entries(byMonth)) {
+    const key = `${type}_archive_${m}`;
+    const cur = (await browser.storage.local.get(key))[key] || [];
+    await browser.storage.local.set({ [key]: [...recs, ...cur] });
+    if (!index[type].months.includes(m)) index[type].months.push(m);
+    index[type].count += recs.length;
+  }
+  index[type].months.sort();
+  await browser.storage.local.set({ archive_index: index });
+}
+
+async function loadArchive(type) {
+  const index = await getArchiveIndex();
+  const keys = index[type].months.map(m => `${type}_archive_${m}`);
+  if (!keys.length) return [];
+  const got = await browser.storage.local.get(keys);
+  const out = [];
+  for (const k of keys) out.push(...(got[k] || []));
+  return out;
+}
+
 // ── Processors ─────────────────────────────────────────────────────────────
 
 function parseShipsLost(shipsLost) {
@@ -164,7 +211,7 @@ function buildShipCatalog(shipyardData) {
 async function processSurveyReports(reports, ships) {
   const stored = await browser.storage.local.get([
     'seen_ids', 'totals', 'daily', 'hourly', 'resources_lost',
-    'event_breakdown', 'recent_reports', 'records_cap', 'survey_archive',
+    'event_breakdown', 'recent_reports', 'records_cap',
   ]);
   const recordsCap = stored.records_cap ?? 500;
 
@@ -267,11 +314,8 @@ async function processSurveyReports(reports, ships) {
     totals.last_report = timestamps[timestamps.length - 1];
   }
 
-  // Uncapped archive: every report ever seen, so "Rebuild stats" is lossless.
   const addedSurveys = recentReports.length - (stored.recent_reports || []).length;
-  const surveyArchive = stored.survey_archive
-    ? [...recentReports.slice(0, addedSurveys), ...stored.survey_archive]
-    : [...recentReports];
+  await appendToArchive('survey', recentReports.slice(0, addedSurveys));
 
   await browser.storage.local.set({
     seen_ids: [...seenIds],
@@ -281,7 +325,6 @@ async function processSurveyReports(reports, ships) {
     resources_lost: resourcesLost,
     event_breakdown: Object.values(eventMap).sort((a, b) => b.count - a.count),
     recent_reports: recentReports.slice(0, recordsCap),
-    survey_archive: surveyArchive,
     last_scrape: new Date().toISOString(),
     last_error: null,
     schema_version: SCHEMA_VERSION,
@@ -294,7 +337,6 @@ async function processPirateReports(pirateReports, ships) {
   const pstored = await browser.storage.local.get([
     'pirate_seen_ids', 'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports', 'records_cap',
-    'pirate_archive',
   ]);
   const recordsCap = pstored.records_cap ?? 500;
 
@@ -409,6 +451,8 @@ async function processPirateReports(pirateReports, ships) {
     pirateTotals.last_report = pirateTimestamps[pirateTimestamps.length - 1];
   }
 
+  await appendToArchive('pirate', pirateRecent.slice(0, pirateRecent.length - (pstored.pirate_recent_reports || []).length));
+
   await browser.storage.local.set({
     pirate_seen_ids: [...pirateSeen],
     pirate_totals: pirateTotals,
@@ -417,9 +461,6 @@ async function processPirateReports(pirateReports, ships) {
     pirate_outcomes: Object.values(outcomeMap).sort((a, b) => b.count - a.count),
     pirate_debris_total: pirateDebris,
     pirate_recent_reports: pirateRecent.slice(0, recordsCap),
-    pirate_archive: pstored.pirate_archive
-      ? [...pirateRecent.slice(0, pirateRecent.length - (pstored.pirate_recent_reports || []).length), ...pstored.pirate_archive]
-      : [...pirateRecent],
     last_scrape: new Date().toISOString(),
     last_error: null,
     schema_version: SCHEMA_VERSION,
@@ -511,7 +552,7 @@ function addResources(target, res) {
 async function processMiningReports(reports, ships) {
   const stored = await browser.storage.local.get([
     'mining_seen_ids', 'mining_totals', 'mining_daily', 'mining_resources_lost',
-    'mining_recent_reports', 'records_cap', 'mining_archive',
+    'mining_recent_reports', 'records_cap',
   ]);
   const recordsCap = stored.records_cap ?? 500;
 
@@ -581,15 +622,14 @@ async function processMiningReports(reports, ships) {
     });
   }
 
+  await appendToArchive('mining', recent.slice(0, recent.length - (stored.mining_recent_reports || []).length));
+
   await browser.storage.local.set({
     mining_seen_ids: [...seen],
     mining_totals: totals,
     mining_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
     mining_resources_lost: lost,
     mining_recent_reports: recent.slice(0, recordsCap),
-    mining_archive: stored.mining_archive
-      ? [...recent.slice(0, recent.length - (stored.mining_recent_reports || []).length), ...stored.mining_archive]
-      : [...recent],
     last_scrape: new Date().toISOString(),
     last_error: null,
   });
@@ -613,7 +653,6 @@ async function processExpeditionReports(reports, runs, ships) {
 
   const stored = await browser.storage.local.get([
     'exp_seen_ids', 'exp_totals', 'exp_daily', 'exp_recent_reports', 'records_cap',
-    'exp_archive',
   ]);
   const recordsCap = stored.records_cap ?? 500;
 
@@ -657,14 +696,12 @@ async function processExpeditionReports(reports, runs, ships) {
   }
 
   if (added) {
+    await appendToArchive('exp', recent.slice(0, recent.length - (stored.exp_recent_reports || []).length));
     await browser.storage.local.set({
       exp_seen_ids: [...seen],
       exp_totals: totals,
       exp_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
       exp_recent_reports: recent.slice(0, recordsCap),
-      exp_archive: stored.exp_archive
-        ? [...recent.slice(0, recent.length - (stored.exp_recent_reports || []).length), ...stored.exp_archive]
-        : [...recent],
       last_scrape: new Date().toISOString(),
       last_error: null,
     });
@@ -736,17 +773,18 @@ function costFromDetail(detail, ships, into) {
 async function rebuildAggregates() {
   const s = await browser.storage.local.get([
     'recent_reports', 'pirate_recent_reports', 'mining_recent_reports',
-    'exp_recent_reports', 'survey_archive', 'pirate_archive', 'mining_archive',
-    'exp_archive', 'ships',
+    'exp_recent_reports', 'ships',
   ]);
   const ships = s.ships || {};
   const out = {};
   // Archives hold every report ever seen; capped recents are the fallback
   // for data collected before archives existed.
-  const surveyRecords = s.survey_archive || s.recent_reports || [];
-  const pirateRecords = s.pirate_archive || s.pirate_recent_reports || [];
-  const miningRecords = s.mining_archive || s.mining_recent_reports || [];
-  const expRecords = s.exp_archive || s.exp_recent_reports || [];
+  const archives = {};
+  for (const t of ARCHIVE_TYPES) archives[t] = await loadArchive(t);
+  const surveyRecords = archives.survey.length ? archives.survey : (s.recent_reports || []);
+  const pirateRecords = archives.pirate.length ? archives.pirate : (s.pirate_recent_reports || []);
+  const miningRecords = archives.mining.length ? archives.mining : (s.mining_recent_reports || []);
+  const expRecords = archives.exp.length ? archives.exp : (s.exp_recent_reports || []);
 
   // Surveys
   {
@@ -950,33 +988,36 @@ async function maybeAutoBackup() {
 
 async function checkDrift() {
   const s = await browser.storage.local.get([
-    'survey_archive', 'pirate_archive', 'mining_archive', 'exp_archive',
     'totals', 'pirate_totals', 'mining_totals', 'exp_totals',
   ]);
+  const surveyArchive = await loadArchive('survey');
+  const pirateArchive = await loadArchive('pirate');
+  const miningArchive = await loadArchive('mining');
+  const expArchive = await loadArchive('exp');
 
   const sum = (arr, field) => (arr || []).reduce((t, r) => t + (r[field] || 0), 0);
   const problems = [];
 
-  if (s.totals && s.survey_archive) {
+  if (s.totals && surveyArchive.length) {
     for (const f of ['ore', 'hydrogen', 'silicates', 'ships_lost']) {
-      if (sum(s.survey_archive, f) !== (s.totals[f] || 0)) problems.push(`surveys.${f}`);
+      if (sum(surveyArchive, f) !== (s.totals[f] || 0)) problems.push(`surveys.${f}`);
     }
-    if (s.survey_archive.length !== (s.totals.missions || 0)) problems.push('surveys.missions');
+    if (surveyArchive.length !== (s.totals.missions || 0)) problems.push('surveys.missions');
   }
-  if (s.pirate_totals && s.pirate_archive) {
+  if (s.pirate_totals && pirateArchive.length) {
     for (const f of ['ore', 'hydrogen', 'silicates']) {
-      if (sum(s.pirate_archive, f) !== (s.pirate_totals[f] || 0)) problems.push(`pirates.${f}`);
+      if (sum(pirateArchive, f) !== (s.pirate_totals[f] || 0)) problems.push(`pirates.${f}`);
     }
-    if (s.pirate_archive.length !== (s.pirate_totals.raids || 0)) problems.push('pirates.raids');
+    if (pirateArchive.length !== (s.pirate_totals.raids || 0)) problems.push('pirates.raids');
   }
-  if (s.mining_totals && s.mining_archive) {
+  if (s.mining_totals && miningArchive.length) {
     for (const f of ['ore', 'silicates', 'hydrogen']) {
-      if (sum(s.mining_archive, f) !== (s.mining_totals[f] || 0)) problems.push(`mining.${f}`);
+      if (sum(miningArchive, f) !== (s.mining_totals[f] || 0)) problems.push(`mining.${f}`);
     }
-    if (s.mining_archive.length !== (s.mining_totals.deliveries || 0)) problems.push('mining.deliveries');
+    if (miningArchive.length !== (s.mining_totals.deliveries || 0)) problems.push('mining.deliveries');
   }
-  if (s.exp_totals && s.exp_archive) {
-    if (s.exp_archive.length !== (s.exp_totals.missions || 0)) problems.push('expeditions.missions');
+  if (s.exp_totals && expArchive.length) {
+    if (expArchive.length !== (s.exp_totals.missions || 0)) problems.push('expeditions.missions');
   }
 
   if (problems.length) {
@@ -999,12 +1040,20 @@ async function checkDrift() {
 // that.
 
 const MIGRATIONS = {
-  // 4: async () => {
-  //   const { survey_archive } = await browser.storage.local.get('survey_archive');
-  //   ...transform records...
-  //   await browser.storage.local.set({ survey_archive });
-  //   await rebuildAggregates();
-  // },
+  // v4: archives moved from one big array per type to monthly shards.
+  4: async () => {
+    const legacyKeys = {
+      survey: ['survey_archive', 'recent_reports'],
+      pirate: ['pirate_archive', 'pirate_recent_reports'],
+      mining: ['mining_archive', 'mining_recent_reports'],
+      exp: ['exp_archive', 'exp_recent_reports'],
+    };
+    for (const [type, [legacy, fallback]] of Object.entries(legacyKeys)) {
+      const s = await browser.storage.local.get([legacy, fallback]);
+      await appendToArchive(type, s[legacy] || s[fallback] || []);
+      await browser.storage.local.remove(legacy);
+    }
+  },
 };
 
 async function ensureSchema() {
