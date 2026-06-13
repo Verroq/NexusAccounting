@@ -182,6 +182,26 @@ function parseShipsLost(shipsLost) {
   return counts;
 }
 
+// A damaged ship costs half its build cost to repair.
+const REPAIR_FACTOR = 0.5;
+
+// Add the build-cost value of a { shipDefId: qty } map into `into`, scaled by
+// factor (1 for destroyed ships, REPAIR_FACTOR for damaged ones).
+function addShipCost(detail, ships, into, factor) {
+  for (const [defId, qty] of Object.entries(detail || {})) {
+    const ship = ships[defId];
+    if (!ship) continue;
+    const q = qty * factor;
+    into.ore += q * ship.costOre;
+    into.silicates += q * ship.costSilicates;
+    into.hydrogen += q * ship.costHydrogen;
+    into.alloys += q * ship.costAlloys;
+    for (const [k, v] of Object.entries(ship.rareCosts || {})) {
+      into.rare[k] = (into.rare[k] || 0) + q * v;
+    }
+  }
+}
+
 // Ship catalog keyed by shipDefId
 function buildShipCatalog(shipyardData) {
   const ships = {};
@@ -250,8 +270,9 @@ async function processSurveyReports(reports, ships) {
     const hydrogen = loot.hydrogen || 0;
     const silicates = loot.silicates || 0;
     const nLost = (r.shipsLost || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
-    const nDamaged = (r.shipsDamaged || []).length;
     const lostDetail = parseShipsLost(r.shipsLost);
+    const damagedDetail = parseShipsLost(r.shipsDamaged);
+    const nDamaged = Object.values(damagedDetail).reduce((sum, q) => sum + q, 0);
 
     totals.ore += ore;
     totals.hydrogen += hydrogen;
@@ -282,18 +303,8 @@ async function processSurveyReports(reports, ships) {
     eventMap[et].hydrogen += hydrogen;
     eventMap[et].silicates += silicates;
 
-    for (const [defId, qty] of Object.entries(lostDetail)) {
-      const ship = ships[defId];
-      if (ship) {
-        resourcesLost.ore += qty * ship.costOre;
-        resourcesLost.silicates += qty * ship.costSilicates;
-        resourcesLost.hydrogen += qty * ship.costHydrogen;
-        resourcesLost.alloys += qty * ship.costAlloys;
-        for (const [k, v] of Object.entries(ship.rareCosts)) {
-          resourcesLost.rare[k] = (resourcesLost.rare[k] || 0) + qty * v;
-        }
-      }
-    }
+    addShipCost(lostDetail, ships, resourcesLost, 1);
+    addShipCost(damagedDetail, ships, resourcesLost, REPAIR_FACTOR);
 
     recentReports.unshift({
       id: r.id,
@@ -305,6 +316,7 @@ async function processSurveyReports(reports, ships) {
       ships_damaged: nDamaged,
       wormholes_detected: r.wormholesDetected || 0,
       ships_lost_detail: lostDetail,
+      ships_damaged_detail: damagedDetail,
     });
   }
 
@@ -372,13 +384,18 @@ async function processPirateReports(pirateReports, ships) {
     // attackerLosses items: { shipDefId, lost, damaged, destroyed } —
     // only destroyed ships are gone for good, damaged ones survive.
     const destroyedDetail = {};
+    const damagedDetail = {};
     let nDestroyed = 0, nDamaged = 0;
     for (const item of (r.attackerLosses || [])) {
       const destroyed = item.destroyed ?? item.lost ?? 0;
+      const damaged = item.damaged || 0;
       nDestroyed += destroyed;
-      nDamaged += item.damaged || 0;
+      nDamaged += damaged;
       if (item.shipDefId != null && destroyed) {
         destroyedDetail[item.shipDefId] = (destroyedDetail[item.shipDefId] || 0) + destroyed;
+      }
+      if (item.shipDefId != null && damaged) {
+        damagedDetail[item.shipDefId] = (damagedDetail[item.shipDefId] || 0) + damaged;
       }
     }
     const piratesDestroyed = (r.pirateLosses || [])
@@ -412,18 +429,8 @@ async function processPirateReports(pirateReports, ships) {
     pirateDebris.alloys += debris.alloys || 0;
     pirateDebris.silicates += debris.silicates || 0;
 
-    for (const [defId, qty] of Object.entries(destroyedDetail)) {
-      const ship = ships[defId];
-      if (ship) {
-        pirateLost.ore += qty * ship.costOre;
-        pirateLost.silicates += qty * ship.costSilicates;
-        pirateLost.hydrogen += qty * ship.costHydrogen;
-        pirateLost.alloys += qty * ship.costAlloys;
-        for (const [k, v] of Object.entries(ship.rareCosts)) {
-          pirateLost.rare[k] = (pirateLost.rare[k] || 0) + qty * v;
-        }
-      }
-    }
+    addShipCost(destroyedDetail, ships, pirateLost, 1);
+    addShipCost(damagedDetail, ships, pirateLost, REPAIR_FACTOR);
 
     pirateRecent.unshift({
       id: r.id,
@@ -438,6 +445,7 @@ async function processPirateReports(pirateReports, ships) {
       debris_alloys: debris.alloys || 0,
       debris_silicates: debris.silicates || 0,
       ships_lost_detail: destroyedDetail,
+      ships_damaged_detail: damagedDetail,
       // Fleet compositions kept so the simulator can replay this battle
       // and measure engine accuracy against the real outcome.
       attacker_fleet: (r.attackerFleet || []).map(i => ({ key: i.key, quantity: i.quantity || 1 })),
@@ -756,18 +764,10 @@ async function processSystemDebris(debrisArr) {
 // lost from totals, and mining alloys/rares/stolen-breakdown and mining loss
 // valuation cannot be reconstructed (per-report records lack the detail).
 
-function costFromDetail(detail, ships, into) {
-  for (const [defId, qty] of Object.entries(detail || {})) {
-    const ship = ships[defId];
-    if (!ship) continue;
-    into.ore += qty * ship.costOre;
-    into.silicates += qty * ship.costSilicates;
-    into.hydrogen += qty * ship.costHydrogen;
-    into.alloys += qty * ship.costAlloys;
-    for (const [k, v] of Object.entries(ship.rareCosts || {})) {
-      into.rare[k] = (into.rare[k] || 0) + qty * v;
-    }
-  }
+// Destroyed ships at full cost + damaged ships at the repair factor.
+function costFromDetail(record, ships, into) {
+  addShipCost(record.ships_lost_detail, ships, into, 1);
+  addShipCost(record.ships_damaged_detail, ships, into, REPAIR_FACTOR);
 }
 
 async function rebuildAggregates() {
@@ -823,7 +823,7 @@ async function rebuildAggregates() {
       events[et].hydrogen += r.hydrogen || 0;
       events[et].silicates += r.silicates || 0;
 
-      costFromDetail(r.ships_lost_detail, ships, lost);
+      costFromDetail(r, ships, lost);
     }
     out.totals = totals;
     out.daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
@@ -872,7 +872,7 @@ async function rebuildAggregates() {
       debris.alloys += r.debris_alloys || 0;
       debris.silicates += r.debris_silicates || 0;
 
-      costFromDetail(r.ships_lost_detail, ships, lost);
+      costFromDetail(r, ships, lost);
     }
     out.pirate_totals = totals;
     out.pirate_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));

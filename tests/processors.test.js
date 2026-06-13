@@ -28,6 +28,30 @@ test('survey processor: dedupe, totals, loss valuation, archive shard', async ()
   assert.equal(store.archive_index.survey.count, 2);
 });
 
+test('damaged ships add 50% repair cost to losses', async () => {
+  const store = makeBrowserStub({ ships: SHIPS });   // rebuild reads the catalog from storage
+  const bg = loadBackground();
+
+  // 1 destroyed scout (full cost) + 2 damaged scouts (half cost each).
+  const rep = {
+    id: 1, createdAt: '2026-06-10T10:00:00.000Z', investigated: true, uncollectedLoot: null,
+    loot: { ore: 0 }, eventType: 'rogue_drone', systemName: 'X',
+    shipsLost: [{ shipDefId: 21, quantity: 1 }],
+    shipsDamaged: [{ shipDefId: 21, quantity: 2 }],
+  };
+  await bg.processSurveyReports([rep], SHIPS);
+
+  // scout-ish costOre 100 → 1 destroyed (100) + 2 damaged ×0.5 (100) = 200
+  assert.equal(store.resources_lost.ore, 200);
+  assert.equal(store.totals.ships_lost, 1);
+  assert.equal(store.recent_reports[0].ships_damaged, 2);
+
+  // rebuild from archive must reproduce the same repair-inclusive cost
+  store.totals.ore = 1; // corrupt something to prove rebuild recomputes
+  await bg.rebuildAggregates();
+  assert.equal(store.resources_lost.ore, 200, 'rebuild keeps repair cost');
+});
+
 test('uninvestigated and uncollected reports are deferred, not lost', async () => {
   const store = makeBrowserStub();
   const bg = loadBackground();
