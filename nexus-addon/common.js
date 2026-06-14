@@ -147,27 +147,44 @@ function computeEventBreakdown(reports) {
 // A damaged ship costs half its build cost to repair.
 const REPAIR_FACTOR = 0.5;
 
+function emptyResources() {
+  return { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+}
+
+// Loss split into full-cost destruction and half-cost repair of damaged ships.
+// Returns { destroyed, repair }, each an emptyResources()-shaped object.
 function computeResourcesLost(reports, ships) {
-  const rl = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
-  const add = (detail, factor) => {
+  const out = { destroyed: emptyResources(), repair: emptyResources() };
+  const add = (into, detail, factor) => {
     for (const [defId, qty] of Object.entries(detail || {})) {
       const ship = ships[defId];
       if (!ship) continue;
       const q = qty * factor;
-      rl.ore += q * (ship.costOre || 0);
-      rl.silicates += q * (ship.costSilicates || 0);
-      rl.hydrogen += q * (ship.costHydrogen || 0);
-      rl.alloys += q * (ship.costAlloys || 0);
+      into.ore += q * (ship.costOre || 0);
+      into.silicates += q * (ship.costSilicates || 0);
+      into.hydrogen += q * (ship.costHydrogen || 0);
+      into.alloys += q * (ship.costAlloys || 0);
       for (const [k, v] of Object.entries(ship.rareCosts || {})) {
-        rl.rare[k] = (rl.rare[k] || 0) + q * v;
+        into.rare[k] = (into.rare[k] || 0) + q * v;
       }
     }
   };
   for (const r of reports) {
-    add(r.ships_lost_detail, 1);
-    add(r.ships_damaged_detail, REPAIR_FACTOR);
+    add(out.destroyed, r.ships_lost_detail, 1);
+    add(out.repair, r.ships_damaged_detail, REPAIR_FACTOR);
   }
-  return rl;
+  return out;
+}
+
+// Per-resource destroyed + repair, for net calculations.
+function combinedLost(lost) {
+  const d = lost.destroyed || {}, r = lost.repair || {};
+  const out = emptyResources();
+  for (const k of ['ore', 'silicates', 'hydrogen', 'alloys']) out[k] = (d[k] || 0) + (r[k] || 0);
+  for (const src of [d.rare || {}, r.rare || {}]) {
+    for (const [k, v] of Object.entries(src)) out.rare[k] = (out.rare[k] || 0) + v;
+  }
+  return out;
 }
 
 // ── Stat cards ─────────────────────────────────────────────────────────────
@@ -230,27 +247,51 @@ function renderPagedTable(reports, page, infoId, prevId, nextId, tbodyId, rowFn)
   }
 }
 
+// Fill a stats container with ore/silicates/hydrogen/alloys + rare cards.
+function fillResourceCards(containerId, res, suffix) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  res = res || emptyResources();
+  el.textContent = '';
+  el.append(
+    makeStatCard(`Ore${suffix}`, fmt(res.ore || 0), 'ore'),
+    makeStatCard(`Silicates${suffix}`, fmt(res.silicates || 0), 'silicates'),
+    makeStatCard(`Hydrogen${suffix}`, fmt(res.hydrogen || 0), 'hydrogen'),
+    makeStatCard(`Alloys${suffix}`, fmt(res.alloys || 0), 'alloys'),
+  );
+  appendRareCards(el, res.rare, suffix);
+}
+
+// Renders a { destroyed, repair } loss into two separate titled containers.
+// Pass repairId = null for tabs with no repair concept (debris, expeditions).
+function renderLostCards(destroyedId, repairId, lost, periodLabel) {
+  fillResourceCards(destroyedId, lost.destroyed, periodLabel);
+  if (repairId) fillResourceCards(repairId, lost.repair, periodLabel);
+}
+
+// Relative value of each resource, used to weight the net total.
+const RESOURCE_WEIGHTS = { ore: 1, silicates: 2, hydrogen: 3, alloys: 5 };
+
 // Net gain cards: resources collected minus ship build costs, per resource
-// plus a 1:1 summed total. Rare resource losses are not in the total (they
-// have no common valuation) — the tooltip says so.
+// (raw), plus a weighted total (ore×1, silicates×2, hydrogen×3, alloys×5).
+// Rare resource losses are not in the total (no common valuation).
 function renderNetCards(containerId, collected, lost, periodLabel) {
   const el = document.getElementById(containerId);
   if (!el) return;
   el.textContent = '';
+  const cost = combinedLost(lost);   // destruction + repair
   const fields = [
-    ['Ore', (collected.ore || 0) - (lost.ore || 0), 'ore'],
-    ['Silicates', (collected.silicates || 0) - (lost.silicates || 0), 'silicates'],
-    ['Hydrogen', (collected.hydrogen || 0) - (lost.hydrogen || 0), 'hydrogen'],
-    ['Alloys', (collected.alloys || 0) - (lost.alloys || 0), 'alloys'],
+    ['Ore', 'ore'], ['Silicates', 'silicates'], ['Hydrogen', 'hydrogen'], ['Alloys', 'alloys'],
   ];
   let total = 0;
-  for (const [label, v, cls] of fields) {
-    total += v;
-    el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), cls));
+  for (const [label, key] of fields) {
+    const v = (collected[key] || 0) - (cost[key] || 0);
+    total += v * RESOURCE_WEIGHTS[key];
+    el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), key));
   }
   const totalCard = makeStatCard(`Total net${periodLabel}`, (total >= 0 ? '+' : '') + fmt(total),
     '', total >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  totalCard.title = 'Sum of ore, silicates, hydrogen and alloys at 1:1. Rare resource losses not included.';
+  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5. Rare resource losses not included.';
   el.appendChild(totalCard);
 }
 

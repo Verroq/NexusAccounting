@@ -11,8 +11,9 @@ async function loadAll() {
     'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports',
     'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports',
-    'debris_fields', 'debris_collected_est', 'debris_last_check',
-    'exp_totals', 'exp_daily', 'exp_recent_reports', 'stats_drift',
+    'debris_fields', 'debris_last_check',
+    'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
+    'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'stats_drift',
   ]);
 
   const cap = store.records_cap ?? 500;
@@ -258,7 +259,7 @@ function validateBackupData(data) {
   const objects = [
     'totals', 'pirate_totals', 'mining_totals', 'exp_totals', 'ships',
     'resources_lost', 'pirate_resources_lost', 'mining_resources_lost',
-    'pirate_debris_total', 'debris_collected_est', 'archive_index',
+    'pirate_debris_total', 'archive_index',
   ];
   for (const k of arrays) {
     if (k in data && !Array.isArray(data[k])) throw new Error(`backup field "${k}" should be a list`);

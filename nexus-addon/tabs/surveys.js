@@ -110,19 +110,7 @@ function renderCollected(t, periodLabel) {
 }
 
 function renderLost(rl, periodLabel) {
-  const container = document.getElementById('stats-lost');
-  container.textContent = '';
-  container.append(
-    makeStatCard(`Ore lost${periodLabel}`,      fmt(rl.ore),      'ore'),
-    makeStatCard(`Silicates lost${periodLabel}`, fmt(rl.silicates), 'silicates'),
-    makeStatCard(`Hydrogen lost${periodLabel}`,  fmt(rl.hydrogen),  'hydrogen'),
-    makeStatCard(`Alloys lost${periodLabel}`,    fmt(rl.alloys),    'alloys'),
-  );
-  Object.entries(rl.rare || {})
-    .sort((a, b) => b[1] - a[1])
-    .forEach(([k, v]) => container.appendChild(
-      makeStatCard(`${k.replace(/_/g, ' ')}${periodLabel}`, fmt(v), 'rare')
-    ));
+  renderLostCards('stats-lost', 'stats-repair', rl, periodLabel);
 }
 
 function renderResourceChart(series, labelKey) {

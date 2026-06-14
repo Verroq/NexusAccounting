@@ -84,6 +84,9 @@ function renderExpeditionsTab() {
     appendRareCards(el, t.rare, periodLabel);
   }
 
+  const lost = store.exp_resources_lost || { destroyed: {}, repair: {} };
+  fillResourceCards('e-stats-lost', lost.destroyed, '');
+
   if (chartExpeditions) chartExpeditions.destroy();
   chartExpeditions = makeResourceDoughnut('chart-expeditions', t);
 

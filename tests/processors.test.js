@@ -22,8 +22,8 @@ test('survey processor: dedupe, totals, loss valuation, archive shard', async ()
 
   assert.equal(store.totals.missions, 2, 'report 1 must not double-count');
   assert.equal(store.totals.ore, 200);
-  assert.equal(store.resources_lost.ore, 200);          // 2 × scout-ish cost
-  assert.equal(store.resources_lost.rare.cryo_ice, 10);
+  assert.equal(store.resources_lost.destroyed.ore, 200);   // 2 × scout-ish cost
+  assert.equal(store.resources_lost.destroyed.rare.cryo_ice, 10);
   assert.equal(store['survey_archive_2026-06'].length, 2);
   assert.equal(store.archive_index.survey.count, 2);
 });
@@ -41,15 +41,17 @@ test('damaged ships add 50% repair cost to losses', async () => {
   };
   await bg.processSurveyReports([rep], SHIPS);
 
-  // scout-ish costOre 100 → 1 destroyed (100) + 2 damaged ×0.5 (100) = 200
-  assert.equal(store.resources_lost.ore, 200);
+  // costOre 100 → destroyed 1×100, repair 2×0.5×100 = 100, kept separate
+  assert.equal(store.resources_lost.destroyed.ore, 100);
+  assert.equal(store.resources_lost.repair.ore, 100);
   assert.equal(store.totals.ships_lost, 1);
   assert.equal(store.recent_reports[0].ships_damaged, 2);
 
-  // rebuild from archive must reproduce the same repair-inclusive cost
+  // rebuild from archive reproduces both split values
   store.totals.ore = 1; // corrupt something to prove rebuild recomputes
   await bg.rebuildAggregates();
-  assert.equal(store.resources_lost.ore, 200, 'rebuild keeps repair cost');
+  assert.equal(store.resources_lost.destroyed.ore, 100, 'rebuild keeps destruction');
+  assert.equal(store.resources_lost.repair.ore, 100, 'rebuild keeps repair');
 });
 
 test('security zone resolution', () => {
@@ -80,6 +82,58 @@ test('survey zone from securityZone, mining zone from locationName', async () =>
     locationName: 'A12-27 / A12-27-AF1', shipsLost: [],
   }], {}, zones);
   assert.equal(store.mining_recent_reports[0].zone, 'sentinel', 'mining resolves zone from location');
+});
+
+test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
+  const ships = {
+    21: { key: 'freighter', costOre: 100, costSilicates: 50, costHydrogen: 0, costAlloys: 10, rareCosts: {} },
+    4: { key: 'scout', costOre: 200, costSilicates: 100, costHydrogen: 0, costAlloys: 20, rareCosts: {} },
+  };
+
+  // debris mission ambushed: shipsDestroyed by key { key, lost }
+  const store = makeBrowserStub({});
+  let bg = loadBackground();
+  await bg.processMissions([{
+    id: 1, missionType: 'collect_debris', status: 'returning', returnDepartsAt: 'y',
+    targetSystemId: 5, cargo: { ore: 100 }, shipsDestroyed: [{ key: 'scout', lost: 2 }],
+  }], { 5: 'open' }, ships);
+  assert.equal(store.debris_resources_lost.destroyed.ore, 400);   // scout 200 × 2
+
+  // expedition run: totalShipsLost by shipDefId { shipDefId, quantity }
+  const s2 = makeBrowserStub({ ships });
+  bg = loadBackground();
+  await bg.processExpeditionReports([], [{
+    id: 9, createdAt: '2026-06-14T10:00:00Z', status: 'completed', wormholeId: 1,
+    totalLoot: { ore: 5 }, totalShipsLost: [{ shipDefId: 21, quantity: 3 }],
+  }], ships, {}, {}, {});
+  assert.equal(s2.exp_resources_lost.destroyed.ore, 300);          // freighter 100 × 3
+});
+
+test('debris collection: returning collect_debris cargo recorded once', async () => {
+  const store = makeBrowserStub({});
+  const bg = loadBackground();
+  const zoneById = { 568: 'sentinel' };
+
+  // outbound: live run, nothing committed
+  await bg.processMissions([{ id: 1, missionType: 'collect_debris', status: 'outbound', targetSystemId: 568, cargo: {} }], zoneById);
+  assert.equal(store.debris_collected.ore, 0);
+  assert.equal(store.debris_active_runs.length, 1);
+  assert.equal(store.debris_collection_log.length, 0);
+
+  // returning with cargo: committed exactly
+  await bg.processMissions([{ id: 1, missionType: 'collect_debris', status: 'returning', returnDepartsAt: 'y', targetSystemId: 568, cargo: { ore: 480, alloys: 78 } }], zoneById);
+  assert.equal(store.debris_collected.ore, 480);
+  assert.equal(store.debris_collected.alloys, 78);
+  assert.equal(store.debris_collection_log[0].zone, 'sentinel');
+
+  // seen again: not double-counted
+  await bg.processMissions([{ id: 1, missionType: 'collect_debris', status: 'returning', returnDepartsAt: 'y', targetSystemId: 568, cargo: { ore: 480, alloys: 78 } }], zoneById);
+  assert.equal(store.debris_collected.ore, 480);
+  assert.equal(store.debris_collection_log.length, 1);
+
+  // non-debris missions ignored
+  await bg.processMissions([{ id: 2, missionType: 'collect_salvage', status: 'returning', cargo: { ore: 99 } }], zoneById);
+  assert.equal(store.debris_collected.ore, 480);
 });
 
 test('zone back-fill stamps existing records once', async () => {
@@ -224,14 +278,13 @@ test('drift detection flags corruption; rebuild repairs and clears it', async ()
   assert.equal(store.stats_drift, undefined, 'rebuild clears the flag');
 });
 
-test('debris snapshots: decreases count as collected', async () => {
+test('debris snapshot: live fields recorded with first-seen', async () => {
   const store = makeBrowserStub();
   const bg = loadBackground();
 
-  await bg.processSystemDebris([{ id: 5, systemName: 'A1', ore: 1000, silicates: 500, alloys: 100 }]);
-  await bg.processSystemDebris([{ id: 5, systemName: 'A1', ore: 400, silicates: 600, alloys: 0 }]);
-
-  assert.equal(store.debris_collected_est.ore, 600);
-  assert.equal(store.debris_collected_est.silicates, 0, 'growth is not collection');
-  assert.equal(store.debris_collected_est.alloys, 100);
+  await bg.processSystemDebris([{ id: 5, systemName: 'A1', ore: 1000, silicates: 500, alloys: 100 }], { A1: 'open' });
+  const f = store.debris_fields[0];
+  assert.equal(f.ore, 1000);
+  assert.equal(f.zone, 'open');
+  assert.ok(f.first_seen && f.updated_at);
 });

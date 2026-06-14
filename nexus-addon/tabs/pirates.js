@@ -89,20 +89,7 @@ function renderPiratesTab() {
     );
   }
 
-  const lostEl = document.getElementById('p-stats-lost');
-  lostEl.textContent = '';
-  lostEl.append(
-    makeStatCard(`Ore lost${periodLabel}`,       fmt(rl.ore),       'ore'),
-    makeStatCard(`Silicates lost${periodLabel}`, fmt(rl.silicates), 'silicates'),
-    makeStatCard(`Hydrogen lost${periodLabel}`,  fmt(rl.hydrogen),  'hydrogen'),
-    makeStatCard(`Alloys lost${periodLabel}`,    fmt(rl.alloys),    'alloys'),
-  );
-  Object.entries(rl.rare || {})
-    .sort((a, b) => b[1] - a[1])
-    .forEach(([k, v]) => lostEl.appendChild(
-      makeStatCard(`${k.replace(/_/g, ' ')}${periodLabel}`, fmt(v), 'rare')
-    ));
-
+  renderLostCards('p-stats-lost', 'p-stats-repair', rl, periodLabel);
   renderNetCards('p-stats-net', t, rl, periodLabel);
 
   const debrisEl = document.getElementById('p-stats-debris');

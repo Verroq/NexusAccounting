@@ -55,7 +55,7 @@ function loadBackground() {
     'processExpeditionReports', 'processSystemDebris', 'rebuildAggregates',
     'checkDrift', 'ensureSchema', 'appendToArchive', 'loadArchive',
     'buildShipCatalog', 'extractFleet', 'numericResources', 'MIGRATIONS',
-    'systemFromLocation', 'resolveZone', 'backfillZones',
+    'systemFromLocation', 'resolveZone', 'backfillZones', 'processMissions',
   ];
   // eslint-disable-next-line no-eval
   return eval(`${src}\n({ ${exports.join(', ')} })`);
