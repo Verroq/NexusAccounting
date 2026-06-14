@@ -18,6 +18,9 @@ function renderDebrisTab() {
     makeStatCard('Runs', fmt((store.debris_collection_log || []).length), 'missions'),
   );
 
+  const lost = store.debris_resources_lost || { destroyed: {}, repair: {} };
+  fillResourceCards('d-stats-lost', lost.destroyed, '');
+
   if (chartDebris) chartDebris.destroy();
   chartDebris = makeResourceDoughnut('chart-debris', mine);
 

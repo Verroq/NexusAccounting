@@ -76,16 +76,10 @@ function renderMiningTab() {
     makeStatCard(`Cargo stolen${periodLabel}`, fmt(stolenTotal), '', 'color:#ff7b72'),
   );
 
-  const lostEl = document.getElementById('m-stats-lost');
-  lostEl.textContent = '';
-  const rl = store.mining_resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
-  lostEl.append(
-    makeStatCard('Ore lost', fmt(rl.ore), 'ore'),
-    makeStatCard('Silicates lost', fmt(rl.silicates), 'silicates'),
-    makeStatCard('Hydrogen lost', fmt(rl.hydrogen), 'hydrogen'),
-    makeStatCard('Alloys lost', fmt(rl.alloys), 'alloys'),
-  );
-  appendRareCards(lostEl, rl.rare, ' lost');
+  const rl = store.mining_resources_lost?.destroyed
+    ? store.mining_resources_lost
+    : { destroyed: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} }, repair: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} } };
+  renderLostCards('m-stats-lost', 'm-stats-repair', rl, '');
 
   // Net needs the loss valuation, which only exists in unfiltered all-time.
   const netVisible = mode === 'all' && isUnfiltered();

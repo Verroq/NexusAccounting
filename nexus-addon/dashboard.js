@@ -12,8 +12,8 @@ async function loadAll() {
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports',
     'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports',
     'debris_fields', 'debris_last_check',
-    'debris_collected', 'debris_active_runs', 'debris_collection_log',
-    'exp_totals', 'exp_daily', 'exp_recent_reports', 'stats_drift',
+    'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
+    'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'stats_drift',
   ]);
 
   const cap = store.records_cap ?? 500;
