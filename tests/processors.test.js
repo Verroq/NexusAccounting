@@ -52,6 +52,94 @@ test('damaged ships add 50% repair cost to losses', async () => {
   assert.equal(store.resources_lost.ore, 200, 'rebuild keeps repair cost');
 });
 
+test('security zone resolution', () => {
+  const bg = loadBackground();
+  assert.equal(bg.systemFromLocation('A12-27 / A12-27-AF1'), 'A12-27');
+  assert.equal(bg.systemFromLocation('B3-9-XY2'), 'B3-9');
+  assert.equal(bg.systemFromLocation(''), null);
+  const zones = { 'A12-27': 'sentinel' };
+  assert.equal(bg.resolveZone('A12-27', zones), 'sentinel');
+  assert.equal(bg.resolveZone('Z9-9', zones), 'unknown');
+  assert.equal(bg.resolveZone(null, zones), 'unknown');
+});
+
+test('survey zone from securityZone, mining zone from locationName', async () => {
+  const store = makeBrowserStub({ ships: {} });
+  const bg = loadBackground();
+  const zones = { 'A12-27': 'sentinel' };
+
+  await bg.processSurveyReports([{
+    id: 1, createdAt: '2026-06-10T10:00:00Z', investigated: true, uncollectedLoot: null,
+    loot: { ore: 5 }, eventType: 'x', systemName: 'A12-27', securityZone: 'open',
+    shipsLost: [], shipsDamaged: [],
+  }], {}, zones);
+  assert.equal(store.recent_reports[0].zone, 'open', 'survey uses securityZone directly');
+
+  await bg.processMiningReports([{
+    id: 1, createdAt: '2026-06-10T08:00:00Z', resourcesDelivered: { ore: 10 },
+    locationName: 'A12-27 / A12-27-AF1', shipsLost: [],
+  }], {}, zones);
+  assert.equal(store.mining_recent_reports[0].zone, 'sentinel', 'mining resolves zone from location');
+});
+
+test('zone back-fill stamps existing records once', async () => {
+  const store = makeBrowserStub({
+    recent_reports: [{ id: 1, system_name: 'A12-27' }, { id: 2, system_name: 'Z9-9' }],
+    mining_recent_reports: [{ id: 1, location: 'A12-27 / A12-27-AF1' }],
+    archive_index: {
+      survey: { months: ['2026-06'], count: 1 }, pirate: { months: [], count: 0 },
+      mining: { months: [], count: 0 }, exp: { months: [], count: 0 },
+    },
+    'survey_archive_2026-06': [{ id: 1, system_name: 'A12-27' }],
+  });
+  const bg = loadBackground();
+  await bg.backfillZones({ 'A12-27': 'sentinel' });
+
+  assert.deepEqual(store.recent_reports.map(r => r.zone), ['sentinel', 'unknown']);
+  assert.equal(store.mining_recent_reports[0].zone, 'sentinel');
+  assert.equal(store['survey_archive_2026-06'][0].zone, 'sentinel');
+  assert.equal(store.zones_backfilled, true);
+
+  // second run is a no-op (does not overwrite)
+  store.recent_reports[0].zone = 'open';
+  await bg.backfillZones({ 'A12-27': 'sentinel' });
+  assert.equal(store.recent_reports[0].zone, 'open');
+});
+
+test('pirate zone resolved from campId via camp→zone map', async () => {
+  const store = makeBrowserStub({ ships: {} });
+  const bg = loadBackground();
+  const raid = (id, campId) => ({
+    id, createdAt: '2026-06-13T10:00:00Z', campId,
+    attackerFleet: [], pirateFleet: [], attackerLosses: [], pirateLosses: [],
+    loot: { ore: 5 }, debris: {}, outcome: 'attacker_won',
+  });
+  await bg.processPirateReports([raid(1, 1448), raid(2, 9999)], {}, { 1448: 'open' });
+  const byId = Object.fromEntries(store.pirate_recent_reports.map(r => [r.id, r.zone]));
+  assert.equal(byId[1], 'open', 'known camp resolves');
+  assert.equal(byId[2], 'unknown', 'unknown camp falls back');
+});
+
+test('wormhole zone from wormholeId, back-fill from location string', async () => {
+  const store = makeBrowserStub({ ships: {} });
+  const bg = loadBackground();
+  await bg.processExpeditionReports([], [{
+    id: 540, createdAt: '2026-06-14T10:00:00Z', status: 'completed',
+    wormholeId: 65656, totalLoot: { ore: 10 }, totalShipsLost: [],
+  }], {}, {}, { 65656: 'dead' });
+  assert.equal(store.exp_recent_reports[0].zone, 'dead');
+  assert.equal(store.exp_recent_reports[0].wormhole_id, 65656);
+
+  // back-fill an old record that only has the "Wormhole #id" location string
+  const s2 = makeBrowserStub({
+    exp_recent_reports: [{ id: 'wh-1', location: 'Wormhole #65656' }],
+    archive_index: { survey: { months: [], count: 0 }, pirate: { months: [], count: 0 }, mining: { months: [], count: 0 }, exp: { months: [], count: 0 } },
+  });
+  const bg2 = loadBackground();
+  await bg2.backfillZones({}, {}, { 65656: 'dead' });
+  assert.equal(s2.exp_recent_reports[0].zone, 'dead');
+});
+
 test('wormhole runs: totalLoot parsed, in-progress runs skipped', async () => {
   const store = makeBrowserStub();
   const bg = loadBackground();

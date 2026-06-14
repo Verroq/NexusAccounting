@@ -85,6 +85,7 @@ function renderAll() {
     initFinderTab();
     return;
   }
+  populateEventOptions();
   const mode = getMode();
   const t = getTotalsForMode();
   const rl = getResourcesLostForMode();
@@ -143,13 +144,17 @@ document.getElementById('btn-scrape').addEventListener('click', async function (
   }
 });
 
-document.getElementById('mode-select').addEventListener('change', () => {
+function onViewChange() {
   currentPage = 1;
   pirateCurrentPage = 1;
   miningPage = 1;
   expPage = 1;
   renderAll();
-});
+}
+
+document.getElementById('mode-select').addEventListener('change', onViewChange);
+document.getElementById('zone-select').addEventListener('change', onViewChange);
+document.getElementById('event-select').addEventListener('change', () => { currentPage = 1; renderAll(); });
 
 document.getElementById('btn-reset').addEventListener('click', async function () {
   if (!confirm('Drop all recorded data? A backup is written to Downloads/NexusAccounting first.')) return;

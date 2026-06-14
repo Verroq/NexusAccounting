@@ -4,17 +4,30 @@ let chartResources, chartEvents, chartByEvent;
 
 let currentPage = 1;
 
-// Latest day/hour slice of the survey reports for daily/hourly modes.
-function getLatestBucketReports(mode) {
-  return latestBucket(store.recent_reports || [], mode);
+// Survey-only event-type filter (combines with the global zone + view).
+function getSurveyEvent() {
+  const el = document.getElementById('event-select');
+  return el ? el.value : 'all';
+}
+function filterEvent(reports) {
+  const e = getSurveyEvent();
+  return e === 'all' ? reports : (reports || []).filter(r => (r.event_type || 'unknown') === e);
+}
+// No filter active → precomputed all-time totals can be used.
+function surveyUnfiltered() {
+  return isUnfiltered() && getSurveyEvent() === 'all';
+}
+// Records for the current view, zone and event filters.
+function surveyRecordsForMode(mode) {
+  const filtered = filterEvent(filterZone(store.recent_reports || []));
+  return mode === 'all' ? filtered : latestBucket(filtered, mode);
 }
 
-// Returns {ore, hydrogen, silicates, missions, ships_lost} for the current mode.
+// Returns {ore, hydrogen, silicates, missions, ships_lost} for the current view.
 function getTotalsForMode() {
   const mode = getMode();
-  if (mode === 'all') return store.totals || {};
-  const bucket = getLatestBucketReports(mode);
-  return bucket.reduce((t, r) => ({
+  if (mode === 'all' && surveyUnfiltered()) return store.totals || {};
+  return surveyRecordsForMode(mode).reduce((t, r) => ({
     ore: t.ore + (r.ore || 0),
     hydrogen: t.hydrogen + (r.hydrogen || 0),
     silicates: t.silicates + (r.silicates || 0),
@@ -23,31 +36,51 @@ function getTotalsForMode() {
   }), { ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0 });
 }
 
-// Returns resources-lost for the current mode.
+// Returns resources-lost for the current view.
 function getResourcesLostForMode() {
   const mode = getMode();
-  if (mode === 'all') return store.resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
-  return computeResourcesLost(getLatestBucketReports(mode), store.ships || {});
+  if (mode === 'all' && surveyUnfiltered()) return store.resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+  return computeResourcesLost(surveyRecordsForMode(mode), store.ships || {});
 }
 
-// Returns event_breakdown array for the current mode.
+// Event-type breakdown — zone-aware but NOT event-filtered (it is the selector
+// context, so it always shows the full distribution).
 function getEventBreakdownForMode() {
   const mode = getMode();
-  if (mode === 'all') return store.event_breakdown || [];
-  return computeEventBreakdown(getLatestBucketReports(mode));
+  if (mode === 'all' && isUnfiltered()) return store.event_breakdown || [];
+  return computeEventBreakdown(recordsForMode(store.recent_reports, mode));
 }
 
 // Returns time-series data array for the resources-over-time chart.
 function getSeriesForMode() {
   const mode = getMode();
-  if (mode !== 'hourly') return store.daily || [];
-  // Computed from recent_reports so it works even when the background hasn't
-  // rebuilt the stored hourly array yet.
-  return computeHourlySeries(store.recent_reports || [], {
+  if (mode !== 'hourly' && surveyUnfiltered()) return store.daily || [];
+  return computeSeries(filterEvent(filterZone(store.recent_reports || [])), mode, {
     ore: r => r.ore || 0,
     hydrogen: r => r.hydrogen || 0,
     silicates: r => r.silicates || 0,
   });
+}
+
+// Populate the event dropdown from the event types present, preserving the
+// current selection.
+function populateEventOptions() {
+  const sel = document.getElementById('event-select');
+  if (!sel) return;
+  const types = (store.event_breakdown || []).map(e => e.event_type).filter(Boolean).sort();
+  const current = sel.value;
+  sel.textContent = '';
+  const optAll = document.createElement('option');
+  optAll.value = 'all';
+  optAll.textContent = 'All events';
+  sel.appendChild(optAll);
+  for (const t of types) {
+    const o = document.createElement('option');
+    o.value = t;
+    o.textContent = t.replace(/_/g, ' ');
+    sel.appendChild(o);
+  }
+  sel.value = types.includes(current) || current === 'all' ? current : 'all';
 }
 
 function renderCollected(t, periodLabel) {
@@ -149,8 +182,39 @@ function renderByEventChart(events) {
 
 // ── Reports table ──────────────────────────────────────────────────────────
 
+let surveySort = { key: 'created_at', dir: -1 };
+
+document.getElementById('reports-head').addEventListener('click', e => {
+  const th = e.target.closest('th.sortable');
+  if (!th) return;
+  const key = th.dataset.key;
+  surveySort = { key, dir: surveySort.key === key ? -surveySort.dir : -1 };
+  currentPage = 1;
+  renderTable();
+});
+
 function renderTable() {
-  const allReports = (store.recent_reports || []).slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const { key, dir } = surveySort;
+  const allReports = filterEvent(filterZone(store.recent_reports || [])).slice().sort((a, b) => {
+    const va = a[key], vb = b[key];
+    let cmp;
+    if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb;
+    else cmp = String(va ?? '').localeCompare(String(vb ?? ''));
+    return cmp * dir || b.created_at.localeCompare(a.created_at);
+  });
+
+  // Header arrows
+  document.querySelectorAll('#reports-head th.sortable').forEach(th => {
+    const old = th.querySelector('.arrow');
+    if (old) old.remove();
+    if (th.dataset.key === key) {
+      const arrow = document.createElement('span');
+      arrow.className = 'arrow';
+      arrow.textContent = dir === -1 ? ' ▼' : ' ▲';
+      th.appendChild(arrow);
+    }
+  });
+
   const totalPages = Math.ceil(allReports.length / PER_PAGE);
   document.getElementById('page-info').textContent = `Page ${currentPage} / ${Math.max(1, totalPages)} (${allReports.length} total)`;
   document.getElementById('btn-prev').disabled = currentPage <= 1;
@@ -192,7 +256,7 @@ function renderTable() {
     const tdHyd = zeroTd(r.hydrogen);  tdHyd.className = 'hydrogen';
     const tdSil = zeroTd(r.silicates); tdSil.className = 'silicates';
 
-    tr.append(tdDate, tdSys, tdEvt, tdOre, tdHyd, tdSil,
+    tr.append(tdDate, tdSys, zoneCell(r.zone), tdEvt, tdOre, tdHyd, tdSil,
               zeroTd(r.ships_lost), zeroTd(r.ships_damaged), zeroTd(r.wormholes_detected));
     tbody.appendChild(tr);
   }

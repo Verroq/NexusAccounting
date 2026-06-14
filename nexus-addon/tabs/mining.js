@@ -6,19 +6,15 @@ let chartMining;
 
 let miningPage = 1;
 
-function getMiningBucketReports(mode) {
-  return latestBucket(store.mining_recent_reports || [], mode);
-}
-
 function getMiningTotalsForMode(mode) {
-  if (mode === 'all') {
+  if (mode === 'all' && isUnfiltered()) {
     return store.mining_totals || {
       ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
       deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
       stolen: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} },
     };
   }
-  return getMiningBucketReports(mode).reduce((t, r) => ({
+  return recordsForMode(store.mining_recent_reports, mode).reduce((t, r) => ({
     ore: t.ore + (r.ore || 0),
     silicates: t.silicates + (r.silicates || 0),
     hydrogen: t.hydrogen + (r.hydrogen || 0),
@@ -31,8 +27,8 @@ function getMiningTotalsForMode(mode) {
 }
 
 function getMiningSeriesForMode(mode) {
-  if (mode !== 'hourly') return store.mining_daily || [];
-  return computeHourlySeries(store.mining_recent_reports || [], {
+  if (mode !== 'hourly' && isUnfiltered()) return store.mining_daily || [];
+  return computeSeries(filterZone(store.mining_recent_reports || []), mode, {
     ore: r => r.ore || 0,
     silicates: r => r.silicates || 0,
     hydrogen: r => r.hydrogen || 0,
@@ -57,8 +53,8 @@ function renderMiningTab() {
       makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
       makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
     );
-    // Alloys and rares are only tracked in the all-time totals.
-    if (mode === 'all') {
+    // Alloys and rares are only tracked in the unfiltered all-time totals.
+    if (mode === 'all' && isUnfiltered()) {
       delivered.appendChild(makeStatCard('Alloys', fmt(t.alloys), 'alloys'));
       appendRareCards(delivered, t.rare, '');
     }
@@ -66,7 +62,7 @@ function renderMiningTab() {
 
   const ops = document.getElementById('m-stats-ops');
   ops.textContent = '';
-  const stolenTotal = mode === 'all'
+  const stolenTotal = (mode === 'all' && isUnfiltered())
     ? (t.stolen
         ? (t.stolen.ore + t.stolen.silicates + t.stolen.hydrogen + t.stolen.alloys +
            Object.values(t.stolen.rare || {}).reduce((s, v) => s + v, 0))
@@ -91,8 +87,8 @@ function renderMiningTab() {
   );
   appendRareCards(lostEl, rl.rare, ' lost');
 
-  // Net needs the loss valuation, which only exists all-time.
-  const netVisible = mode === 'all';
+  // Net needs the loss valuation, which only exists in unfiltered all-time.
+  const netVisible = mode === 'all' && isUnfiltered();
   document.getElementById('m-net-label').style.display = netVisible ? '' : 'none';
   document.getElementById('m-stats-net').style.display = netVisible ? '' : 'none';
   if (netVisible) renderNetCards('m-stats-net', t, rl, '');
@@ -103,9 +99,11 @@ function renderMiningTab() {
   renderMiningTable();
 }
 
+const miningSort = { key: 'created_at', dir: -1 };
+attachSortable('m-reports-head', miningSort, () => { miningPage = 1; renderMiningTable(); });
+
 function renderMiningTable() {
-  const reports = (store.mining_recent_reports || []).slice()
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const reports = applySort('m-reports-head', filterZone(store.mining_recent_reports || []), miningSort);
   renderPagedTable(reports, miningPage, 'm-page-info', 'm-btn-prev', 'm-btn-next', 'm-reports-tbody', r => {
     const tr = document.createElement('tr');
     const tdDate = document.createElement('td');
@@ -115,7 +113,7 @@ function renderMiningTable() {
     const tdOre = zeroCell(r.ore); tdOre.className = 'ore';
     const tdSil = zeroCell(r.silicates); tdSil.className = 'silicates';
     const tdHyd = zeroCell(r.hydrogen); tdHyd.className = 'hydrogen';
-    tr.append(tdDate, tdLoc, tdOre, tdSil, tdHyd,
+    tr.append(tdDate, tdLoc, zoneCell(r.zone), tdOre, tdSil, tdHyd,
               zeroCell(r.cycles), zeroCell(r.drill_breakdowns),
               zeroCell(r.ships_lost), zeroCell(r.stolen_total));
     return tr;

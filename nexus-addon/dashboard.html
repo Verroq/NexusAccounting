@@ -35,6 +35,15 @@
       <option value="daily">Daily</option>
       <option value="hourly">Hourly</option>
     </select>
+    <label for="zone-select" style="margin-left:12px;">Zone:</label>
+    <select id="zone-select" title="Filter by the security zone where data was gathered. Zone-filtered totals are computed from the stored (capped) records.">
+      <option value="all">All zones</option>
+      <option value="sentinel">Sentinel</option>
+      <option value="open">Open</option>
+      <option value="dead">Dead</option>
+      <option value="rift">Rift</option>
+      <option value="unknown">Unknown</option>
+    </select>
     <span style="margin-left:auto; display:flex; align-items:center; gap:8px; font-size:0.8rem; color:#8b949e;">
       Records cap
       <span title="Maximum number of individual survey reports stored locally. Older records are dropped when the limit is reached. Set to 0 for unlimited storage."
@@ -51,6 +60,13 @@
   </div>
 
   <div id="main-content">
+    <div class="controls" style="margin-top:0;">
+      <label for="event-select">Event:</label>
+      <select id="event-select" title="Filter survey stats and table by anomaly event type.">
+        <option value="all">All events</option>
+      </select>
+    </div>
+
     <div class="section-label">Resources collected</div>
     <div class="stats" id="stats-collected"></div>
 
@@ -88,11 +104,18 @@
         </div>
       </div>
       <table>
-        <thead>
+        <thead id="reports-head">
           <tr>
-            <th>Date</th><th>System</th><th>Event</th>
-            <th>Ore</th><th>Hydrogen</th><th>Silicates</th>
-            <th>Ships lost</th><th>Ships damaged</th><th>Wormholes</th>
+            <th class="sortable" data-key="created_at">Date</th>
+            <th class="sortable" data-key="system_name">System</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="event_type">Event</th>
+            <th class="sortable" data-key="ore">Ore</th>
+            <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="ships_lost">Ships lost</th>
+            <th class="sortable" data-key="ships_damaged">Ships damaged</th>
+            <th class="sortable" data-key="wormholes_detected">Wormholes</th>
           </tr>
         </thead>
         <tbody id="reports-tbody"></tbody>
@@ -134,11 +157,18 @@
         </div>
       </div>
       <table>
-        <thead>
+        <thead id="p-reports-head">
           <tr>
-            <th>Date</th><th>Camp</th><th>Outcome</th>
-            <th>Ore</th><th>Hydrogen</th><th>Silicates</th>
-            <th>Ships destroyed</th><th>Ships damaged</th><th>Pirates destroyed</th>
+            <th class="sortable" data-key="created_at">Date</th>
+            <th class="sortable" data-key="camp_id">Camp</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="outcome">Outcome</th>
+            <th class="sortable" data-key="ore">Ore</th>
+            <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="ships_lost">Ships destroyed</th>
+            <th class="sortable" data-key="ships_damaged">Ships damaged</th>
+            <th class="sortable" data-key="pirates_destroyed">Pirates destroyed</th>
           </tr>
         </thead>
         <tbody id="p-reports-tbody"></tbody>
@@ -176,10 +206,18 @@
         </div>
       </div>
       <table>
-        <thead>
+        <thead id="m-reports-head">
           <tr>
-            <th>Date</th><th>Location</th><th>Ore</th><th>Silicates</th><th>Hydrogen</th>
-            <th>Cycles</th><th>Breakdowns</th><th>Ships lost</th><th>Stolen</th>
+            <th class="sortable" data-key="created_at">Date</th>
+            <th class="sortable" data-key="location">Location</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="ore">Ore</th>
+            <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="cycles">Cycles</th>
+            <th class="sortable" data-key="drill_breakdowns">Breakdowns</th>
+            <th class="sortable" data-key="ships_lost">Ships lost</th>
+            <th class="sortable" data-key="stolen_total">Stolen</th>
           </tr>
         </thead>
         <tbody id="m-reports-tbody"></tbody>
@@ -200,10 +238,16 @@
         <span id="d-last-check" style="color:#8b949e; font-size:0.8rem;"></span>
       </div>
       <table>
-        <thead>
+        <thead id="d-fields-head">
           <tr>
-            <th>System</th><th>Ore</th><th>Silicates</th><th>Alloys</th><th>Hydrogen</th>
-            <th>First seen</th><th>Last update</th>
+            <th class="sortable" data-key="system">System</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="ore">Ore</th>
+            <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="first_seen">First seen</th>
+            <th class="sortable" data-key="updated_at">Last update</th>
           </tr>
         </thead>
         <tbody id="d-fields-tbody"></tbody>
@@ -212,6 +256,13 @@
   </div>
 
   <div id="expeditions-content" style="display:none;">
+    <div class="controls" style="margin-top:0;">
+      <label for="wclass-select">Wormhole class:</label>
+      <select id="wclass-select" title="Filter expeditions and wormhole runs by wormhole class.">
+        <option value="all">All classes</option>
+      </select>
+    </div>
+
     <div class="section-label">Loot collected — expeditions &amp; wormhole runs</div>
     <div class="stats" id="e-stats-collected"></div>
 
@@ -232,9 +283,16 @@
         </div>
       </div>
       <table>
-        <thead>
+        <thead id="e-reports-head">
           <tr>
-            <th>Date</th><th>Kind</th><th>Location</th><th>Event</th><th>Loot</th><th>Ships lost</th>
+            <th class="sortable" data-key="created_at">Date</th>
+            <th class="sortable" data-key="kind">Kind</th>
+            <th class="sortable" data-key="wclass">Class</th>
+            <th class="sortable" data-key="location">Location</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="event">Event</th>
+            <th>Loot</th>
+            <th class="sortable" data-key="ships_lost">Ships lost</th>
           </tr>
         </thead>
         <tbody id="e-reports-tbody"></tbody>
