@@ -82,6 +82,33 @@ test('survey zone from securityZone, mining zone from locationName', async () =>
   assert.equal(store.mining_recent_reports[0].zone, 'sentinel', 'mining resolves zone from location');
 });
 
+test('debris collection: returning collect_debris cargo recorded once', async () => {
+  const store = makeBrowserStub({});
+  const bg = loadBackground();
+  const zoneById = { 568: 'sentinel' };
+
+  // outbound: live run, nothing committed
+  await bg.processMissions([{ id: 1, missionType: 'collect_debris', status: 'outbound', targetSystemId: 568, cargo: {} }], zoneById);
+  assert.equal(store.debris_collected.ore, 0);
+  assert.equal(store.debris_active_runs.length, 1);
+  assert.equal(store.debris_collection_log.length, 0);
+
+  // returning with cargo: committed exactly
+  await bg.processMissions([{ id: 1, missionType: 'collect_debris', status: 'returning', returnDepartsAt: 'y', targetSystemId: 568, cargo: { ore: 480, alloys: 78 } }], zoneById);
+  assert.equal(store.debris_collected.ore, 480);
+  assert.equal(store.debris_collected.alloys, 78);
+  assert.equal(store.debris_collection_log[0].zone, 'sentinel');
+
+  // seen again: not double-counted
+  await bg.processMissions([{ id: 1, missionType: 'collect_debris', status: 'returning', returnDepartsAt: 'y', targetSystemId: 568, cargo: { ore: 480, alloys: 78 } }], zoneById);
+  assert.equal(store.debris_collected.ore, 480);
+  assert.equal(store.debris_collection_log.length, 1);
+
+  // non-debris missions ignored
+  await bg.processMissions([{ id: 2, missionType: 'collect_salvage', status: 'returning', cargo: { ore: 99 } }], zoneById);
+  assert.equal(store.debris_collected.ore, 480);
+});
+
 test('zone back-fill stamps existing records once', async () => {
   const store = makeBrowserStub({
     recent_reports: [{ id: 1, system_name: 'A12-27' }, { id: 2, system_name: 'Z9-9' }],
@@ -224,14 +251,13 @@ test('drift detection flags corruption; rebuild repairs and clears it', async ()
   assert.equal(store.stats_drift, undefined, 'rebuild clears the flag');
 });
 
-test('debris snapshots: decreases count as collected', async () => {
+test('debris snapshot: live fields recorded with first-seen', async () => {
   const store = makeBrowserStub();
   const bg = loadBackground();
 
-  await bg.processSystemDebris([{ id: 5, systemName: 'A1', ore: 1000, silicates: 500, alloys: 100 }]);
-  await bg.processSystemDebris([{ id: 5, systemName: 'A1', ore: 400, silicates: 600, alloys: 0 }]);
-
-  assert.equal(store.debris_collected_est.ore, 600);
-  assert.equal(store.debris_collected_est.silicates, 0, 'growth is not collection');
-  assert.equal(store.debris_collected_est.alloys, 100);
+  await bg.processSystemDebris([{ id: 5, systemName: 'A1', ore: 1000, silicates: 500, alloys: 100 }], { A1: 'open' });
+  const f = store.debris_fields[0];
+  assert.equal(f.ore, 1000);
+  assert.equal(f.zone, 'open');
+  assert.ok(f.first_seen && f.updated_at);
 });

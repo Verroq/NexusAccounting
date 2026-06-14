@@ -2,10 +2,28 @@
 
 // ── Debris tab ─────────────────────────────────────────────────────────────
 
+let chartDebris;
 const debrisSort = { key: 'ore', dir: -1 };
 attachSortable('d-fields-head', debrisSort, () => renderDebrisTab());
 
 function renderDebrisTab() {
+  // Precise collection by your own fleets
+  const mine = store.debris_collected || { ore: 0, silicates: 0, alloys: 0, hydrogen: 0 };
+  const mineEl = document.getElementById('d-stats-mine');
+  mineEl.textContent = '';
+  mineEl.append(
+    makeStatCard('Ore', fmt(mine.ore), 'ore'),
+    makeStatCard('Silicates', fmt(mine.silicates), 'silicates'),
+    makeStatCard('Alloys', fmt(mine.alloys), 'alloys'),
+    makeStatCard('Runs', fmt((store.debris_collection_log || []).length), 'missions'),
+  );
+
+  if (chartDebris) chartDebris.destroy();
+  chartDebris = makeResourceDoughnut('chart-debris', mine);
+
+  renderActiveRuns();
+  renderCollectionLog();
+
   const gen = store.pirate_debris_total || { ore: 0, alloys: 0, silicates: 0 };
   const genEl = document.getElementById('d-stats-generated');
   genEl.textContent = '';
@@ -13,16 +31,6 @@ function renderDebrisTab() {
     makeStatCard('Ore', fmt(gen.ore), 'ore'),
     makeStatCard('Silicates', fmt(gen.silicates), 'silicates'),
     makeStatCard('Alloys', fmt(gen.alloys), 'alloys'),
-  );
-
-  const col = store.debris_collected_est || { ore: 0, silicates: 0, alloys: 0, hydrogen: 0 };
-  const colEl = document.getElementById('d-stats-collected');
-  colEl.textContent = '';
-  colEl.append(
-    makeStatCard('Ore', fmt(col.ore), 'ore'),
-    makeStatCard('Silicates', fmt(col.silicates), 'silicates'),
-    makeStatCard('Alloys', fmt(col.alloys), 'alloys'),
-    makeStatCard('Hydrogen', fmt(col.hydrogen), 'hydrogen'),
   );
 
   document.getElementById('d-last-check').textContent = store.debris_last_check
@@ -55,6 +63,70 @@ function renderDebrisTab() {
     const tdUpd = document.createElement('td');
     tdUpd.textContent = new Date(f.updated_at).toLocaleString();
     tr.append(tdSys, zoneCell(f.zone), tdOre, tdSil, tdAl, tdHyd, tdFirst, tdUpd);
+    tbody.appendChild(tr);
+  }
+}
+
+function cargoText(r) {
+  return ['ore', 'silicates', 'alloys', 'hydrogen']
+    .filter(k => r[k]).map(k => `${k}: ${Number(r[k]).toLocaleString()}`).join(', ') || '—';
+}
+
+function fleetText(fleet) {
+  return (fleet || []).map(f => `${f.quantity}× ${(f.key || '?').replace(/_/g, ' ')}`).join(', ') || '—';
+}
+
+function renderActiveRuns() {
+  const tbody = document.getElementById('d-active-tbody');
+  tbody.textContent = '';
+  const runs = (store.debris_active_runs || []).slice()
+    .sort((a, b) => String(a.eta || '').localeCompare(String(b.eta || '')));
+  if (!runs.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 6; td.style.color = '#484f58';
+    td.textContent = 'No debris-collection fleets in flight.';
+    tr.appendChild(td); tbody.appendChild(tr);
+    return;
+  }
+  for (const r of runs) {
+    const tr = document.createElement('tr');
+    const tdFleet = document.createElement('td'); tdFleet.textContent = fleetText(r.fleet);
+    const tdSys = document.createElement('td'); tdSys.textContent = r.system;
+    const tdStatus = document.createElement('td'); tdStatus.textContent = r.status;
+    const tdCargo = document.createElement('td'); tdCargo.textContent = cargoText(r);
+    const tdEta = document.createElement('td');
+    tdEta.textContent = r.eta ? new Date(r.eta).toLocaleString() : '—';
+    tr.append(tdFleet, tdSys, zoneCell(r.zone), tdStatus, tdCargo, tdEta);
+    tbody.appendChild(tr);
+  }
+}
+
+const collectedSort = { key: 'collected_at', dir: -1 };
+attachSortable('d-collected-head', collectedSort, () => renderCollectionLog());
+
+function renderCollectionLog() {
+  const tbody = document.getElementById('d-collected-tbody');
+  tbody.textContent = '';
+  const log = applySort('d-collected-head', store.debris_collection_log || [], collectedSort, 'collected_at');
+  if (!log.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 7; td.style.color = '#484f58';
+    td.textContent = 'No collections recorded yet — they appear when a collect-debris fleet returns.';
+    tr.appendChild(td); tbody.appendChild(tr);
+    return;
+  }
+  for (const r of log.slice(0, PER_PAGE)) {
+    const tr = document.createElement('tr');
+    const tdWhen = document.createElement('td');
+    tdWhen.textContent = new Date(r.collected_at).toLocaleString();
+    const tdSys = document.createElement('td'); tdSys.textContent = r.system;
+    const tdOre = zeroCell(r.ore); tdOre.className = 'ore';
+    const tdSil = zeroCell(r.silicates); tdSil.className = 'silicates';
+    const tdAl = zeroCell(r.alloys); tdAl.className = 'alloys';
+    const tdHyd = zeroCell(r.hydrogen); tdHyd.className = 'hydrogen';
+    tr.append(tdWhen, tdSys, zoneCell(r.zone), tdOre, tdSil, tdAl, tdHyd);
     tbody.appendChild(tr);
   }
 }
