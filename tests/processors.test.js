@@ -106,6 +106,40 @@ test('zone back-fill stamps existing records once', async () => {
   assert.equal(store.recent_reports[0].zone, 'open');
 });
 
+test('pirate zone resolved from campId via camp→zone map', async () => {
+  const store = makeBrowserStub({ ships: {} });
+  const bg = loadBackground();
+  const raid = (id, campId) => ({
+    id, createdAt: '2026-06-13T10:00:00Z', campId,
+    attackerFleet: [], pirateFleet: [], attackerLosses: [], pirateLosses: [],
+    loot: { ore: 5 }, debris: {}, outcome: 'attacker_won',
+  });
+  await bg.processPirateReports([raid(1, 1448), raid(2, 9999)], {}, { 1448: 'open' });
+  const byId = Object.fromEntries(store.pirate_recent_reports.map(r => [r.id, r.zone]));
+  assert.equal(byId[1], 'open', 'known camp resolves');
+  assert.equal(byId[2], 'unknown', 'unknown camp falls back');
+});
+
+test('wormhole zone from wormholeId, back-fill from location string', async () => {
+  const store = makeBrowserStub({ ships: {} });
+  const bg = loadBackground();
+  await bg.processExpeditionReports([], [{
+    id: 540, createdAt: '2026-06-14T10:00:00Z', status: 'completed',
+    wormholeId: 65656, totalLoot: { ore: 10 }, totalShipsLost: [],
+  }], {}, {}, { 65656: 'dead' });
+  assert.equal(store.exp_recent_reports[0].zone, 'dead');
+  assert.equal(store.exp_recent_reports[0].wormhole_id, 65656);
+
+  // back-fill an old record that only has the "Wormhole #id" location string
+  const s2 = makeBrowserStub({
+    exp_recent_reports: [{ id: 'wh-1', location: 'Wormhole #65656' }],
+    archive_index: { survey: { months: [], count: 0 }, pirate: { months: [], count: 0 }, mining: { months: [], count: 0 }, exp: { months: [], count: 0 } },
+  });
+  const bg2 = loadBackground();
+  await bg2.backfillZones({}, {}, { 65656: 'dead' });
+  assert.equal(s2.exp_recent_reports[0].zone, 'dead');
+});
+
 test('wormhole runs: totalLoot parsed, in-progress runs skipped', async () => {
   const store = makeBrowserStub();
   const bg = loadBackground();

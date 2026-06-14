@@ -99,9 +99,11 @@ function renderMiningTab() {
   renderMiningTable();
 }
 
+const miningSort = { key: 'created_at', dir: -1 };
+attachSortable('m-reports-head', miningSort, () => { miningPage = 1; renderMiningTable(); });
+
 function renderMiningTable() {
-  const reports = filterZone(store.mining_recent_reports || []).slice()
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const reports = applySort('m-reports-head', filterZone(store.mining_recent_reports || []), miningSort);
   renderPagedTable(reports, miningPage, 'm-page-info', 'm-btn-prev', 'm-btn-next', 'm-reports-tbody', r => {
     const tr = document.createElement('tr');
     const tdDate = document.createElement('td');

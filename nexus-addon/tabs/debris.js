@@ -2,6 +2,9 @@
 
 // ── Debris tab ─────────────────────────────────────────────────────────────
 
+const debrisSort = { key: 'ore', dir: -1 };
+attachSortable('d-fields-head', debrisSort, () => renderDebrisTab());
+
 function renderDebrisTab() {
   const gen = store.pirate_debris_total || { ore: 0, alloys: 0, silicates: 0 };
   const genEl = document.getElementById('d-stats-generated');
@@ -28,8 +31,7 @@ function renderDebrisTab() {
 
   const tbody = document.getElementById('d-fields-tbody');
   tbody.textContent = '';
-  const fields = (store.debris_fields || []).slice()
-    .sort((a, b) => (b.ore + b.silicates + b.alloys) - (a.ore + a.silicates + a.alloys));
+  const fields = applySort('d-fields-head', store.debris_fields || [], debrisSort, 'system');
   if (!fields.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');

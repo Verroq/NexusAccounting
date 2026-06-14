@@ -312,3 +312,40 @@ function zoneCell(zone) {
   td.appendChild(badge);
   return td;
 }
+
+// ── Sortable tables ─────────────────────────────────────────────────────────
+// Click a th.sortable[data-key] to sort; click again to flip. `state` is a
+// plain { key, dir } object the caller keeps; `rerender` redraws the table.
+function attachSortable(headId, state, rerender) {
+  const head = document.getElementById(headId);
+  if (!head) return;
+  head.addEventListener('click', e => {
+    const th = e.target.closest('th.sortable');
+    if (!th) return;
+    state.dir = state.key === th.dataset.key ? -state.dir : -1;
+    state.key = th.dataset.key;
+    rerender();
+  });
+}
+
+// Sort a copy of records by the state, draw the header arrow, and return it.
+function applySort(headId, records, state, tiebreak = 'created_at') {
+  const { key, dir } = state;
+  document.querySelectorAll(`#${headId} th.sortable`).forEach(th => {
+    const old = th.querySelector('.arrow');
+    if (old) old.remove();
+    if (th.dataset.key === key) {
+      const arrow = document.createElement('span');
+      arrow.className = 'arrow';
+      arrow.textContent = dir === -1 ? ' ▼' : ' ▲';
+      th.appendChild(arrow);
+    }
+  });
+  return records.slice().sort((a, b) => {
+    const va = a[key], vb = b[key];
+    let cmp;
+    if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb;
+    else cmp = String(va ?? '').localeCompare(String(vb ?? ''));
+    return cmp * dir || String(b[tiebreak] ?? '').localeCompare(String(a[tiebreak] ?? ''));
+  });
+}

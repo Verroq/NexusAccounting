@@ -151,8 +151,11 @@ function renderPirateOutcomesChart(outcomes) {
   });
 }
 
+const pirateSort = { key: 'created_at', dir: -1 };
+attachSortable('p-reports-head', pirateSort, () => { pirateCurrentPage = 1; renderPirateTable(); });
+
 function renderPirateTable() {
-  const allReports = filterZone(store.pirate_recent_reports || []).slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const allReports = applySort('p-reports-head', filterZone(store.pirate_recent_reports || []), pirateSort);
   const totalPages = Math.ceil(allReports.length / PER_PAGE);
   document.getElementById('p-page-info').textContent = `Page ${pirateCurrentPage} / ${Math.max(1, totalPages)} (${allReports.length} total)`;
   document.getElementById('p-btn-prev').disabled = pirateCurrentPage <= 1;

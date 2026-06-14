@@ -11,6 +11,8 @@ const REPORTS_PATH = '/api/fleet/survey-reports';
 const PIRATES_PATH = '/api/fleet/pirate-reports';
 const SPY_PATH = '/api/fleet/spy-reports';
 const CAMP_SCOUT_PATH = '/api/fleet/camp-scout-reports';
+const PIRATE_CAMPS_PATH = '/api/fleet/pirate-camps';
+const WORMHOLES_PATH = '/api/fleet/wormholes';
 const MINING_PATH = '/api/fleet/mining-reports';
 const EXPEDITION_PATH = '/api/fleet/expedition-reports';
 const WORMHOLE_PATH = '/api/fleet/wormhole-runs';
@@ -247,11 +249,53 @@ function resolveZone(systemName, zones) {
   return (systemName && zones[systemName]) || 'unknown';
 }
 
+// Pirate reports reference only a campId; pirate-camps maps that to a system,
+// which the galaxy map maps to a zone. Cached so completed-raid reports (and
+// the back-fill) can resolve their zone.
+async function getCampZones(token, zones) {
+  let camps;
+  try {
+    camps = (await apiFetch(PIRATE_CAMPS_PATH, token)).camps || [];
+  } catch {
+    const { camp_zones } = await browser.storage.local.get('camp_zones');
+    return camp_zones || {};
+  }
+  const { camp_zones } = await browser.storage.local.get('camp_zones');
+  const map = { ...(camp_zones || {}) };   // keep camps that have since despawned
+  for (const c of camps) {
+    if (c.id != null) map[c.id] = resolveZone(c.systemName, zones);
+  }
+  await browser.storage.local.set({ camp_zones: map });
+  return map;
+}
+
+// Wormhole runs reference only a wormholeId; the wormholes endpoint maps that
+// to a system → zone. Cached so completed runs (and the back-fill) resolve.
+async function getWormholeZones(token, zones) {
+  let holes;
+  try {
+    holes = (await apiFetch(WORMHOLES_PATH, token)).wormholes || [];
+  } catch {
+    const { wormhole_zones } = await browser.storage.local.get('wormhole_zones');
+    return wormhole_zones || {};
+  }
+  const got = await browser.storage.local.get(['wormhole_zones', 'wormhole_classes']);
+  const map = { ...(got.wormhole_zones || {}) };       // keep wormholes that have closed
+  const classes = { ...(got.wormhole_classes || {}) };
+  for (const w of holes) {
+    if (w.id == null) continue;
+    map[w.id] = resolveZone(w.systemName, zones);
+    if (w.wormholeClass) classes[w.id] = w.wormholeClass;
+  }
+  await browser.storage.local.set({ wormhole_zones: map, wormhole_classes: classes });
+  return map;
+}
+
 // One-time back-fill of the `zone` field on records stored before zones were
 // tracked, using the cached system→zone map. Without this, old records read
 // as 'unknown' and zone filtering shows nothing for real zones. seen_ids
 // blocks re-ingestion, so the records must be patched in place.
-async function backfillZones(zones) {
+async function backfillZones(zones, campZones = {}, wormholeZones = {}) {
   const { zones_backfilled } = await browser.storage.local.get('zones_backfilled');
   if (zones_backfilled) return;
 
@@ -259,10 +303,13 @@ async function backfillZones(zones) {
     survey: 'recent_reports', pirate: 'pirate_recent_reports',
     mining: 'mining_recent_reports', exp: 'exp_recent_reports',
   };
+  const whId = r => r.wormhole_id ?? (String(r.location || '').match(/Wormhole #(\d+)/) || [])[1];
   const stamp = (r, type) => {
     if (r.zone) return r;
     if (type === 'survey') r.zone = resolveZone(r.system_name, zones);
-    else if (type === 'mining' || type === 'exp') r.zone = resolveZone(systemFromLocation(r.location), zones);
+    else if (type === 'mining') r.zone = resolveZone(systemFromLocation(r.location), zones);
+    else if (type === 'exp') r.zone = wormholeZones[whId(r)] || resolveZone(systemFromLocation(r.location), zones);
+    else if (type === 'pirate') r.zone = campZones[r.camp_id] || 'unknown';
     else r.zone = 'unknown';
     return r;
   };
@@ -423,7 +470,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
   return newReports.length;
 }
 
-async function processPirateReports(pirateReports, ships) {
+async function processPirateReports(pirateReports, ships, campZones = {}) {
   const pstored = await browser.storage.local.get([
     'pirate_seen_ids', 'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports', 'records_cap',
@@ -514,7 +561,7 @@ async function processPirateReports(pirateReports, ships) {
       id: r.id,
       created_at: r.createdAt,
       camp_id: r.campId,
-      zone: r.securityZone || 'unknown',
+      zone: r.securityZone || campZones[r.campId] || 'unknown',
       outcome,
       ore, hydrogen, silicates,
       ships_lost: nDestroyed,
@@ -739,7 +786,7 @@ function extractShipsLost(r) {
   return arr.reduce((sum, i) => sum + (i.quantity || 1), 0);
 }
 
-async function processExpeditionReports(reports, runs, ships, zones = {}) {
+async function processExpeditionReports(reports, runs, ships, zones = {}, wormholeZones = {}, wormholeClasses = {}) {
   const items = [
     ...(reports || []).map(r => ({ r, kind: 'expedition', uid: `exp-${r.id}` })),
     ...(runs || []).map(r => ({ r, kind: 'wormhole', uid: `wh-${r.id}` })),
@@ -786,10 +833,12 @@ async function processExpeditionReports(reports, runs, ships, zones = {}) {
       id: uid,
       created_at: r.createdAt,
       kind,
+      wormhole_id: r.wormholeId ?? null,
+      wclass: r.wormholeClass || wormholeClasses[r.wormholeId] || null,
       event: r.eventType || r.outcome || r.result || r.status || null,
       location: r.systemName || r.locationName || r.targetName ||
         (r.wormholeId != null ? `Wormhole #${r.wormholeId}` : '—'),
-      zone: resolveZone(r.systemName || systemFromLocation(r.locationName), zones),
+      zone: wormholeZones[r.wormholeId] || resolveZone(r.systemName || systemFromLocation(r.locationName), zones),
       loot,
       ships_lost: nLost,
     });
@@ -1211,14 +1260,20 @@ async function scrape() {
       getSystemZones(token),
     ]);
 
+    const [campZones, wormholeZones] = await Promise.all([
+      getCampZones(token, zones),
+      getWormholeZones(token, zones),
+    ]);
+    const { wormhole_classes: wormholeClasses } = await browser.storage.local.get('wormhole_classes');
+
     await enqueue(async () => {
       const ships = buildShipCatalog(shipyardData);
       await browser.storage.local.set({ ships });
-      await backfillZones(zones);
+      await backfillZones(zones, campZones, wormholeZones);
       const nSurveys = await processSurveyReports(reportData.reports || [], ships, zones);
-      const nPirates = await processPirateReports(pirateData.reports || [], ships);
+      const nPirates = await processPirateReports(pirateData.reports || [], ships, campZones);
       const nMining = await processMiningReports(miningData.reports || [], ships, zones);
-      await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships, zones);
+      await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships, zones, wormholeZones, wormholeClasses || {});
       await processSystemDebris(systemDebrisData.debris || [], zones);
       await processSpyReports(spyData.reports || []);
       await processCampScoutReports(campScoutData.reports || []);
@@ -1303,15 +1358,18 @@ function routeIntercepted(url, json) {
       await processSystemDebris(json.debris || [], system_zones || {});
       return;
     }
-    const { ships, system_zones } = await browser.storage.local.get(['ships', 'system_zones']);
+    const { ships, system_zones, camp_zones, wormhole_zones, wormhole_classes } =
+      await browser.storage.local.get(['ships', 'system_zones', 'camp_zones', 'wormhole_zones', 'wormhole_classes']);
     if (!ships) return; // no catalog yet — the next full scrape bootstraps it
     const zones = system_zones || {};
+    const wz = wormhole_zones || {};
+    const wc = wormhole_classes || {};
     let n = 0;
     if (url.includes('/survey-reports')) n = await processSurveyReports(json.reports || [], ships, zones);
-    else if (url.includes('/pirate-reports')) n = await processPirateReports(json.reports || [], ships);
+    else if (url.includes('/pirate-reports')) n = await processPirateReports(json.reports || [], ships, camp_zones || {});
     else if (url.includes('/mining-reports')) n = await processMiningReports(json.reports || [], ships, zones);
-    else if (url.includes('/expedition-reports')) n = await processExpeditionReports(json.reports || [], [], ships, zones);
-    else if (url.includes('/wormhole-runs')) n = await processExpeditionReports([], json.runs || [], ships, zones);
+    else if (url.includes('/expedition-reports')) n = await processExpeditionReports(json.reports || [], [], ships, zones, wz, wc);
+    else if (url.includes('/wormhole-runs')) n = await processExpeditionReports([], json.runs || [], ships, zones, wz, wc);
     if (n) console.log(`[NexusAccounting] Realtime: ${n} new reports from ${url}`);
   });
 }
