@@ -4,6 +4,14 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.1] - 2026-06-15
+
+### Changed
+- Tech Tree depth now factors in the required laboratory level as a
+  tiebreak: depth = max(prerequisite-chain depth, lab-level floor), so
+  lab-gated techs sink to their lab tier instead of bunching at the top
+  when they have no research prerequisites.
+
 ## [1.5.0] - 2026-06-15
 
 ### Added
