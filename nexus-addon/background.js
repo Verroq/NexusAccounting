@@ -14,6 +14,7 @@ const CAMP_SCOUT_PATH = '/api/fleet/camp-scout-reports';
 const PIRATE_CAMPS_PATH = '/api/fleet/pirate-camps';
 const WORMHOLES_PATH = '/api/fleet/wormholes';
 const MISSIONS_PATH = '/api/fleet/missions';
+const RESEARCH_PATH = '/api/research';
 const MINING_PATH = '/api/fleet/mining-reports';
 const EXPEDITION_PATH = '/api/fleet/expedition-reports';
 const WORMHOLE_PATH = '/api/fleet/wormhole-runs';
@@ -1347,7 +1348,7 @@ async function scrape() {
   try {
     const planetId = await getHomePlanetId(token);
     const [shipyardData, reportData, pirateData, spyData, campScoutData,
-           miningData, expeditionData, wormholeData, systemDebrisData, missionsData, zones] = await Promise.all([
+           miningData, expeditionData, wormholeData, systemDebrisData, missionsData, researchData, zones] = await Promise.all([
       apiFetch(`/api/planets/${planetId}/shipyard`, token),
       apiFetch(REPORTS_PATH, token),
       apiFetch(PIRATES_PATH, token),
@@ -1358,6 +1359,7 @@ async function scrape() {
       apiFetch(WORMHOLE_PATH, token).catch(() => ({ runs: [] })),
       apiFetch(SYSTEM_DEBRIS_PATH, token).catch(() => ({ debris: [] })),
       apiFetch(MISSIONS_PATH, token).catch(() => ({ missions: [] })),
+      apiFetch(RESEARCH_PATH, token).catch(() => ({ research: [] })),
       getSystemZones(token),
     ]);
 
@@ -1378,6 +1380,7 @@ async function scrape() {
       await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships, zones, wormholeZones, wormholeClasses || {});
       await processSystemDebris(systemDebrisData.debris || [], zones);
       await processMissions(missionsData.missions || [], zoneById || {}, ships);
+      await browser.storage.local.set({ research: researchData.research || [] });
       await processSpyReports(spyData.reports || []);
       await processCampScoutReports(campScoutData.reports || []);
       await checkDrift();
@@ -1410,6 +1413,7 @@ const WATCHED_URLS = [
   `${GAME_URL}/api/fleet/wormhole-runs*`,
   `${GAME_URL}/api/fleet/system-debris*`,
   `${GAME_URL}/api/fleet/missions*`,
+  `${GAME_URL}/api/research*`,
   `${GAME_URL}/api/planets/*/shipyard*`,
 ];
 
@@ -1465,6 +1469,10 @@ function routeIntercepted(url, json) {
     if (url.includes('/missions')) {
       const { system_zone_by_id, ships } = await browser.storage.local.get(['system_zone_by_id', 'ships']);
       await processMissions(json.missions || [], system_zone_by_id || {}, ships || {});
+      return;
+    }
+    if (url.includes('/api/research')) {
+      await browser.storage.local.set({ research: json.research || [] });
       return;
     }
     const { ships, system_zones, camp_zones, wormhole_zones, wormhole_classes } =

@@ -14,6 +14,7 @@ async function loadAll() {
     'debris_fields', 'debris_last_check',
     'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
     'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'stats_drift',
+    'research',
   ]);
 
   const cap = store.records_cap ?? 500;
@@ -86,6 +87,10 @@ function renderAll() {
     initFinderTab();
     return;
   }
+  if (activeTab === 'techtree') {
+    renderTechTreeTab();
+    return;
+  }
   populateEventOptions();
   const mode = getMode();
   const t = getTotalsForMode();
@@ -113,6 +118,7 @@ const TAB_CONTENT = {
   debris: 'debris-content',
   expeditions: 'expeditions-content',
   finder: 'finder-content',
+  techtree: 'techtree-content',
 };
 
 document.querySelectorAll('.tab').forEach(btn => {
@@ -124,7 +130,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     }
     // View mode and records cap are meaningless on the finder and debris tabs.
     document.querySelector('.controls').style.display =
-      (activeTab === 'finder' || activeTab === 'debris') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'debris' || activeTab === 'techtree') ? 'none' : '';
     renderAll();
   });
 });
