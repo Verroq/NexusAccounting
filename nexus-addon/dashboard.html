@@ -15,6 +15,7 @@
     <button class="tab" data-tab="debris">Debris</button>
     <button class="tab" data-tab="expeditions">Expeditions</button>
     <button class="tab" data-tab="finder">Planet Finder</button>
+    <button class="tab" data-tab="techtree">Tech Tree</button>
   </nav>
 
   <div class="status-bar">
@@ -422,6 +423,20 @@
     </div>
   </div>
 
+  <div id="techtree-content" style="display:none;">
+    <div class="controls" style="margin-top:0;">
+      <label for="tt-branch">Branch:</label>
+      <select id="tt-branch">
+        <option value="all">All branches</option>
+      </select>
+      <button id="tt-fit">Fit width</button>
+      <input id="tt-search" type="search" placeholder="Search tech…" style="margin-left:8px;">
+      <span id="tt-summary" style="margin-left:12px; color:#8b949e; font-size:0.8rem;"></span>
+    </div>
+    <div id="tt-legend"></div>
+    <div id="techtree"></div>
+  </div>
+
   <div id="storage-footer" style="margin-top:24px; padding-top:10px; border-top:1px solid #21262d;
        color:#484f58; font-size:0.75rem;"></div>
 
@@ -435,6 +450,7 @@
   <script src="tabs/debris.js"></script>
   <script src="tabs/expeditions.js"></script>
   <script src="tabs/finder.js"></script>
+  <script src="tabs/techtree.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>
