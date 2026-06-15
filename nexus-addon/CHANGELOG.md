@@ -4,6 +4,23 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.0] - 2026-06-15
+
+### Added
+- Tech Tree tab: renders `/api/research` as a top-to-bottom dependency
+  graph (OGame style). Rows are prerequisite depth; prerequisites sit
+  above their dependents.
+- Long edges route through invisible waypoints merged per source into
+  vertical buses, so dependencies weave around nodes instead of crossing
+  them. Crossing reduction uses barycenter (mean + median) with
+  adjacent-transpose refinement, keeping the lowest-crossing ordering.
+- Rounded orthogonal edges coloured by prerequisite branch, dashed/faded
+  when the prereq is unmet, arrowheads into dependents.
+- Nodes show branch accent + status; researchable-now techs glow, locked
+  techs recede. Tier labels, row bands, and a legend aid orientation.
+- Interaction: hover/click-pin chain highlight, drag-pan, wheel zoom,
+  fit-to-width, branch filter, and search-to-highlight.
+
 ## [1.4.0] - 2026-06-15
 
 ### Changed
