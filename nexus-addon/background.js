@@ -57,7 +57,59 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_ARMS') return apiGet('/api/galaxy/arms');
   if (msg.type === 'GET_GALAXY_MAP') return apiGet('/api/galaxy/map');
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
+  if (msg.type === 'GET_HOME') return getHome();
+  if (msg.type === 'GET_ALLIANCE') return getAlliance();
+  if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
 });
+
+// Your alliance tag + member ids, so the finder can flag alliance-owned
+// planets it scans.
+async function getAlliance() {
+  const token = await getToken();
+  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  try {
+    const data = await apiFetch('/api/alliances/my', token);
+    const a = data.alliance || {};
+    const members = a.members || [];
+    return {
+      tag: a.tag || null,
+      name: a.name || null,
+      memberIds: members.map(m => m.userId).filter(x => x != null),
+    };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+// Home reference for the planet finder: home system coords (for distance) and
+// the player's user id (to flag/exclude own planets).
+async function getHome() {
+  const token = await getToken();
+  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  try {
+    const data = await apiFetch('/api/planets', token);
+    const planets = data.planets || [];
+    const home = planets.find(p => p.isHomeworld) || planets[0];
+    if (!home) return { error: 'No planets found for this account' };
+    const systemId = home.systemId ?? home.system?.id ?? null;
+    // /api/planets carries no userId; read it from the JWT payload instead.
+    const userId = home.userId ?? jwtUserId(token);
+    const ownedSystemIds = planets.map(p => p.systemId ?? p.system?.id).filter(x => x != null);
+    return { systemId, userId, name: home.name || null, ownedSystemIds };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+// Decode the userId claim from the nexus_token JWT payload (best-effort).
+function jwtUserId(token) {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(payload)).userId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // Authenticated GET for dashboard pages (they have no cookie access of their own).
 async function apiGet(path) {
@@ -72,20 +124,60 @@ async function apiGet(path) {
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 
+// Find the nexus_token cookie. It can live outside the default store — a
+// Firefox container tab, a private window, or as a partitioned (CHIPS)
+// cookie — so fall back to searching every cookie store domain-wide.
 async function getToken() {
-  for (const url of [GAME_URL, 'https://nexuslegacy.space']) {
-    const c = await browser.cookies.get({ url, name: 'nexus_token' });
-    if (c?.value) return c.value;
+  const NAME = 'nexus_token';
+  const urls = [GAME_URL, 'https://nexuslegacy.space'];
+
+  const lookup = async (storeId) => {
+    const store = storeId ? { storeId } : {};
+    for (const url of urls) {
+      try {
+        const c = await browser.cookies.get({ url, name: NAME, ...store });
+        if (c?.value) return c.value;
+      } catch { /* store may not support get */ }
+    }
+    try {
+      const all = await browser.cookies.getAll({ domain: 'nexuslegacy.space', name: NAME, ...store });
+      const hit = (all || []).find(c => c.value);
+      if (hit) return hit.value;
+    } catch { /* ignore */ }
+    return null;
+  };
+
+  const direct = await lookup(null);
+  if (direct) return direct;
+
+  let storeIds = [];
+  try {
+    const stores = await browser.cookies.getAllCookieStores();
+    storeIds = (stores || []).map(s => s.id);
+    for (const s of (stores || [])) {
+      const v = await lookup(s.id);
+      if (v) return v;
+    }
+  } catch (e) {
+    console.warn('[NexusAccounting] getAllCookieStores failed:', e.message);
   }
+
+  console.warn(`[NexusAccounting] nexus_token not found. Checked default + stores: [${storeIds.join(', ')}]. ` +
+    `Open the game (logged in) in a normal tab, or check the cookie exists on s0.nexuslegacy.space.`);
   return null;
 }
 
 // ── API ────────────────────────────────────────────────────────────────────
 
 async function apiFetch(path, token) {
-  const r = await fetch(`${GAME_URL}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let r;
+  try {
+    r = await fetch(`${GAME_URL}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    throw new Error(`API ${path} → ${e.message}`);   // network/CORS/blocked
+  }
   if (!r.ok) throw new Error(`API ${path} → ${r.status}`);
   return r.json();
 }

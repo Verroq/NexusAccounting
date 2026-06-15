@@ -4,6 +4,33 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.2] - 2026-06-15
+
+### Fixed
+- Widened host permissions to `*://*.nexuslegacy.space/*` so a single grant
+  covers the `s0` (and any future universe) subdomain. Previously only the
+  apex was granted on Firefox, leaving the API host unauthorized — every
+  request was CORS-blocked and the addon reported "not logged in" with no
+  data.
+- `getToken` now searches every cookie store (Firefox containers, private
+  windows) and domain-wide, not just the default store with two exact URLs.
+- API errors now name the failing endpoint (network/CORS failures included).
+
+### Added
+- Planet Finder: Max size, temperature range, security-zone, and
+  "exclude mine" filters; Zone and Distance-from-home columns (sortable).
+- A flaky system during a scan is now skipped and counted instead of
+  aborting the whole scan.
+- Galaxy map is now interactive: drag to pan, wheel to zoom toward the
+  cursor; clicking a results row centers and rings that system. Matches
+  table moved above the map.
+- Map markers: your planets show a light-green aura; alliance-owned
+  systems found while scanning get the same aura with the player's name;
+  market hubs are drawn as yellow diamonds.
+- Owner-only galaxy export/import: share scanned-planet knowledge as a
+  JSON file, merged by freshest scan per system. Imported systems become
+  searchable even if you haven't explored them.
+
 ## [1.5.1] - 2026-06-15
 
 ### Changed
