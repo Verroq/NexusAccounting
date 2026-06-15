@@ -380,8 +380,22 @@
       <label>Min size
         <input id="f-min-size" type="number" min="0" value="0" />
       </label>
+      <label>Max size
+        <input id="f-max-size" type="number" min="0" placeholder="∞" />
+      </label>
       <label>Min moons
         <input id="f-min-moons" type="number" min="0" value="0" />
+      </label>
+      <label>Temp ≥
+        <input id="f-temp-min" type="number" placeholder="−∞" />
+      </label>
+      <label>Temp ≤
+        <input id="f-temp-max" type="number" placeholder="∞" />
+      </label>
+      <label>Zone
+        <select id="f-zone">
+          <option value="">any</option>
+        </select>
       </label>
       <label>Ownership
         <select id="f-ownership">
@@ -390,14 +404,14 @@
           <option value="owned">owned only</option>
         </select>
       </label>
+      <label style="flex-direction:row; gap:5px;">
+        <input id="f-exclude-mine" type="checkbox" />Exclude mine
+      </label>
       <button id="f-search">Search</button>
+      <button id="f-export" title="Save your scanned planet data to a file to share" style="display:none;">Export galaxy</button>
+      <button id="f-import" title="Merge scanned planet data from a shared file" style="display:none;">Import galaxy</button>
+      <input id="f-import-file" type="file" accept="application/json,.json" style="display:none" />
       <span id="f-progress" style="color:#8b949e; font-size:0.8rem;"></span>
-    </div>
-
-    <div class="chart-box" style="position:relative; margin-bottom:20px;">
-      <canvas id="f-map" width="1100" height="640" style="width:100%; max-height:none; cursor:crosshair;"></canvas>
-      <div id="f-tooltip" style="display:none; position:absolute; background:#161b22; border:1px solid #30363d;
-           border-radius:6px; padding:6px 10px; font-size:0.75rem; pointer-events:none; z-index:10;"></div>
     </div>
 
     <div class="reports-section">
@@ -415,11 +429,19 @@
             <th class="sortable" data-key="size">Size</th>
             <th class="sortable" data-key="temp">Temp</th>
             <th class="sortable" data-key="moons">Moons</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="distance">Distance</th>
             <th class="sortable" data-key="owner">Owner</th>
           </tr>
         </thead>
         <tbody id="f-results-tbody"></tbody>
       </table>
+    </div>
+
+    <div class="chart-box" style="position:relative; margin-top:20px;">
+      <canvas id="f-map" width="1100" height="640" style="width:100%; max-height:none; cursor:crosshair;"></canvas>
+      <div id="f-tooltip" style="display:none; position:absolute; background:#161b22; border:1px solid #30363d;
+           border-radius:6px; padding:6px 10px; font-size:0.75rem; pointer-events:none; z-index:10;"></div>
     </div>
   </div>
 
