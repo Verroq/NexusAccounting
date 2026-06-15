@@ -103,6 +103,12 @@ function populateBranchOptions(research) {
 function computeDepths(research) {
   const byKey = {};
   for (const t of research) byKey[t.key] = t;
+  // Lab-level floor: map each distinct required lab level to a compact rank so
+  // higher-lab techs never sit above lower-lab ones (tiebreak when the
+  // prerequisite chain alone doesn't already push them deeper).
+  const labLevels = [...new Set(research.map(t => t.requiredLabLevel || 0))].sort((a, b) => a - b);
+  const labFloor = {};
+  labLevels.forEach((lv, i) => { labFloor[lv] = i; });
   const depth = {};
   const visit = (key, seen) => {
     if (key in depth) return depth[key];
@@ -110,10 +116,10 @@ function computeDepths(research) {
     if (!t || seen.has(key)) return 0;
     seen.add(key);
     const reqs = (t.requirements || []).filter(r => r.type === 'research' && byKey[r.key]);
-    const d = reqs.length ? 1 + Math.max(...reqs.map(r => visit(r.key, seen))) : 0;
+    const prereqD = reqs.length ? 1 + Math.max(...reqs.map(r => visit(r.key, seen))) : 0;
     seen.delete(key);
-    depth[key] = d;
-    return d;
+    depth[key] = Math.max(prereqD, labFloor[t.requiredLabLevel || 0]);
+    return depth[key];
   };
   for (const t of research) visit(t.key, new Set());
   return depth;
