@@ -275,23 +275,26 @@ const RESOURCE_WEIGHTS = { ore: 1, silicates: 2, hydrogen: 3, alloys: 5 };
 // Net gain cards: resources collected minus ship build costs, per resource
 // (raw), plus a weighted total (ore×1, silicates×2, hydrogen×3, alloys×5).
 // Rare resource losses are not in the total (no common valuation).
-function renderNetCards(containerId, collected, lost, periodLabel) {
+function renderNetCards(containerId, collected, lost, periodLabel, fuelHydrogen = 0) {
   const el = document.getElementById(containerId);
   if (!el) return;
   el.textContent = '';
   const cost = combinedLost(lost);   // destruction + repair
+  const fuel = fuelHydrogen || 0;
   const fields = [
     ['Ore', 'ore'], ['Silicates', 'silicates'], ['Hydrogen', 'hydrogen'], ['Alloys', 'alloys'],
   ];
   let total = 0;
   for (const [label, key] of fields) {
-    const v = (collected[key] || 0) - (cost[key] || 0);
+    let v = (collected[key] || 0) - (cost[key] || 0);
+    if (key === 'hydrogen') v -= fuel;   // fuel is hydrogen burned on the trip
     total += v * RESOURCE_WEIGHTS[key];
     el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), key));
   }
   const totalCard = makeStatCard(`Total net${periodLabel}`, (total >= 0 ? '+' : '') + fmt(total),
     '', total >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5. Rare resource losses not included.';
+  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5. Rare resource losses not included.'
+    + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
   el.appendChild(totalCard);
 }
 

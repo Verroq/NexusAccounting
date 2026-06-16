@@ -102,7 +102,7 @@ function renderAll() {
 
   renderCollected(t, periodLabel);
   renderLost(rl, periodLabel);
-  renderNetCards('stats-net', t, rl, periodLabel);
+  renderNetCards('stats-net', t, rl, periodLabel, t.fuel || 0);
   renderResourceChart(series, labelKey);
   renderEventsChart(events);
   renderByEventChart(events);

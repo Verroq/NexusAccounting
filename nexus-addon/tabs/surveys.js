@@ -106,6 +106,7 @@ function renderCollected(t, periodLabel) {
     makeStatCard(`Hydrogen${periodLabel}`,   fmt(t.hydrogen),   'hydrogen'),
     makeStatCard(`Missions${periodLabel}`,   fmt(t.missions),   'missions'),
     makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
+    makeStatCard(`Fuel spent est.${periodLabel}`, fmt(t.fuel || 0), 'hydrogen'),
   );
 }
 

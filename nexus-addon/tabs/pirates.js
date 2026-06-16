@@ -90,7 +90,7 @@ function renderPiratesTab() {
   }
 
   renderLostCards('p-stats-lost', 'p-stats-repair', rl, periodLabel);
-  renderNetCards('p-stats-net', t, rl, periodLabel);
+  renderNetCards('p-stats-net', t, rl, periodLabel, t.fuel || 0);
 
   const debrisEl = document.getElementById('p-stats-debris');
   debrisEl.textContent = '';
