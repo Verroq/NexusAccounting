@@ -4,6 +4,23 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.4] - 2026-06-17
+
+### Added
+- Fuel cost estimate folded into net gain. Each survey, pirate, and mining
+  report now estimates the round-trip hydrogen burned
+  (`Σ(fuelRate×qty) × (0.0517×galaxyDist + 9.24)`, fitted to real send-fleet
+  costs) and subtracts it from the Hydrogen and Total net. Survey shows a
+  "Fuel spent est." card too.
+- Galaxy map caches system coordinates; pirate-camps cache coordinates; the
+  home system id is cached — all to measure travel distance.
+
+### Notes
+- Fuel needs a fresh Scrape Now to populate the new ship/coordinate fields,
+  and only applies to newly scraped reports. Survey fuel uses an assumed
+  fleet by zone (the report omits the fleet sent). Reports whose target
+  system is unexplored show no fuel.
+
 ## [1.5.3] - 2026-06-16
 
 ### Added
