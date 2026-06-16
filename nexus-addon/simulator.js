@@ -181,6 +181,63 @@ function renderResults(result, opts) {
     makeStatCard('Debris silicates', fmt((a.silicates + d.silicates) * opts.debrisRate), 'silicates'),
     makeStatCard('Debris alloys',    fmt((a.alloys + d.alloys) * opts.debrisRate),       'alloys'),
   );
+
+  renderFuel(result.attackerLosses, opts);
+}
+
+// One representative run, shown round by round (like the in-game report).
+function renderSampleBattle(attackerFleet, defenderFleet, opts) {
+  const tbody = document.getElementById('rounds-log');
+  tbody.textContent = '';
+  const sample = simulateOnce(attackerFleet, defenderFleet, { ...opts, trace: true });
+  for (const r of (sample.trace || [])) {
+    const tr = document.createElement('tr');
+    const lost = [
+      r.attackerLost ? `${r.attackerLost} atk` : '',
+      r.defenderLost ? `${r.defenderLost} def` : '',
+    ].filter(Boolean).join(', ') || '—';
+    const cells = [
+      `${r.round}`,
+      `${r.attackerShips}`, `${r.attackerHpPct}%`,
+      `${r.defenderShips}`, `${r.defenderHpPct}%`,
+      lost,
+    ];
+    cells.forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); });
+    tbody.appendChild(tr);
+  }
+  const note = document.createElement('tr');
+  const td = document.createElement('td');
+  td.colSpan = 6;
+  td.style.cssText = 'color:#8b949e;font-size:0.75rem;';
+  td.textContent = `Sample outcome: ${sample.outcome.replace(/_/g, ' ')} in ${sample.rounds} rounds (one run — varies; see stats above for averages).`;
+  note.appendChild(td);
+  tbody.appendChild(note);
+}
+
+// Fuel (hydrogen) for the whole attacking fleet: fuelRate is per-AU per ship.
+function renderFuel(attackerLosses, opts) {
+  const el = document.getElementById('fuel-stats');
+  el.textContent = '';
+  let perAU = 0, missing = false;
+  for (const [key, l] of Object.entries(attackerLosses)) {
+    const def = shipDefs[key];
+    if (!def) continue;
+    if (!def.fuelRate) missing = true;
+    perAU += (def.fuelRate || 0) * l.sent;
+  }
+  const mult = opts.roundTrip ? 2 : 1;
+  const total = perAU * opts.distanceAU * mult;
+  el.append(
+    makeStatCard(`Total fuel${opts.roundTrip ? ' (round trip)' : ' (one way)'}`,
+      opts.distanceAU > 0 ? fmt(Math.round(total)) : '— set distance', 'hydrogen'),
+    makeStatCard('Per AU (one way)', fmt(Math.round(perAU)), 'hydrogen'),
+  );
+  if (missing) {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:0.75rem;color:#8b949e;margin-top:6px;';
+    hint.textContent = 'Some ships have no fuel rate yet — open the game and Scrape Now to refresh ship data.';
+    el.appendChild(hint);
+  }
 }
 
 // Show average survivors next to each ship quantity input after a run.
@@ -275,6 +332,8 @@ document.getElementById('btn-run').addEventListener('click', () => {
     variance: (parseInt(document.getElementById('opt-variance').value, 10) || 0) / 100,
     debrisRate: Math.min(1, Math.max(0, (parseInt(document.getElementById('opt-debris').value, 10) || 0) / 100)),
     shieldRegen: document.getElementById('opt-shield-regen').checked,
+    distanceAU: Math.max(0, parseFloat(document.getElementById('opt-distance').value) || 0),
+    roundTrip: document.getElementById('opt-roundtrip').checked,
     attackerMods: readMods('attacker'),
     defenderMods: readMods('defender'),
     defense: {
@@ -288,6 +347,7 @@ document.getElementById('btn-run').addEventListener('click', () => {
   setTimeout(() => {
     const result = runSimulations(attackerFleet, defenderFleet, opts);
     renderResults(result, opts);
+    renderSampleBattle(attackerFleet, defenderFleet, opts);
     status.textContent = `Done — ${opts.sims} simulations.`;
     document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
   }, 10);

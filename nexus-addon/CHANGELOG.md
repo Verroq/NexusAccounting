@@ -4,6 +4,24 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.3] - 2026-06-16
+
+### Added
+- Combat simulator now shows a round-by-round "sample battle" (one
+  representative run): ships and HP% per side each round, kills, and the
+  sample outcome — alongside the Monte-Carlo averages.
+- Fuel estimate for the attacking fleet: enter a distance (AU), optional
+  round-trip, and get total hydrogen from each ship's fuel rate.
+
+### Changed
+- Rapid-fire table rebuilt from the exact in-game ship screens (fighter
+  and carrier entries added; cruiser, battleship, bomber, interceptor
+  values corrected).
+- Rapid fire and ship stats now resolve pirate/NPC ships (e.g.
+  "Pirate Fighter") to their base class, so the engine can simulate
+  wormhole/pirate fleets and the validator can replay those reports.
+- Ship catalog now stores fuel rate and cargo capacity.
+
 ## [1.5.2] - 2026-06-15
 
 ### Fixed

@@ -228,6 +228,12 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
     for (const s of defenders) s.drMult *= ewMult;
   }
 
+  // Optional round-by-round trace (for the "sample battle" display).
+  const curHp = arr => arr.reduce((m, s) => m + Math.max(0, s.hp) + Math.max(0, s.shield), 0);
+  const trace = opts.trace ? [] : null;
+  const atk0 = curHp(attackers) || 1, def0 = curHp(defenders) || 1;
+  let prevAtk = attackers.length, prevDef = defenders.length;
+
   while (attackers.length && defenders.length && rounds < opts.maxRounds) {
     rounds++;
     if (opts.shieldRegen) {
@@ -240,6 +246,16 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
     fireVolley(defenders, attackers, opts);
     attackers = applyPending(attackers);
     defenders = applyPending(defenders);
+    if (trace) {
+      trace.push({
+        round: rounds,
+        attackerShips: attackers.length, defenderShips: defenders.length,
+        attackerLost: prevAtk - attackers.length, defenderLost: prevDef - defenders.length,
+        attackerHpPct: Math.round(100 * curHp(attackers) / atk0),
+        defenderHpPct: Math.round(100 * curHp(defenders) / def0),
+      });
+      prevAtk = attackers.length; prevDef = defenders.length;
+    }
   }
 
   let outcome;
@@ -249,7 +265,7 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
   else outcome = 'defender_held'; // round cap reached — defender holds the field
 
   const count = arr => arr.reduce((m, s) => { m[s.key] = (m[s.key] || 0) + 1; return m; }, {});
-  return { outcome, rounds, attackersLeft: count(attackers), defendersLeft: count(defenders) };
+  return { outcome, rounds, attackersLeft: count(attackers), defendersLeft: count(defenders), trace };
 }
 
 function runSimulations(attackerFleet, defenderFleet, opts) {
