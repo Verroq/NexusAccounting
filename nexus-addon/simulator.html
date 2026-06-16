@@ -31,6 +31,13 @@
       <input id="opt-shield-regen" type="checkbox" />
       Shields regenerate each round
     </label>
+    <label>Distance (AU)
+      <input id="opt-distance" type="number" value="0" min="0" step="0.1" />
+    </label>
+    <label class="checkbox-label">
+      <input id="opt-roundtrip" type="checkbox" checked />
+      Round trip (×2 fuel)
+    </label>
     <button id="btn-run">Run simulation</button>
     <button id="btn-clear">Clear fleets</button>
   </div>
@@ -79,6 +86,12 @@
     <div class="section-label">Outcome (across all simulations)</div>
     <div class="stats" id="outcome-stats"></div>
 
+    <div class="section-label">Sample battle — round by round (one representative run)</div>
+    <table class="rounds-table"><thead><tr>
+      <th>Round</th><th>Attacker ships</th><th>ATK HP</th>
+      <th>Defender ships</th><th>DEF HP</th><th>Destroyed</th>
+    </tr></thead><tbody id="rounds-log"></tbody></table>
+
     <div class="sim-layout">
       <div class="fleet-box">
         <h2 class="fleet-title attacker">Attacker — average losses</h2>
@@ -96,6 +109,9 @@
 
     <div class="section-label">Average debris field generated</div>
     <div class="stats" id="debris-stats"></div>
+
+    <div class="section-label">Fuel for the attacking fleet</div>
+    <div class="stats" id="fuel-stats"></div>
   </div>
 
   <div class="reports-section">

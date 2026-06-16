@@ -19,24 +19,33 @@ const WEAPON_VS_ARMOR = {
 // "Plasma … chews through shield HP faster", "Ion … great at burning down shield HP"
 const SHIELD_BURN = { plasma: 1.5, ion: 2.0 };
 
-// Shots per round vs specific targets. Sources: ship descriptions (exact where
-// stated) and the guide's hard-counter
+// Shots per round vs specific targets. ALL values EXACT, read from the in-game
+// ship "Rapid Fire → Strong vs" screens (2026-06-16). Ships not listed
+// (scout, probe, spy_probe, civilians) have no rapid fire → 1 shot.
 const RAPID_FIRE = {
-  interceptor:     { fighter: 5, probe: 5, spy_probe: 5, scout: 5 },
-  cruiser:         { fighter: 5, scout: 5, interceptor: 5 },           // desc: ×5 fighters; guide: hunts scouts+interceptors too
-  torpedo_frigate: { battleship: 3, dreadnought: 2, titan: 2 },
-  battleship:      { cruiser: 4, missile_cruiser: 4 },
+  fighter:         { probe: 5, spy_probe: 5, torpedo_frigate: 4 },
+  interceptor:     { scout: 5, probe: 5, spy_probe: 5, fighter: 4 },
+  cruiser:         { scout: 5, fighter: 4, interceptor: 2 },
+  carrier:         { scout: 5, fighter: 3 },
+  battleship:      { interceptor: 5, cruiser: 4, missile_cruiser: 3 },
   missile_cruiser: { fighter: 5, interceptor: 4, bomber: 3 },
-  bomber:          { defense_turret: 5 }, // exact: "×5 rapid fire vs defense buildings"
-  // Dreadnought & titan values are exact, read from the in-game ship screens.
+  torpedo_frigate: { battleship: 3, dreadnought: 2, titan: 2 },
+  bomber:          { defense_turret: 3 },   // ×3 vs every defense-building type
   dreadnought:     { cruiser: 5, bomber: 4, battleship: 3, missile_cruiser: 3, fighter: 3, interceptor: 2, carrier: 2 },
   titan:           { scout: 20, fighter: 15, interceptor: 10, cruiser: 8, battleship: 5, missile_cruiser: 5, bomber: 5, carrier: 5, dreadnought: 3 },
 };
 
+// Enemy ships carry variant keys (e.g. wormhole_pirate_fighter) but fight as
+// their base class, so strip the faction prefix before matching rapid fire —
+// otherwise an interceptor's ×5 vs fighters never fires at pirate fighters.
+function normalizeShipKey(key) {
+  return (key || '').replace(/^(wormhole_)?(pirate_|alien_|rogue_|elite_)?/, '');
+}
+
 function rapidFireShots(attackerKey, targetKey) {
-  const rf = RAPID_FIRE[attackerKey];
+  const rf = RAPID_FIRE[normalizeShipKey(attackerKey)];
   if (!rf) return 1;
-  return rf[targetKey] || 1;
+  return rf[normalizeShipKey(targetKey)] || 1;
 }
 
 // Combat research from /api/research. All rates exact, read from the in-game
@@ -104,7 +113,10 @@ function buildInstances(fleet, mods) {
   const m = mods || NO_MODS;
   const out = [];
   for (const [key, qty] of Object.entries(fleet)) {
-    const def = shipDefs[key];
+    // Pirate/NPC ships (wormhole_pirate_fighter, …) aren't in the player
+    // shipyard, but they're the same class as the like-named player ship —
+    // fall back to that base-class def.
+    const def = shipDefs[key] || shipDefs[normalizeShipKey(key)];
     if (!def || !qty) continue;
     const attackBonus = (m.weapon[def.weaponType] || 0) + m.weaponAll + (m.ship[key] || 0);
     const maxHp = def.hp * (1 + m.hull);
@@ -216,6 +228,12 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
     for (const s of defenders) s.drMult *= ewMult;
   }
 
+  // Optional round-by-round trace (for the "sample battle" display).
+  const curHp = arr => arr.reduce((m, s) => m + Math.max(0, s.hp) + Math.max(0, s.shield), 0);
+  const trace = opts.trace ? [] : null;
+  const atk0 = curHp(attackers) || 1, def0 = curHp(defenders) || 1;
+  let prevAtk = attackers.length, prevDef = defenders.length;
+
   while (attackers.length && defenders.length && rounds < opts.maxRounds) {
     rounds++;
     if (opts.shieldRegen) {
@@ -228,6 +246,16 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
     fireVolley(defenders, attackers, opts);
     attackers = applyPending(attackers);
     defenders = applyPending(defenders);
+    if (trace) {
+      trace.push({
+        round: rounds,
+        attackerShips: attackers.length, defenderShips: defenders.length,
+        attackerLost: prevAtk - attackers.length, defenderLost: prevDef - defenders.length,
+        attackerHpPct: Math.round(100 * curHp(attackers) / atk0),
+        defenderHpPct: Math.round(100 * curHp(defenders) / def0),
+      });
+      prevAtk = attackers.length; prevDef = defenders.length;
+    }
   }
 
   let outcome;
@@ -237,7 +265,7 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
   else outcome = 'defender_held'; // round cap reached — defender holds the field
 
   const count = arr => arr.reduce((m, s) => { m[s.key] = (m[s.key] || 0) + 1; return m; }, {});
-  return { outcome, rounds, attackersLeft: count(attackers), defendersLeft: count(defenders) };
+  return { outcome, rounds, attackersLeft: count(attackers), defendersLeft: count(defenders), trace };
 }
 
 function runSimulations(attackerFleet, defenderFleet, opts) {
@@ -276,7 +304,7 @@ function runSimulations(attackerFleet, defenderFleet, opts) {
 function lossesToResources(losses) {
   const total = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0 };
   for (const [key, l] of Object.entries(losses)) {
-    const def = shipDefs[key];
+    const def = shipDefs[key] || shipDefs[normalizeShipKey(key)];
     if (!def) continue;
     total.ore += l.lost * def.costOre;
     total.silicates += l.lost * def.costSilicates;
@@ -295,7 +323,7 @@ function setShipDefs(defs) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    WEAPON_VS_ARMOR, SHIELD_BURN, RAPID_FIRE, rapidFireShots,
+    WEAPON_VS_ARMOR, SHIELD_BURN, RAPID_FIRE, rapidFireShots, normalizeShipKey,
     TECHS, TECH_MAX_LEVEL, computeMods, NO_MODS,
     DEFENSE_EST, buildDefenseInstance, buildInstances,
     pickTarget, fireVolley, applyPending,

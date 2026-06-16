@@ -1,4 +1,5 @@
 .sim-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+.rounds-table { margin-bottom: 20px; }
 .fleet-box {
   background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px;
 }

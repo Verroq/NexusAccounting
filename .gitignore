@@ -28,3 +28,5 @@ nexus_legacy_survey_tracker-*.xpi
 
 # Chrome package (built alongside the xpi; distributed via the Web Store)
 nexus-accounting-*.zip
+
+Stats.txt

@@ -477,6 +477,9 @@ function buildShipCatalog(shipyardData) {
       shipClass: s.shipClass || 'utility',
       shipSize: s.shipSize || 'small',
       sortOrder: s.sortOrder || 0,
+      // Logistics
+      fuelRate: s.fuelRate || 0,            // hydrogen per AU travelled
+      cargoCapacity: s.cargoCapacity || 0,
     };
   }
   return ships;
