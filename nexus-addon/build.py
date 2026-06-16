@@ -7,9 +7,6 @@ Usage, from nexus-addon/:
                                 for review and public distribution
 
 Submission needs AMO credentials in the environment or in ../.env
-(gitignored):
-    WEB_EXT_API_KEY=user:12345678:123
-    WEB_EXT_API_SECRET=...
 
 Listed versions are reviewed by Mozilla humans and distributed/updated by
 AMO itself — there is no self-hosted update channel. Track review status at

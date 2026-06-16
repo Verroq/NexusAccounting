@@ -22,10 +22,10 @@ const SHIELD_BURN = { plasma: 1.5, ion: 2.0 };
 // Shots per round vs specific targets. Sources: ship descriptions (exact where
 // stated) and the guide's hard-counter
 const RAPID_FIRE = {
-  interceptor:     { fighter: 5, probe: 5, spy_probe: 5, scout: 5 },
-  cruiser:         { fighter: 5, scout: 5, interceptor: 5 },           // desc: ×5 fighters; guide: hunts scouts+interceptors too
+  interceptor:     { scout: 5, probe: 5, spy_probe: 5, fighter: 4 },   // EXACT (in-game ship screen, report #881)
+  cruiser:         { fighter: 5, scout: 5, interceptor: 2 },           // interceptor ×2 EXACT; fighter/scout estimated
   torpedo_frigate: { battleship: 3, dreadnought: 2, titan: 2 },
-  battleship:      { cruiser: 4, missile_cruiser: 4 },
+  battleship:      { cruiser: 4, missile_cruiser: 4, interceptor: 5 }, // interceptor ×5 EXACT
   missile_cruiser: { fighter: 5, interceptor: 4, bomber: 3 },
   bomber:          { defense_turret: 5 }, // exact: "×5 rapid fire vs defense buildings"
   // Dreadnought & titan values are exact, read from the in-game ship screens.
@@ -33,10 +33,17 @@ const RAPID_FIRE = {
   titan:           { scout: 20, fighter: 15, interceptor: 10, cruiser: 8, battleship: 5, missile_cruiser: 5, bomber: 5, carrier: 5, dreadnought: 3 },
 };
 
+// Enemy ships carry variant keys (e.g. wormhole_pirate_fighter) but fight as
+// their base class, so strip the faction prefix before matching rapid fire —
+// otherwise an interceptor's ×5 vs fighters never fires at pirate fighters.
+function normalizeShipKey(key) {
+  return (key || '').replace(/^(wormhole_)?(pirate_|alien_|rogue_|elite_)?/, '');
+}
+
 function rapidFireShots(attackerKey, targetKey) {
-  const rf = RAPID_FIRE[attackerKey];
+  const rf = RAPID_FIRE[normalizeShipKey(attackerKey)];
   if (!rf) return 1;
-  return rf[targetKey] || 1;
+  return rf[normalizeShipKey(targetKey)] || 1;
 }
 
 // Combat research from /api/research. All rates exact, read from the in-game
@@ -295,7 +302,7 @@ function setShipDefs(defs) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    WEAPON_VS_ARMOR, SHIELD_BURN, RAPID_FIRE, rapidFireShots,
+    WEAPON_VS_ARMOR, SHIELD_BURN, RAPID_FIRE, rapidFireShots, normalizeShipKey,
     TECHS, TECH_MAX_LEVEL, computeMods, NO_MODS,
     DEFENSE_EST, buildDefenseInstance, buildInstances,
     pickTarget, fireVolley, applyPending,

@@ -17,6 +17,14 @@ test('rapid fire table', () => {
   assert.equal(engine.rapidFireShots('titan', 'probe'), 1);       // unlisted target → 1
 });
 
+test('rapid fire matches faction-prefixed enemy ships (report #881)', () => {
+  // Interceptor's ×4 vs fighters (exact) must apply to wormhole_pirate_fighter.
+  assert.equal(engine.rapidFireShots('interceptor', 'wormhole_pirate_fighter'), 4);
+  assert.equal(engine.rapidFireShots('wormhole_pirate_interceptor', 'pirate_fighter'), 4);
+  assert.equal(engine.normalizeShipKey('wormhole_pirate_fighter'), 'fighter');
+  assert.equal(engine.normalizeShipKey('spy_probe'), 'spy_probe');   // not over-stripped
+});
+
 test('research modifiers compute exact in-game rates', () => {
   const m = engine.computeMods({
     laser_weapons: 5, fighter_doctrine: 5, weapons_overcharge: 2,
