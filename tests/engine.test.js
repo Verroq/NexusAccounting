@@ -12,7 +12,11 @@ test('rapid fire table', () => {
   assert.equal(engine.rapidFireShots('titan', 'scout'), 20);
   assert.equal(engine.rapidFireShots('titan', 'dreadnought'), 3);
   assert.equal(engine.rapidFireShots('dreadnought', 'cruiser'), 5);
-  assert.equal(engine.rapidFireShots('bomber', 'defense_turret'), 5);
+  assert.equal(engine.rapidFireShots('bomber', 'defense_turret'), 3);
+  assert.equal(engine.rapidFireShots('cruiser', 'fighter'), 4);   // EXACT (was 5)
+  assert.equal(engine.rapidFireShots('battleship', 'missile_cruiser'), 3); // EXACT (was 4)
+  assert.equal(engine.rapidFireShots('carrier', 'scout'), 5);     // EXACT (newly added)
+  assert.equal(engine.rapidFireShots('fighter', 'spy_probe'), 5); // EXACT (newly added)
   assert.equal(engine.rapidFireShots('fighter', 'scout'), 1);     // no entry → 1
   assert.equal(engine.rapidFireShots('titan', 'probe'), 1);       // unlisted target → 1
 });
@@ -23,6 +27,17 @@ test('rapid fire matches faction-prefixed enemy ships (report #881)', () => {
   assert.equal(engine.rapidFireShots('wormhole_pirate_interceptor', 'pirate_fighter'), 4);
   assert.equal(engine.normalizeShipKey('wormhole_pirate_fighter'), 'fighter');
   assert.equal(engine.normalizeShipKey('spy_probe'), 'spy_probe');   // not over-stripped
+});
+
+test('pirate/NPC ships resolve to their base-class def', () => {
+  // "Pirate Fighter" (wormhole_pirate_fighter) fights as a fighter.
+  const inst = engine.buildInstances({ wormhole_pirate_fighter: 3 }, engine.NO_MODS);
+  assert.equal(inst.length, 3);
+  assert.equal(inst[0].def.key, 'fighter');
+  assert.equal(inst[0].hp, SHIP_DEFS.fighter.hp);
+  // and their losses still cost out via the base-class def
+  const res = engine.lossesToResources({ wormhole_pirate_fighter: { sent: 3, lost: 3 } });
+  assert.equal(res.ore, 3 * SHIP_DEFS.fighter.costOre);
 });
 
 test('research modifiers compute exact in-game rates', () => {
@@ -96,10 +111,12 @@ test('damage reduction protects the defender asymmetrically', () => {
 });
 
 test('planetary defenses: bombers crack turrets, fighters do not', () => {
-  const defense = { turret: 5, shieldGen: 3, ew: 0 };
-  const fighters = engine.runSimulations({ fighter: 30 }, {}, { ...BASE_OPTS, sims: 500, defense });
-  const bombers = engine.runSimulations({ bomber: 10 }, {}, { ...BASE_OPTS, sims: 500, defense });
-  assert.equal(fighters.outcomes.attacker_won, 0, 'fighters must not crack a lvl-5 turret');
+  // Bomber rapid fire vs defenses is ×3 (exact); they still crack a turret
+  // their own laser-fighters can't touch.
+  const defense = { turret: 3, shieldGen: 3, ew: 0 };
+  const fighters = engine.runSimulations({ fighter: 40 }, {}, { ...BASE_OPTS, sims: 500, defense });
+  const bombers = engine.runSimulations({ bomber: 20 }, {}, { ...BASE_OPTS, sims: 500, defense });
+  assert.equal(fighters.outcomes.attacker_won, 0, 'fighters must not crack the turret');
   assert.ok(bombers.outcomes.attacker_won / 500 > 0.8,
     `bombers should win most runs, won ${bombers.outcomes.attacker_won}`);
 });

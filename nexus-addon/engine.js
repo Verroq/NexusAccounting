@@ -19,16 +19,18 @@ const WEAPON_VS_ARMOR = {
 // "Plasma … chews through shield HP faster", "Ion … great at burning down shield HP"
 const SHIELD_BURN = { plasma: 1.5, ion: 2.0 };
 
-// Shots per round vs specific targets. Sources: ship descriptions (exact where
-// stated) and the guide's hard-counter
+// Shots per round vs specific targets. ALL values EXACT, read from the in-game
+// ship "Rapid Fire → Strong vs" screens (2026-06-16). Ships not listed
+// (scout, probe, spy_probe, civilians) have no rapid fire → 1 shot.
 const RAPID_FIRE = {
-  interceptor:     { scout: 5, probe: 5, spy_probe: 5, fighter: 4 },   // EXACT (in-game ship screen, report #881)
-  cruiser:         { fighter: 5, scout: 5, interceptor: 2 },           // interceptor ×2 EXACT; fighter/scout estimated
-  torpedo_frigate: { battleship: 3, dreadnought: 2, titan: 2 },
-  battleship:      { cruiser: 4, missile_cruiser: 4, interceptor: 5 }, // interceptor ×5 EXACT
+  fighter:         { probe: 5, spy_probe: 5, torpedo_frigate: 4 },
+  interceptor:     { scout: 5, probe: 5, spy_probe: 5, fighter: 4 },
+  cruiser:         { scout: 5, fighter: 4, interceptor: 2 },
+  carrier:         { scout: 5, fighter: 3 },
+  battleship:      { interceptor: 5, cruiser: 4, missile_cruiser: 3 },
   missile_cruiser: { fighter: 5, interceptor: 4, bomber: 3 },
-  bomber:          { defense_turret: 5 }, // exact: "×5 rapid fire vs defense buildings"
-  // Dreadnought & titan values are exact, read from the in-game ship screens.
+  torpedo_frigate: { battleship: 3, dreadnought: 2, titan: 2 },
+  bomber:          { defense_turret: 3 },   // ×3 vs every defense-building type
   dreadnought:     { cruiser: 5, bomber: 4, battleship: 3, missile_cruiser: 3, fighter: 3, interceptor: 2, carrier: 2 },
   titan:           { scout: 20, fighter: 15, interceptor: 10, cruiser: 8, battleship: 5, missile_cruiser: 5, bomber: 5, carrier: 5, dreadnought: 3 },
 };
@@ -111,7 +113,10 @@ function buildInstances(fleet, mods) {
   const m = mods || NO_MODS;
   const out = [];
   for (const [key, qty] of Object.entries(fleet)) {
-    const def = shipDefs[key];
+    // Pirate/NPC ships (wormhole_pirate_fighter, …) aren't in the player
+    // shipyard, but they're the same class as the like-named player ship —
+    // fall back to that base-class def.
+    const def = shipDefs[key] || shipDefs[normalizeShipKey(key)];
     if (!def || !qty) continue;
     const attackBonus = (m.weapon[def.weaponType] || 0) + m.weaponAll + (m.ship[key] || 0);
     const maxHp = def.hp * (1 + m.hull);
@@ -283,7 +288,7 @@ function runSimulations(attackerFleet, defenderFleet, opts) {
 function lossesToResources(losses) {
   const total = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0 };
   for (const [key, l] of Object.entries(losses)) {
-    const def = shipDefs[key];
+    const def = shipDefs[key] || shipDefs[normalizeShipKey(key)];
     if (!def) continue;
     total.ore += l.lost * def.costOre;
     total.silicates += l.lost * def.costSilicates;
