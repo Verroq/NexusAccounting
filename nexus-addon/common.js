@@ -23,6 +23,17 @@ function getWindow() {
   return el ? (parseInt(el.value, 10) || 0) : 5;
 }
 
+// Fuel (hydrogen) spent, summed from the per-mission fuel log for a tab type
+// ('survey'|'pirate'|'mining'|'debris'|'expedition'|'all'), honouring the
+// current View + Zone. Counted per launched fleet, independent of reports.
+function fuelForMode(type, mode) {
+  let rows = store.fuel_log || [];
+  if (type !== 'all') rows = rows.filter(e => e.type === type);
+  rows = filterZone(rows);
+  if (mode !== 'all') rows = latestBucket(rows, mode);
+  return rows.reduce((s, e) => s + (e.fuel || 0), 0);
+}
+
 // Selected security zone, or 'all'.
 function getZone() {
   const el = document.getElementById('zone-select');

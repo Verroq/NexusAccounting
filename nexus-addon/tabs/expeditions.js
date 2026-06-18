@@ -89,6 +89,7 @@ function renderExpeditionsTab() {
     el.append(
       makeStatCard(`Missions${periodLabel}`, fmt(t.missions), 'missions'),
       makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
+      makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('expedition', mode)), 'hydrogen'),
     );
   }
 
