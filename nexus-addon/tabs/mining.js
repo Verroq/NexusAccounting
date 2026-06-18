@@ -23,9 +23,8 @@ function getMiningTotalsForMode(mode) {
     drill_breakdowns: t.drill_breakdowns + (r.drill_breakdowns || 0),
     ships_lost: t.ships_lost + (r.ships_lost || 0),
     stolen_total: t.stolen_total + (r.stolen_total || 0),
-    fuel: t.fuel + (r.fuel_est || 0),
     ...Object.fromEntries(EXTRA_RES_KEYS_UI.map(k => [k, (t[k] || 0) + (r[k] || 0)])),
-  }), { ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0, stolen_total: 0, fuel: 0 });
+  }), { ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0, stolen_total: 0 });
 }
 
 function getMiningSeriesForMode(mode) {
@@ -69,6 +68,7 @@ function renderMiningTab() {
     makeStatCard(`Drill breakdowns${periodLabel}`, fmt(t.drill_breakdowns), '', 'color:#e3b341'),
     makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
     makeStatCard(`Cargo stolen${periodLabel}`, fmt(stolenTotal), '', 'color:#ff7b72'),
+    makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('mining', getMode())), 'hydrogen'),
   );
 
   const rl = store.mining_resources_lost?.destroyed
@@ -80,7 +80,7 @@ function renderMiningTab() {
   const netVisible = mode === 'all' && isUnfiltered();
   document.getElementById('m-net-label').style.display = netVisible ? '' : 'none';
   document.getElementById('m-stats-net').style.display = netVisible ? '' : 'none';
-  if (netVisible) renderNetCards('m-stats-net', t, rl, '', t.fuel || 0);
+  if (netVisible) renderNetCards('m-stats-net', t, rl, '', fuelForMode('mining', 'all'));
 
   if (chartMining) chartMining.destroy();
   chartMining = makeResourceLineChart('chart-mining', getMiningSeriesForMode(mode), getLabelKey(mode), { field: 'deliveries', label: 'Deliveries' });

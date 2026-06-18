@@ -49,6 +49,7 @@ function renderDebrisTab() {
   appendExtraResourceCards(mineEl, mine, periodLabel);
   mineEl.append(
     makeStatCard(`Runs${periodLabel}`, fmt(filterZone(mode === 'all' ? debrisLog() : latestBucket(debrisLog(), mode)).length), 'missions'),
+    makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('debris', mode)), 'hydrogen'),
   );
 
   const lost = store.debris_resources_lost || { destroyed: {}, repair: {} };

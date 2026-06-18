@@ -70,7 +70,8 @@ function renderGlobalTab() {
   const ships = store.ships || {};
   const allTime = mode === 'all' && getZone() === 'all';
 
-  let collected, lost, fuel, bySrc, ops;
+  const fuel = fuelForMode('all', mode);
+  let collected, lost, bySrc, ops;
   if (allTime) {
     const srcTotals = {
       Survey: store.totals, Pirates: store.pirate_totals, Mining: store.mining_totals,
@@ -87,8 +88,6 @@ function renderGlobalTab() {
       bySrc[src] = weightedValue(t);
     }
     lost = { destroyed: globalLostAllTime(), repair: emptyResources() };
-    fuel = [store.totals, store.pirate_totals, store.mining_totals]
-      .reduce((s, t) => s + ((t && t.fuel) || 0), 0);
     ops = (store.totals?.missions || 0) + (store.pirate_totals?.raids || 0)
       + (store.mining_totals?.deliveries || 0) + ((store.debris_collection_log || []).length)
       + (store.exp_totals?.missions || 0);
@@ -103,7 +102,6 @@ function renderGlobalTab() {
     const recs = items.map(w => w.r);
     collected = sumResources(recs);
     lost = computeResourcesLost(recs, ships);
-    fuel = recs.reduce((s, r) => s + (r.fuel_est || 0), 0);
     ops = recs.length;
     bySrc = {};
     for (const w of items) bySrc[w.src] = (bySrc[w.src] || 0) + weightedValue(w.r);

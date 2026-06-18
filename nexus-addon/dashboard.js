@@ -14,7 +14,7 @@ async function loadAll() {
     'debris_fields', 'debris_last_check',
     'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
     'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'stats_drift',
-    'research',
+    'research', 'fuel_log',
   ]);
 
   const cap = store.records_cap ?? 500;
@@ -106,7 +106,7 @@ function renderAll() {
 
   renderCollected(t, periodLabel);
   renderLost(rl, periodLabel);
-  renderNetCards('stats-net', t, rl, periodLabel, t.fuel || 0);
+  renderNetCards('stats-net', t, rl, periodLabel, fuelForMode('survey', getMode()));
   renderResourceChart(series, labelKey);
   renderEventsChart(events);
   renderByEventChart(events);

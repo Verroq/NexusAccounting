@@ -17,9 +17,8 @@ function getPirateTotalsForMode() {
     ships_destroyed: t.ships_destroyed + (r.ships_lost || 0),
     ships_damaged: t.ships_damaged + (r.ships_damaged || 0),
     pirates_destroyed: t.pirates_destroyed + (r.pirates_destroyed || 0),
-    fuel: t.fuel + (r.fuel_est || 0),
     ...Object.fromEntries(EXTRA_RES_KEYS_UI.map(k => [k, (t[k] || 0) + (r[k] || 0)])),
-  }), { ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0, fuel: 0 });
+  }), { ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0 });
 }
 
 function getPirateLostForMode() {
@@ -88,11 +87,12 @@ function renderPiratesTab() {
       makeStatCard(`Raids${periodLabel}`,     fmt(t.raids),     'missions'),
       makeStatCard(`Ships destroyed${periodLabel}`, fmt(t.ships_destroyed), '', 'color:#ff7b72'),
       makeStatCard(`Pirates destroyed${periodLabel}`, fmt(t.pirates_destroyed), '', 'color:#56d364'),
+      makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('pirate', getMode())), 'hydrogen'),
     );
   }
 
   renderLostCards('p-stats-lost', 'p-stats-repair', rl, periodLabel);
-  renderNetCards('p-stats-net', t, rl, periodLabel, t.fuel || 0);
+  renderNetCards('p-stats-net', t, rl, periodLabel, fuelForMode('pirate', getMode()));
 
   const debrisEl = document.getElementById('p-stats-debris');
   debrisEl.textContent = '';

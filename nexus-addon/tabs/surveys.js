@@ -29,10 +29,10 @@ function getTotalsForMode() {
   if (mode === 'all' && surveyUnfiltered()) return store.totals || {};
   return surveyRecordsForMode(mode).reduce((t, r) => {
     t.ore += r.ore || 0; t.hydrogen += r.hydrogen || 0; t.silicates += r.silicates || 0;
-    t.missions += 1; t.ships_lost += r.ships_lost || 0; t.fuel += r.fuel_est || 0;
+    t.missions += 1; t.ships_lost += r.ships_lost || 0;
     for (const k of EXTRA_RES_KEYS_UI) t[k] = (t[k] || 0) + (r[k] || 0);
     return t;
-  }, { ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0, fuel: 0 });
+  }, { ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0 });
 }
 
 // Returns resources-lost for the current view.
@@ -105,7 +105,7 @@ function renderCollected(t, periodLabel) {
   container.append(
     makeStatCard(`Missions${periodLabel}`,   fmt(t.missions),   'missions'),
     makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
-    makeStatCard(`Fuel spent${periodLabel}`, fmt(t.fuel || 0), 'hydrogen'),
+    makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('survey', getMode())), 'hydrogen'),
   );
 }
 
