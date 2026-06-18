@@ -23,16 +23,15 @@ function getMiningTotalsForMode(mode) {
     drill_breakdowns: t.drill_breakdowns + (r.drill_breakdowns || 0),
     ships_lost: t.ships_lost + (r.ships_lost || 0),
     stolen_total: t.stolen_total + (r.stolen_total || 0),
-  }), { ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0, stolen_total: 0 });
+    fuel: t.fuel + (r.fuel_est || 0),
+    ...Object.fromEntries(EXTRA_RES_KEYS_UI.map(k => [k, (t[k] || 0) + (r[k] || 0)])),
+  }), { ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0, stolen_total: 0, fuel: 0 });
 }
 
 function getMiningSeriesForMode(mode) {
   if (mode !== 'hourly' && isUnfiltered()) return store.mining_daily || [];
-  return computeSeries(filterZone(store.mining_recent_reports || []), mode, {
-    ore: r => r.ore || 0,
-    silicates: r => r.silicates || 0,
-    hydrogen: r => r.hydrogen || 0,
-  });
+  return computeSeries(filterZone(store.mining_recent_reports || []), mode,
+    { ...SERIES_GETTERS, deliveries: () => 1 });
 }
 
 function renderMiningTab() {
@@ -53,11 +52,7 @@ function renderMiningTab() {
       makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
       makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
     );
-    // Alloys and rares are only tracked in the unfiltered all-time totals.
-    if (mode === 'all' && isUnfiltered()) {
-      delivered.appendChild(makeStatCard('Alloys', fmt(t.alloys), 'alloys'));
-      appendRareCards(delivered, t.rare, '');
-    }
+    appendExtraResourceCards(delivered, t, periodLabel);
   }
 
   const ops = document.getElementById('m-stats-ops');
@@ -88,7 +83,7 @@ function renderMiningTab() {
   if (netVisible) renderNetCards('m-stats-net', t, rl, '', t.fuel || 0);
 
   if (chartMining) chartMining.destroy();
-  chartMining = makeResourceLineChart('chart-mining', getMiningSeriesForMode(mode), getLabelKey(mode));
+  chartMining = makeResourceLineChart('chart-mining', getMiningSeriesForMode(mode), getLabelKey(mode), { field: 'deliveries', label: 'Deliveries' });
 
   renderMiningTable();
 }
@@ -107,7 +102,10 @@ function renderMiningTable() {
     const tdOre = zeroCell(r.ore); tdOre.className = 'ore';
     const tdSil = zeroCell(r.silicates); tdSil.className = 'silicates';
     const tdHyd = zeroCell(r.hydrogen); tdHyd.className = 'hydrogen';
-    tr.append(tdDate, tdLoc, zoneCell(r.zone), tdOre, tdSil, tdHyd,
+    const tdAll = zeroCell(r.alloys); tdAll.className = 'alloys';
+    tr.append(tdDate, tdLoc, zoneCell(r.zone), tdOre, tdSil, tdHyd, tdAll,
+              zeroCell(r.ice), zeroCell(r.quantum_dust), zeroCell(r.plasma_core),
+              zeroCell(r.dark_matter), zeroCell(r.antimatter),
               zeroCell(r.cycles), zeroCell(r.drill_breakdowns),
               zeroCell(r.ships_lost), zeroCell(r.stolen_total));
     return tr;

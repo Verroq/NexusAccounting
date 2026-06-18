@@ -17,7 +17,9 @@ function getPirateTotalsForMode() {
     ships_destroyed: t.ships_destroyed + (r.ships_lost || 0),
     ships_damaged: t.ships_damaged + (r.ships_damaged || 0),
     pirates_destroyed: t.pirates_destroyed + (r.pirates_destroyed || 0),
-  }), { ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0 });
+    fuel: t.fuel + (r.fuel_est || 0),
+    ...Object.fromEntries(EXTRA_RES_KEYS_UI.map(k => [k, (t[k] || 0) + (r[k] || 0)])),
+  }), { ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0, fuel: 0 });
 }
 
 function getPirateLostForMode() {
@@ -54,11 +56,8 @@ function getPirateOutcomesForMode() {
 function getPirateSeriesForMode() {
   const mode = getMode();
   if (mode !== 'hourly' && isUnfiltered()) return store.pirate_daily || [];
-  return computeSeries(filterZone(store.pirate_recent_reports || []), mode, {
-    ore: r => r.ore || 0,
-    hydrogen: r => r.hydrogen || 0,
-    silicates: r => r.silicates || 0,
-  });
+  return computeSeries(filterZone(store.pirate_recent_reports || []), mode,
+    { ...SERIES_GETTERS, raids: () => 1 });
 }
 
 function renderPiratesTab() {
@@ -83,6 +82,9 @@ function renderPiratesTab() {
       makeStatCard(`Ore${periodLabel}`,       fmt(t.ore),       'ore'),
       makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
       makeStatCard(`Hydrogen${periodLabel}`,  fmt(t.hydrogen),  'hydrogen'),
+    );
+    appendExtraResourceCards(collected, t, periodLabel);
+    collected.append(
       makeStatCard(`Raids${periodLabel}`,     fmt(t.raids),     'missions'),
       makeStatCard(`Ships destroyed${periodLabel}`, fmt(t.ships_destroyed), '', 'color:#ff7b72'),
       makeStatCard(`Pirates destroyed${periodLabel}`, fmt(t.pirates_destroyed), '', 'color:#56d364'),
@@ -107,7 +109,7 @@ function renderPiratesTab() {
 
 function renderPirateLootChart(series, labelKey) {
   if (chartPirateLoot) chartPirateLoot.destroy();
-  chartPirateLoot = makeResourceLineChart('chart-pirate-loot', series, labelKey);
+  chartPirateLoot = makeResourceLineChart('chart-pirate-loot', series, labelKey, { field: 'raids', label: 'Raids' });
 }
 
 function renderPirateOutcomesChart(outcomes) {
@@ -183,8 +185,11 @@ function renderPirateTable() {
     const tdOre = zeroTd(r.ore);       tdOre.className = 'ore';
     const tdHyd = zeroTd(r.hydrogen);  tdHyd.className = 'hydrogen';
     const tdSil = zeroTd(r.silicates); tdSil.className = 'silicates';
+    const tdAll = zeroTd(r.alloys);    tdAll.className = 'alloys';
 
-    tr.append(tdDate, tdCamp, zoneCell(r.zone), tdOutcome, tdOre, tdHyd, tdSil,
+    tr.append(tdDate, tdCamp, zoneCell(r.zone), tdOutcome, tdOre, tdHyd, tdSil, tdAll,
+              zeroTd(r.ice), zeroTd(r.quantum_dust), zeroTd(r.plasma_core),
+              zeroTd(r.dark_matter), zeroTd(r.antimatter),
               zeroTd(r.ships_lost), zeroTd(r.ships_damaged), zeroTd(r.pirates_destroyed));
     tbody.appendChild(tr);
   }

@@ -4,6 +4,41 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.6] - 2026-06-18
+
+### Added
+- New **Global** tab: collected resources, net gain, operations count, a
+  per-period chart, a collected-composition doughnut and a weighted
+  "share by source" doughnut — all honouring the View/Window/Zone selectors.
+- Alloys and exotic resources (ice, quantum dust, plasma core, dark matter,
+  antimatter) tracked everywhere: collected cards, recent-report tables,
+  resource line charts and the "resources by event type" chart, across
+  surveys, pirates, mining, debris and expeditions.
+- Per-period charts gained a report-count line (missions/raids/deliveries/
+  runs) on a secondary axis; debris and expeditions got per-period charts.
+
+### Changed
+- Net gain now includes exotic resources, weighted ×10 in the total
+  (ore×1, silicates×2, hydrogen×3, alloys×5, exotics×10).
+- Survey table drops the wormholes column; expeditions split the Loot
+  column into per-resource columns; debris cards/graph honour view + zone.
+
+## [1.5.5] - 2026-06-18
+
+### Added
+- Sidebar launcher: an "Addon → Nexus Tracker" entry is injected into the
+  game's sidebar (using its own styling) to open the dashboard.
+- Graph time-window selector (last 5/7/14/30/all days; default 5), and the
+  View/Window/Zone controls now sit directly above each tab's graphs.
+
+### Changed
+- Fuel is now computed precisely from each mission's real fleet and real
+  distance, captured live from /api/fleet/missions by mission id (including
+  the actual launch system, not an assumed home). The earlier estimate is
+  removed — missions the addon didn't observe contribute no fuel rather
+  than a guess.
+- Date graphs fill empty days/hours so the time axis is continuous.
+
 ## [1.5.4] - 2026-06-17
 
 ### Added

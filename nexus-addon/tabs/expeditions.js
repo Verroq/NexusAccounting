@@ -2,7 +2,7 @@
 
 // ── Expeditions tab ────────────────────────────────────────────────────────
 
-let chartExpeditions;
+let chartExpeditions, chartExpComp;
 
 let expPage = 1;
 
@@ -60,6 +60,13 @@ function populateClassOptions() {
   sel.value = classes.includes(current) || current === 'all' ? current : 'all';
 }
 
+// Loot-over-time series; loot lives in r.loot (full map per record).
+function getExpSeriesForMode(mode) {
+  const getters = { missions: () => 1 };
+  for (const d of RESOURCE_SERIES) getters[d.field] = r => (r.loot && r.loot[d.field]) || 0;
+  return computeSeries(filterZone(store.exp_recent_reports || []), mode, getters);
+}
+
 function renderExpeditionsTab() {
   populateClassOptions();
   const mode = getMode();
@@ -77,18 +84,23 @@ function renderExpeditionsTab() {
       makeStatCard(`Ore${periodLabel}`, fmt(t.ore), 'ore'),
       makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
       makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
-      makeStatCard(`Alloys${periodLabel}`, fmt(t.alloys), 'alloys'),
+    );
+    appendExtraResourceCards(el, t, periodLabel);
+    el.append(
       makeStatCard(`Missions${periodLabel}`, fmt(t.missions), 'missions'),
       makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
     );
-    appendRareCards(el, t.rare, periodLabel);
   }
 
   const lost = store.exp_resources_lost || { destroyed: {}, repair: {} };
   fillResourceCards('e-stats-lost', lost.destroyed, '');
 
   if (chartExpeditions) chartExpeditions.destroy();
-  chartExpeditions = makeResourceDoughnut('chart-expeditions', t);
+  chartExpeditions = makeResourceLineChart('chart-expeditions', getExpSeriesForMode(mode),
+    getLabelKey(mode), { field: 'missions', label: 'Missions' });
+
+  if (chartExpComp) chartExpComp.destroy();
+  chartExpComp = makeResourceDoughnut('chart-expeditions-comp', t);
 
   renderExpTable();
 }
@@ -113,11 +125,16 @@ function renderExpTable() {
     tdLoc.textContent = r.location || '—';
     const tdEvent = document.createElement('td');
     tdEvent.textContent = r.event ? String(r.event).replace(/_/g, ' ') : '—';
-    const tdLoot = document.createElement('td');
-    tdLoot.textContent = Object.entries(r.loot || {})
-      .map(([k, v]) => `${k}: ${Number(v).toLocaleString()}`)
-      .join(', ') || '—';
-    tr.append(tdDate, tdKind, tdClass, tdLoc, zoneCell(r.zone), tdEvent, tdLoot, zeroCell(r.ships_lost));
+    const loot = r.loot || {};
+    const tdOre = zeroCell(loot.ore); tdOre.className = 'ore';
+    const tdSil = zeroCell(loot.silicates); tdSil.className = 'silicates';
+    const tdHyd = zeroCell(loot.hydrogen); tdHyd.className = 'hydrogen';
+    const tdAll = zeroCell(loot.alloys); tdAll.className = 'alloys';
+    tr.append(tdDate, tdKind, tdClass, tdLoc, zoneCell(r.zone), tdEvent,
+              tdOre, tdSil, tdHyd, tdAll,
+              zeroCell(loot.ice), zeroCell(loot.quantum_dust), zeroCell(loot.plasma_core),
+              zeroCell(loot.dark_matter), zeroCell(loot.antimatter),
+              zeroCell(r.ships_lost));
     return tr;
   });
 }

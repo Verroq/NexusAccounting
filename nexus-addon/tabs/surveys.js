@@ -27,13 +27,12 @@ function surveyRecordsForMode(mode) {
 function getTotalsForMode() {
   const mode = getMode();
   if (mode === 'all' && surveyUnfiltered()) return store.totals || {};
-  return surveyRecordsForMode(mode).reduce((t, r) => ({
-    ore: t.ore + (r.ore || 0),
-    hydrogen: t.hydrogen + (r.hydrogen || 0),
-    silicates: t.silicates + (r.silicates || 0),
-    missions: t.missions + 1,
-    ships_lost: t.ships_lost + (r.ships_lost || 0),
-  }), { ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0 });
+  return surveyRecordsForMode(mode).reduce((t, r) => {
+    t.ore += r.ore || 0; t.hydrogen += r.hydrogen || 0; t.silicates += r.silicates || 0;
+    t.missions += 1; t.ships_lost += r.ships_lost || 0; t.fuel += r.fuel_est || 0;
+    for (const k of EXTRA_RES_KEYS_UI) t[k] = (t[k] || 0) + (r[k] || 0);
+    return t;
+  }, { ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0, fuel: 0 });
 }
 
 // Returns resources-lost for the current view.
@@ -55,11 +54,8 @@ function getEventBreakdownForMode() {
 function getSeriesForMode() {
   const mode = getMode();
   if (mode !== 'hourly' && surveyUnfiltered()) return store.daily || [];
-  return computeSeries(filterEvent(filterZone(store.recent_reports || [])), mode, {
-    ore: r => r.ore || 0,
-    hydrogen: r => r.hydrogen || 0,
-    silicates: r => r.silicates || 0,
-  });
+  return computeSeries(filterEvent(filterZone(store.recent_reports || [])), mode,
+    { ...SERIES_GETTERS, missions: () => 1 });
 }
 
 // Populate the event dropdown from the event types present, preserving the
@@ -104,9 +100,12 @@ function renderCollected(t, periodLabel) {
     makeStatCard(`Ore${periodLabel}`,        fmt(t.ore),        'ore'),
     makeStatCard(`Silicates${periodLabel}`,  fmt(t.silicates),  'silicates'),
     makeStatCard(`Hydrogen${periodLabel}`,   fmt(t.hydrogen),   'hydrogen'),
+  );
+  appendExtraResourceCards(container, t, periodLabel);
+  container.append(
     makeStatCard(`Missions${periodLabel}`,   fmt(t.missions),   'missions'),
     makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
-    makeStatCard(`Fuel spent est.${periodLabel}`, fmt(t.fuel || 0), 'hydrogen'),
+    makeStatCard(`Fuel spent${periodLabel}`, fmt(t.fuel || 0), 'hydrogen'),
   );
 }
 
@@ -116,7 +115,7 @@ function renderLost(rl, periodLabel) {
 
 function renderResourceChart(series, labelKey) {
   if (chartResources) chartResources.destroy();
-  chartResources = makeResourceLineChart('chart-resources', series, labelKey);
+  chartResources = makeResourceLineChart('chart-resources', series, labelKey, { field: 'missions', label: 'Missions' });
 }
 
 function renderEventsChart(events) {
@@ -148,18 +147,21 @@ function renderEventsChart(events) {
 }
 
 function renderByEventChart(events) {
-  const filtered = events.filter(e => e.ore || e.hydrogen || e.silicates);
+  const filtered = events.filter(e => RESOURCE_SERIES.some(d => (e[d.field] || 0) > 0));
   const labels = filtered.map(e => e.event_type.replace(/_/g, ' '));
+  const ALWAYS = new Set(['ore', 'silicates', 'hydrogen']);
+  const shown = RESOURCE_SERIES.filter(d =>
+    ALWAYS.has(d.field) || filtered.some(e => (e[d.field] || 0) > 0));
   if (chartByEvent) chartByEvent.destroy();
   chartByEvent = new Chart(document.getElementById('chart-by-event'), {
     type: 'bar',
     data: {
       labels,
-      datasets: [
-        { label: 'Ore',       data: filtered.map(e => e.ore),       backgroundColor: '#f0883ecc' },
-        { label: 'Hydrogen',  data: filtered.map(e => e.hydrogen),  backgroundColor: '#79c0ffcc' },
-        { label: 'Silicates', data: filtered.map(e => e.silicates), backgroundColor: '#56d364cc' },
-      ],
+      datasets: shown.map(d => ({
+        label: d.label,
+        data: filtered.map(e => e[d.field] || 0),
+        backgroundColor: d.color + 'cc',
+      })),
     },
     options: {
       responsive: true,
@@ -244,9 +246,12 @@ function renderTable() {
     const tdOre = zeroTd(r.ore);       tdOre.className = 'ore';
     const tdHyd = zeroTd(r.hydrogen);  tdHyd.className = 'hydrogen';
     const tdSil = zeroTd(r.silicates); tdSil.className = 'silicates';
+    const tdAll = zeroTd(r.alloys);    tdAll.className = 'alloys';
 
-    tr.append(tdDate, tdSys, zoneCell(r.zone), tdEvt, tdOre, tdHyd, tdSil,
-              zeroTd(r.ships_lost), zeroTd(r.ships_damaged), zeroTd(r.wormholes_detected));
+    tr.append(tdDate, tdSys, zoneCell(r.zone), tdEvt, tdOre, tdHyd, tdSil, tdAll,
+              zeroTd(r.ice), zeroTd(r.quantum_dust), zeroTd(r.plasma_core),
+              zeroTd(r.dark_matter), zeroTd(r.antimatter),
+              zeroTd(r.ships_lost), zeroTd(r.ships_damaged));
     tbody.appendChild(tr);
   }
 }

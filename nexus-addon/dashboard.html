@@ -9,6 +9,7 @@
   <h1>Nexus Accounting</h1>
 
   <nav class="tabs">
+    <button class="tab" data-tab="global">Global</button>
     <button class="tab active" data-tab="surveys">Surveys</button>
     <button class="tab" data-tab="pirates">Pirates</button>
     <button class="tab" data-tab="mining">Mining</button>
@@ -29,12 +30,20 @@
     <a href="simulator.html" style="color:#58a6ff; margin-left:auto;">Combat Simulator →</a>
   </div>
 
-  <div class="controls">
+  <div class="controls" id="global-controls">
     <label for="mode-select">View:</label>
     <select id="mode-select">
       <option value="all">All time</option>
       <option value="daily">Daily</option>
       <option value="hourly">Hourly</option>
+    </select>
+    <label for="window-select" style="margin-left:12px;">Window:</label>
+    <select id="window-select" title="How many days/hours of history the graph shows.">
+      <option value="5" selected>Last 5</option>
+      <option value="7">Last 7</option>
+      <option value="14">Last 14</option>
+      <option value="30">Last 30</option>
+      <option value="0">All</option>
     </select>
     <label for="zone-select" style="margin-left:12px;">Zone:</label>
     <select id="zone-select" title="Filter by the security zone where data was gathered. Zone-filtered totals are computed from the stored (capped) records.">
@@ -58,6 +67,32 @@
       <span id="cap-warning" style="display:none; color:#ff7b72; font-size:0.75rem;">Must be a whole number ≥ 0</span>
       <button id="btn-save-cap">Save</button>
     </span>
+  </div>
+
+  <div id="global-content" style="display:none;">
+    <p style="color:#8b949e; font-size:0.85rem; margin-bottom:12px;">
+      Combined across surveys, pirate raids, mining, debris (precise) and expeditions.
+    </p>
+    <div class="section-label">Resources collected (all sources)</div>
+    <div class="stats" id="g-stats-collected"></div>
+
+    <div class="section-label">Net gain (collected − ship costs − fuel)</div>
+    <div class="stats" id="g-stats-net"></div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h2>Collected per period</h2>
+        <canvas id="chart-global-period"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Collected composition</h2>
+        <canvas id="chart-global"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Share by source (weighted)</h2>
+        <canvas id="chart-global-source"></canvas>
+      </div>
+    </div>
   </div>
 
   <div id="main-content">
@@ -117,9 +152,14 @@
             <th class="sortable" data-key="ore">Ore</th>
             <th class="sortable" data-key="hydrogen">Hydrogen</th>
             <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
             <th class="sortable" data-key="ships_lost">Ships lost</th>
             <th class="sortable" data-key="ships_damaged">Ships damaged</th>
-            <th class="sortable" data-key="wormholes_detected">Wormholes</th>
           </tr>
         </thead>
         <tbody id="reports-tbody"></tbody>
@@ -173,6 +213,12 @@
             <th class="sortable" data-key="ore">Ore</th>
             <th class="sortable" data-key="hydrogen">Hydrogen</th>
             <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
             <th class="sortable" data-key="ships_lost">Ships destroyed</th>
             <th class="sortable" data-key="ships_damaged">Ships damaged</th>
             <th class="sortable" data-key="pirates_destroyed">Pirates destroyed</th>
@@ -224,6 +270,12 @@
             <th class="sortable" data-key="ore">Ore</th>
             <th class="sortable" data-key="silicates">Silicates</th>
             <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
             <th class="sortable" data-key="cycles">Cycles</th>
             <th class="sortable" data-key="drill_breakdowns">Breakdowns</th>
             <th class="sortable" data-key="ships_lost">Ships lost</th>
@@ -246,6 +298,10 @@
     <div class="stats" id="d-stats-lost"></div>
 
     <div class="charts">
+      <div class="chart-box">
+        <h2>Collected per period</h2>
+        <canvas id="chart-debris-period"></canvas>
+      </div>
       <div class="chart-box">
         <h2>Collected composition</h2>
         <canvas id="chart-debris"></canvas>
@@ -277,6 +333,11 @@
             <th class="sortable" data-key="silicates">Silicates</th>
             <th class="sortable" data-key="alloys">Alloys</th>
             <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
           </tr>
         </thead>
         <tbody id="d-collected-tbody"></tbody>
@@ -321,9 +382,13 @@
     <div class="stats" id="e-stats-lost"></div>
 
     <div class="charts">
-      <div class="chart-box" style="grid-column: 1 / -1;">
+      <div class="chart-box">
         <h2>Loot per period</h2>
         <canvas id="chart-expeditions"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Loot composition</h2>
+        <canvas id="chart-expeditions-comp"></canvas>
       </div>
     </div>
 
@@ -345,7 +410,15 @@
             <th class="sortable" data-key="location">Location</th>
             <th class="sortable" data-key="zone">Zone</th>
             <th class="sortable" data-key="event">Event</th>
-            <th>Loot</th>
+            <th class="sortable" data-key="ore">Ore</th>
+            <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
             <th class="sortable" data-key="ships_lost">Ships lost</th>
           </tr>
         </thead>
@@ -466,6 +539,7 @@
   <script src="browser-polyfill.js"></script>
   <script src="chart.umd.js"></script>
   <script src="common.js"></script>
+  <script src="tabs/global.js"></script>
   <script src="tabs/surveys.js"></script>
   <script src="tabs/pirates.js"></script>
   <script src="tabs/mining.js"></script>

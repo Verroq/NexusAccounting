@@ -185,47 +185,52 @@ async function apiFetch(path, token) {
 // Home planet id, discovered once via /api/planets and cached (plus its
 // system id, used for fuel-distance estimates).
 async function getHomePlanetId(token) {
-  const { planet_id } = await browser.storage.local.get('planet_id');
-  if (planet_id) return planet_id;
+  const { planet_id, home_system_id, owned_system_ids } =
+    await browser.storage.local.get(['planet_id', 'home_system_id', 'owned_system_ids']);
+  // Return the cached id, but refetch if home/owned system info is missing
+  // (older installs cached planet_id before we tracked systems for fuel).
+  if (planet_id && home_system_id != null && owned_system_ids) return planet_id;
   const data = await apiFetch('/api/planets', token);
   const planets = data.planets || [];
   const home = planets.find(p => p.isHomeworld) || planets[0];
   if (!home) throw new Error('No planets found for this account');
-  await browser.storage.local.set({ planet_id: home.id, home_system_id: home.systemId ?? null });
+  await browser.storage.local.set({
+    planet_id: home.id,
+    home_system_id: home.systemId ?? null,
+    owned_system_ids: planets.map(p => p.systemId ?? p.system?.id).filter(x => x != null),
+  });
   console.log(`[NexusAccounting] Home planet: ${home.name} (#${home.id})`);
   return home.id;
 }
 
-// ── Fuel estimate ────────────────────────────────────────────────────────────
-// Hydrogen burned by a mission. Fitted to real send-fleet costs (round trip):
-//   fuel = Σ(fuelRate × qty) × (FUEL_K × galaxyDist + FUEL_BASE)
-// Galaxy coords aren't AU; the bracket converts coord distance to round-trip
-// AU. Calibrated from 3 scout trips (R²≈1). Retune these two constants if the
-// game rebalances.
+// ── Fuel ─────────────────────────────────────────────────────────────────────
+// Hydrogen burned by a mission, from its real fleet + real (round-trip)
+// distance. Fitted to send-fleet costs (3 scout trips, R²≈1); the bracket
+// converts the game's distance metric to round-trip fuel per fuel-rate unit.
+// Retune these two constants if the game rebalances. Fuel is only counted for
+// missions captured live (we don't estimate uncaptured ones).
 const FUEL_K = 0.0517;
 const FUEL_BASE = 9.24;
 
-function galaxyDistance(a, b) {
-  if (!a || !b) return null;
-  return Math.hypot(a[0] - b[0], a[1] - b[1]);
-}
-
 function fleetFuelRate(fleetMap, ships) {
+  // `ships` is keyed by numeric id; build a key→def index (fleets use keys).
+  const byKey = {};
+  for (const d of Object.values(ships || {})) if (d && d.key) byKey[d.key] = d;
   let rate = 0;
   for (const [key, qty] of Object.entries(fleetMap || {})) {
-    const def = ships[key];
+    const def = ships[key] || byKey[key];
     if (def) rate += (def.fuelRate || 0) * qty;
   }
   return rate;
 }
 
-// Round-trip hydrogen for a fleet travelling home↔target. 0 if coords unknown.
-function estimateFuel(fleetMap, ships, homeXY, targetXY) {
-  const dist = galaxyDistance(homeXY, targetXY);
-  if (dist == null) return 0;
+// Precise fuel from a captured mission: its real fleet + real distance.
+function missionFuel(mo, ships) {
+  if (!mo || mo.distance == null || !(mo.fleet && mo.fleet.length)) return null;
+  const fleetMap = mo.fleet.reduce((m, i) => { m[i.key] = (m[i.key] || 0) + (i.quantity || 1); return m; }, {});
   const rate = fleetFuelRate(fleetMap, ships);
-  if (!rate) return 0;
-  return Math.round(rate * (FUEL_K * dist + FUEL_BASE));
+  if (!rate) return null;
+  return Math.round(rate * (FUEL_K * mo.distance + FUEL_BASE));
 }
 
 // Current stationed fleet as { shipKey: usableQuantity } — for the simulator.
@@ -533,14 +538,24 @@ function buildShipCatalog(shipyardData) {
   return ships;
 }
 
+// Alloys + exotic resources collected (beyond ore/silicates/hydrogen).
+const EXTRA_RES_KEYS = ['alloys', 'ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter'];
+function addExtraRes(target, loot) {
+  for (const k of EXTRA_RES_KEYS) { const v = loot[k] || 0; if (v) target[k] = (target[k] || 0) + v; }
+}
+function extrasOf(loot) {
+  const o = {};
+  for (const k of EXTRA_RES_KEYS) { const v = loot[k] || 0; if (v) o[k] = v; }
+  return o;
+}
+
 async function processSurveyReports(reports, ships, zones = {}) {
   const stored = await browser.storage.local.get([
     'seen_ids', 'totals', 'daily', 'hourly', 'resources_lost',
-    'event_breakdown', 'recent_reports', 'records_cap',
-    'home_system_id', 'system_coords_by_id',
+    'event_breakdown', 'recent_reports', 'records_cap', 'mission_origins',
   ]);
   const recordsCap = stored.records_cap ?? 500;
-  const homeXY = (stored.system_coords_by_id || {})[stored.home_system_id];
+  const missionOrigins = stored.mission_origins || {};
 
   const seenIds = new Set(stored.seen_ids || []);
   const totals = stored.totals || {
@@ -580,12 +595,9 @@ async function processSurveyReports(reports, ships, zones = {}) {
     const damagedDetail = parseShipsLost(r.shipsDamaged);
     const nDamaged = Object.values(damagedDetail).reduce((sum, q) => sum + q, 0);
 
-    // Survey reports don't list the fleet sent — assume a standard survey fleet
-    // by zone (open = scouts + interceptors + freighters; sentinel = lighter).
-    const surveyFleet = (r.securityZone === 'sentinel')
-      ? { scout: 1, freighter: 3 }
-      : { scout: 10, interceptor: 22, freighter: 3 };
-    const fuel = estimateFuel(surveyFleet, ships, homeXY, [r.systemX, r.systemY]);
+    // Fuel only when the mission was captured live (real fleet + distance);
+    // otherwise we don't count it rather than guess.
+    const fuel = missionFuel(missionOrigins[r.missionId], ships) || 0;
 
     totals.ore += ore;
     totals.hydrogen += hydrogen;
@@ -593,6 +605,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
     totals.missions += 1;
     totals.ships_lost += nLost;
     totals.fuel += fuel;
+    addExtraRes(totals, loot);
 
     const day = r.createdAt.slice(0, 10);
     if (!dailyMap[day]) dailyMap[day] = { day, ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0, fuel: 0 };
@@ -602,6 +615,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
     dailyMap[day].missions += 1;
     dailyMap[day].ships_lost += nLost;
     dailyMap[day].fuel = (dailyMap[day].fuel || 0) + fuel;
+    addExtraRes(dailyMap[day], loot);
 
     const hour = r.createdAt.slice(0, 13) + ':00';
     if (!hourlyMap[hour]) hourlyMap[hour] = { hour, ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0, fuel: 0 };
@@ -611,6 +625,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
     hourlyMap[hour].missions += 1;
     hourlyMap[hour].ships_lost += nLost;
     hourlyMap[hour].fuel = (hourlyMap[hour].fuel || 0) + fuel;
+    addExtraRes(hourlyMap[hour], loot);
 
     const et = r.eventType || 'unknown';
     if (!eventMap[et]) eventMap[et] = { event_type: et, count: 0, ore: 0, hydrogen: 0, silicates: 0 };
@@ -618,6 +633,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
     eventMap[et].ore += ore;
     eventMap[et].hydrogen += hydrogen;
     eventMap[et].silicates += silicates;
+    addExtraRes(eventMap[et], loot);
 
     addShipCost(lostDetail, ships, resourcesLost.destroyed, 1);
     addShipCost(damagedDetail, ships, resourcesLost.repair, REPAIR_FACTOR);
@@ -628,12 +644,13 @@ async function processSurveyReports(reports, ships, zones = {}) {
       system_name: r.systemName,
       event_type: r.eventType,
       zone: r.securityZone || resolveZone(r.systemName, zones),
-      ore, hydrogen, silicates,
+      ore, hydrogen, silicates, ...extrasOf(loot),
       ships_lost: nLost,
       ships_damaged: nDamaged,
       wormholes_detected: r.wormholesDetected || 0,
       ships_lost_detail: lostDetail,
       ships_damaged_detail: damagedDetail,
+      mission_id: r.missionId ?? null,
       fuel_est: fuel,
     });
   }
@@ -667,11 +684,10 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
   const pstored = await browser.storage.local.get([
     'pirate_seen_ids', 'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports', 'records_cap',
-    'home_system_id', 'system_coords_by_id', 'camp_coords',
+    'mission_origins',
   ]);
   const recordsCap = pstored.records_cap ?? 500;
-  const homeXY = (pstored.system_coords_by_id || {})[pstored.home_system_id];
-  const campCoords = pstored.camp_coords || {};
+  const missionOrigins = pstored.mission_origins || {};
 
   const pirateSeen = new Set(pstored.pirate_seen_ids || []);
   const pirateTotals = pstored.pirate_totals || {
@@ -721,9 +737,7 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
     const piratesDestroyed = (r.pirateLosses || [])
       .reduce((sum, i) => sum + (i.destroyed ?? i.lost ?? 0), 0);
 
-    const fleetMap = {};
-    for (const i of (r.attackerFleet || [])) fleetMap[i.key] = (fleetMap[i.key] || 0) + (i.quantity || 1);
-    const fuel = estimateFuel(fleetMap, ships, homeXY, campCoords[r.campId]);
+    const fuel = missionFuel(missionOrigins[r.missionId], ships) || 0;
 
     pirateTotals.ore += ore;
     pirateTotals.hydrogen += hydrogen;
@@ -733,12 +747,14 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
     pirateTotals.ships_damaged += nDamaged;
     pirateTotals.pirates_destroyed += piratesDestroyed;
     pirateTotals.fuel += fuel;
+    addExtraRes(pirateTotals, loot);
 
     const day = r.createdAt.slice(0, 10);
     if (!pirateDailyMap[day]) pirateDailyMap[day] = { day, ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0, fuel: 0 };
     pirateDailyMap[day].ore += ore;
     pirateDailyMap[day].hydrogen += hydrogen;
     pirateDailyMap[day].silicates += silicates;
+    addExtraRes(pirateDailyMap[day], loot);
     pirateDailyMap[day].raids += 1;
     pirateDailyMap[day].ships_destroyed += nDestroyed;
     pirateDailyMap[day].fuel = (pirateDailyMap[day].fuel || 0) + fuel;
@@ -764,7 +780,7 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
       camp_id: r.campId,
       zone: r.securityZone || campZones[r.campId] || 'unknown',
       outcome,
-      ore, hydrogen, silicates,
+      ore, hydrogen, silicates, ...extrasOf(loot),
       ships_lost: nDestroyed,
       ships_damaged: nDamaged,
       pirates_destroyed: piratesDestroyed,
@@ -774,6 +790,7 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
       ships_lost_detail: destroyedDetail,
       ships_damaged_detail: damagedDetail,
       fuel_est: fuel,
+      mission_id: r.missionId ?? null,
       // Fleet compositions kept so the simulator can replay this battle
       // and measure engine accuracy against the real outcome.
       attacker_fleet: (r.attackerFleet || []).map(i => ({ key: i.key, quantity: i.quantity || 1 })),
@@ -888,12 +905,10 @@ function addResources(target, res) {
 async function processMiningReports(reports, ships, zones = {}) {
   const stored = await browser.storage.local.get([
     'mining_seen_ids', 'mining_totals', 'mining_daily', 'mining_resources_lost',
-    'mining_recent_reports', 'records_cap',
-    'home_system_id', 'system_coords_by_id', 'system_coords_by_name',
+    'mining_recent_reports', 'records_cap', 'mission_origins',
   ]);
   const recordsCap = stored.records_cap ?? 500;
-  const homeXY = (stored.system_coords_by_id || {})[stored.home_system_id];
-  const coordsByName = stored.system_coords_by_name || {};
+  const missionOrigins = stored.mission_origins || {};
 
   const seen = new Set(stored.mining_seen_ids || []);
   const totals = stored.mining_totals || {
@@ -917,10 +932,7 @@ async function processMiningReports(reports, ships, zones = {}) {
     const nLost = (r.shipsLost || []).reduce((sum, i) => sum + (i.quantity || 1), 0);
     const lostDetail = parseShipsLost(r.shipsLost);
 
-    const fleetMap = {};
-    for (const i of extractFleet(r.fleetComposition)) fleetMap[i.key] = (fleetMap[i.key] || 0) + (i.quantity || 1);
-    const targetXY = coordsByName[systemFromLocation(r.locationName)];
-    const fuel = estimateFuel(fleetMap, ships, homeXY, targetXY);
+    const fuel = missionFuel(missionOrigins[r.missionId], ships) || 0;
 
     addResources(totals, delivered);
     addResources(totals.stolen, stolen);
@@ -938,6 +950,7 @@ async function processMiningReports(reports, ships, zones = {}) {
     dailyMap[day].deliveries += 1;
     dailyMap[day].ships_lost += nLost;
     dailyMap[day].fuel = (dailyMap[day].fuel || 0) + fuel;
+    addExtraRes(dailyMap[day], delivered);
 
     addShipCost(lostDetail, ships, lost.destroyed, 1);
 
@@ -951,11 +964,13 @@ async function processMiningReports(reports, ships, zones = {}) {
       ore: delivered.ore || 0,
       silicates: delivered.silicates || 0,
       hydrogen: delivered.hydrogen || 0,
+      ...extrasOf(delivered),
       cycles: r.cycleCount || 0,
       drill_breakdowns: r.drillBreakdowns || 0,
       ships_lost: nLost,
       stolen_total: Object.values(stolen).reduce((s, v) => s + v, 0),
       combat_outcome: r.combatOutcome || null,
+      mission_id: r.missionId ?? null,
       fuel_est: fuel,
     });
   }
@@ -1105,6 +1120,28 @@ async function processSystemDebris(debrisArr, zones = {}) {
 // each such mission once (deduped by mission id) as a real collection, plus
 // keep the in-flight runs for a live view. zoneById: systemId → zone.
 async function processMissions(missions, zoneById = {}, ships = {}) {
+  // Capture launch origin + actual fleet per mission so reports (which carry
+  // only missionId) can resolve where the fleet really launched from and what
+  // it was — far better than assuming home + a standard fleet.
+  if (missions && missions.length) {
+    const { mission_origins } = await browser.storage.local.get('mission_origins');
+    const origins = mission_origins || {};
+    for (const m of missions) {
+      if (m.id == null) continue;
+      origins[m.id] = {
+        sourceSystemId: m.sourceSystemId ?? null,
+        targetSystemId: m.targetSystemId ?? null,
+        distance: m.distance ?? null,
+        fleet: (m.fleetComposition || []).map(f => ({ key: f.shipKey || f.key, quantity: f.quantity || 1 })),
+      };
+    }
+    const ids = Object.keys(origins);
+    if (ids.length > 3000) {
+      ids.map(Number).sort((a, b) => a - b).slice(0, ids.length - 3000).forEach(id => delete origins[id]);
+    }
+    await browser.storage.local.set({ mission_origins: origins });
+  }
+
   const runs = (missions || []).filter(m => m.missionType === 'collect_debris');
 
   const stored = await browser.storage.local.get([
@@ -1147,15 +1184,15 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
       seen.add(m.id);
       total.ore += cargo.ore || 0;
       total.silicates += cargo.silicates || 0;
-      total.alloys += cargo.alloys || 0;
       total.hydrogen += cargo.hydrogen || 0;
+      addExtraRes(total, cargo);   // alloys + rares
       log.unshift({
         id: m.id,
         collected_at: new Date().toISOString(),
         system: m.targetSystemName || (m.targetSystemId != null ? `System #${m.targetSystemId}` : '—'),
         zone: zoneById[m.targetSystemId] || 'unknown',
         ore: cargo.ore || 0, silicates: cargo.silicates || 0,
-        alloys: cargo.alloys || 0, hydrogen: cargo.hydrogen || 0,
+        alloys: cargo.alloys || 0, hydrogen: cargo.hydrogen || 0, ...extrasOf(cargo),
       });
     }
   }
@@ -1186,9 +1223,10 @@ function costFromDetail(record, ships, into) {
 async function rebuildAggregates() {
   const s = await browser.storage.local.get([
     'recent_reports', 'pirate_recent_reports', 'mining_recent_reports',
-    'exp_recent_reports', 'ships',
+    'exp_recent_reports', 'ships', 'mission_origins',
   ]);
   const ships = s.ships || {};
+  const missionOrigins = s.mission_origins || {};
   const out = {};
   // Archives hold every report ever seen; capped recents are the fallback
   // for data collected before archives existed.
@@ -1201,33 +1239,40 @@ async function rebuildAggregates() {
 
   // Surveys
   {
-    const totals = { ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0, first_report: null, last_report: null };
+    const totals = { ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0, fuel: 0, first_report: null, last_report: null };
     const daily = {}, hourly = {}, events = {};
     const lost = emptyLost();
     for (const r of surveyRecords) {
+      const fuel = missionFuel(missionOrigins[r.mission_id], ships) || 0;
       totals.ore += r.ore || 0;
       totals.hydrogen += r.hydrogen || 0;
       totals.silicates += r.silicates || 0;
       totals.missions += 1;
       totals.ships_lost += r.ships_lost || 0;
+      totals.fuel += fuel;
+      addExtraRes(totals, r);
       if (!totals.first_report || r.created_at < totals.first_report) totals.first_report = r.created_at;
       if (!totals.last_report || r.created_at > totals.last_report) totals.last_report = r.created_at;
 
       const day = r.created_at.slice(0, 10);
-      if (!daily[day]) daily[day] = { day, ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0 };
+      if (!daily[day]) daily[day] = { day, ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0, fuel: 0 };
       daily[day].ore += r.ore || 0;
       daily[day].hydrogen += r.hydrogen || 0;
       daily[day].silicates += r.silicates || 0;
       daily[day].missions += 1;
       daily[day].ships_lost += r.ships_lost || 0;
+      daily[day].fuel += fuel;
+      addExtraRes(daily[day], r);
 
       const hour = r.created_at.slice(0, 13) + ':00';
-      if (!hourly[hour]) hourly[hour] = { hour, ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0 };
+      if (!hourly[hour]) hourly[hour] = { hour, ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0, fuel: 0 };
       hourly[hour].ore += r.ore || 0;
       hourly[hour].hydrogen += r.hydrogen || 0;
       hourly[hour].silicates += r.silicates || 0;
       hourly[hour].missions += 1;
       hourly[hour].ships_lost += r.ships_lost || 0;
+      hourly[hour].fuel += fuel;
+      addExtraRes(hourly[hour], r);
 
       const et = r.event_type || 'unknown';
       if (!events[et]) events[et] = { event_type: et, count: 0, ore: 0, hydrogen: 0, silicates: 0 };
@@ -1235,6 +1280,7 @@ async function rebuildAggregates() {
       events[et].ore += r.ore || 0;
       events[et].hydrogen += r.hydrogen || 0;
       events[et].silicates += r.silicates || 0;
+      addExtraRes(events[et], r);
 
       costFromDetail(r, ships, lost);
     }
@@ -1249,13 +1295,14 @@ async function rebuildAggregates() {
   {
     const totals = {
       ore: 0, hydrogen: 0, silicates: 0, raids: 0,
-      ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0,
+      ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0, fuel: 0,
       first_report: null, last_report: null,
     };
     const daily = {}, outcomes = {};
     const lost = emptyLost();
     const debris = { ore: 0, alloys: 0, silicates: 0 };
     for (const r of pirateRecords) {
+      const fuel = missionFuel(missionOrigins[r.mission_id], ships) || 0;
       totals.ore += r.ore || 0;
       totals.hydrogen += r.hydrogen || 0;
       totals.silicates += r.silicates || 0;
@@ -1263,16 +1310,20 @@ async function rebuildAggregates() {
       totals.ships_destroyed += r.ships_lost || 0;
       totals.ships_damaged += r.ships_damaged || 0;
       totals.pirates_destroyed += r.pirates_destroyed || 0;
+      totals.fuel += fuel;
+      addExtraRes(totals, r);
       if (!totals.first_report || r.created_at < totals.first_report) totals.first_report = r.created_at;
       if (!totals.last_report || r.created_at > totals.last_report) totals.last_report = r.created_at;
 
       const day = r.created_at.slice(0, 10);
-      if (!daily[day]) daily[day] = { day, ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0 };
+      if (!daily[day]) daily[day] = { day, ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0, fuel: 0 };
       daily[day].ore += r.ore || 0;
       daily[day].hydrogen += r.hydrogen || 0;
       daily[day].silicates += r.silicates || 0;
+      addExtraRes(daily[day], r);
       daily[day].raids += 1;
       daily[day].ships_destroyed += r.ships_lost || 0;
+      daily[day].fuel += fuel;
 
       const o = r.outcome || 'unknown';
       if (!outcomes[o]) outcomes[o] = { outcome: o, count: 0, ore: 0, hydrogen: 0, silicates: 0 };
@@ -1298,11 +1349,12 @@ async function rebuildAggregates() {
   {
     const totals = {
       ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
-      deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
+      deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0, fuel: 0,
       stolen: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} },
     };
     const daily = {};
     for (const r of miningRecords) {
+      const fuel = missionFuel(missionOrigins[r.mission_id], ships) || (r.fuel_est || 0);
       totals.ore += r.ore || 0;
       totals.silicates += r.silicates || 0;
       totals.hydrogen += r.hydrogen || 0;
@@ -1310,15 +1362,19 @@ async function rebuildAggregates() {
       totals.cycles += r.cycles || 0;
       totals.drill_breakdowns += r.drill_breakdowns || 0;
       totals.ships_lost += r.ships_lost || 0;
+      totals.fuel += fuel;
+      addExtraRes(totals, r);
       totals.stolen.ore += r.stolen_total || 0; // breakdown unknown — lump into ore
 
       const day = r.created_at.slice(0, 10);
-      if (!daily[day]) daily[day] = { day, ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, ships_lost: 0 };
+      if (!daily[day]) daily[day] = { day, ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, ships_lost: 0, fuel: 0 };
       daily[day].ore += r.ore || 0;
       daily[day].silicates += r.silicates || 0;
       daily[day].hydrogen += r.hydrogen || 0;
+      addExtraRes(daily[day], r);
       daily[day].deliveries += 1;
       daily[day].ships_lost += r.ships_lost || 0;
+      daily[day].fuel += fuel;
     }
     out.mining_totals = totals;
     out.mining_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
@@ -1348,6 +1404,13 @@ async function rebuildAggregates() {
     out.exp_resources_lost = lost;
     out.exp_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
   }
+
+  // Rewrite per-record fuel_est on the capped recent lists so the period/zone
+  // views (which sum fuel_est) match the rebuilt all-time totals.
+  const reFuel = r => ({ ...r, fuel_est: missionFuel(missionOrigins[r.mission_id], ships) || (r.fuel_est || 0) });
+  out.recent_reports = (s.recent_reports || []).map(reFuel);
+  out.pirate_recent_reports = (s.pirate_recent_reports || []).map(reFuel);
+  out.mining_recent_reports = (s.mining_recent_reports || []).map(reFuel);
 
   await browser.storage.local.set(out);
   await browser.storage.local.remove('stats_drift');

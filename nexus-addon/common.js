@@ -17,6 +17,12 @@ function getMode() {
   return document.getElementById('mode-select').value; // 'all' | 'daily' | 'hourly'
 }
 
+// Number of trailing buckets (days or hours) the graph shows; 0 = all.
+function getWindow() {
+  const el = document.getElementById('window-select');
+  return el ? (parseInt(el.value, 10) || 0) : 5;
+}
+
 // Selected security zone, or 'all'.
 function getZone() {
   const el = document.getElementById('zone-select');
@@ -74,16 +80,35 @@ function recordsForMode(allRecords, mode) {
 function computeSeries(reports, mode, fieldGetters) {
   const byHour = mode === 'hourly';
   const keyName = byHour ? 'hour' : 'day';
+  const fields = Object.keys(fieldGetters);
   const map = {};
   for (const r of reports) {
     const k = byHour ? r.created_at.slice(0, 13) + ':00' : r.created_at.slice(0, 10);
     if (!map[k]) {
       map[k] = { [keyName]: k };
-      for (const f of Object.keys(fieldGetters)) map[k][f] = 0;
+      for (const f of fields) map[k][f] = 0;
     }
     for (const [f, get] of Object.entries(fieldGetters)) map[k][f] += get(r);
   }
-  return Object.values(map).sort((a, b) => a[keyName].localeCompare(b[keyName]));
+  const keys = Object.keys(map).sort();
+  if (keys.length < 2) return keys.map(k => map[k]);
+
+  // Fill empty days/hours with zero rows so the time axis stays continuous —
+  // otherwise the chart's equal-spaced labels misrepresent gaps in activity.
+  const step = byHour ? 3600000 : 86400000;
+  const toDate = k => new Date(byHour ? `${k}:00Z` : `${k}T00:00:00Z`);
+  const fmt = d => byHour ? d.toISOString().slice(0, 13) + ':00' : d.toISOString().slice(0, 10);
+  const blank = k => { const o = { [keyName]: k }; for (const f of fields) o[f] = 0; return o; };
+  const out = [];
+  const end = toDate(keys[keys.length - 1]).getTime();
+  let t = toDate(keys[0]).getTime(), guard = 0;
+  while (t <= end && guard++ < 100000) {
+    const k = fmt(new Date(t));
+    out.push(map[k] || blank(k));
+    t += step;
+  }
+  const win = getWindow();
+  return win > 0 ? out.slice(-win) : out;
 }
 
 // Hourly series from report history. fieldGetters: { field: r => value }.
@@ -101,30 +126,62 @@ function computeHourlySeries(reports, fieldGetters) {
 }
 
 const RESOURCE_SERIES = [
-  { field: 'ore',       label: 'Ore',       color: '#f0883e' },
-  { field: 'silicates', label: 'Silicates', color: '#56d364' },
-  { field: 'hydrogen',  label: 'Hydrogen',  color: '#79c0ff' },
+  { field: 'ore',          label: 'Ore',          color: '#f0883e' },
+  { field: 'silicates',    label: 'Silicates',    color: '#56d364' },
+  { field: 'hydrogen',     label: 'Hydrogen',     color: '#79c0ff' },
+  { field: 'alloys',       label: 'Alloys',       color: '#e3b341' },
+  { field: 'ice',          label: 'Ice',          color: '#a5d6ff' },
+  { field: 'quantum_dust', label: 'Quantum Dust', color: '#bc8cff' },
+  { field: 'plasma_core',  label: 'Plasma Core',  color: '#ff7b72' },
+  { field: 'dark_matter',  label: 'Dark Matter',  color: '#d2a8ff' },
+  { field: 'antimatter',   label: 'Antimatter',   color: '#ffa657' },
 ];
 
-// Standard ore/silicates/hydrogen line chart. Returns the Chart instance.
-function makeResourceLineChart(canvasId, series, labelKey) {
+// fieldGetters covering every chartable resource, for computeSeries.
+const SERIES_GETTERS = {};
+for (const d of RESOURCE_SERIES) SERIES_GETTERS[d.field] = r => r[d.field] || 0;
+
+// Resource line chart. Ore/silicates/hydrogen always shown; alloys + exotics
+// only when the series actually carries some (avoids a wall of flat-zero lines).
+// `count` = { field, label } adds a report-count line on a secondary y-axis.
+function makeResourceLineChart(canvasId, series, labelKey, count) {
+  const ALWAYS = new Set(['ore', 'silicates', 'hydrogen']);
+  const shown = RESOURCE_SERIES.filter(d =>
+    ALWAYS.has(d.field) || series.some(r => (r[d.field] || 0) > 0));
+  const datasets = shown.map(d => ({
+    label: d.label,
+    data: series.map(r => r[d.field] || 0),
+    borderColor: d.color,
+    backgroundColor: d.color + '22',
+    fill: true,
+    tension: 0.3,
+  }));
+  const scales = { ...SCALE_OPTS };
+  if (count) {
+    datasets.push({
+      label: count.label,
+      data: series.map(r => r[count.field] || 0),
+      borderColor: '#8b949e',
+      borderDash: [5, 4],
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: 0.3,
+      yAxisID: 'count',
+    });
+    scales.count = {
+      position: 'right',
+      beginAtZero: true,
+      ticks: { color: '#8b949e', precision: 0 },
+      grid: { drawOnChartArea: false },
+    };
+  }
   return new Chart(document.getElementById(canvasId), {
     type: 'line',
-    data: {
-      labels: series.map(r => r[labelKey]),
-      datasets: RESOURCE_SERIES.map(d => ({
-        label: d.label,
-        data: series.map(r => r[d.field] || 0),
-        borderColor: d.color,
-        backgroundColor: d.color + '22',
-        fill: true,
-        tension: 0.3,
-      })),
-    },
+    data: { labels: series.map(r => r[labelKey]), datasets },
     options: {
       responsive: true,
       plugins: { legend: { labels: { color: '#e6edf3' } } },
-      scales: SCALE_OPTS,
+      scales,
     },
   });
 }
@@ -140,6 +197,7 @@ function computeEventBreakdown(reports) {
     map[et].ore += r.ore || 0;
     map[et].hydrogen += r.hydrogen || 0;
     map[et].silicates += r.silicates || 0;
+    for (const k of EXTRA_RES_KEYS_UI) map[et][k] = (map[et][k] || 0) + (r[k] || 0);
   }
   return Object.values(map).sort((a, b) => b.count - a.count);
 }
@@ -225,6 +283,33 @@ function zeroCell(v) {
   return td;
 }
 
+// Alloys + exotic resources, shown as their own collected cards. Values may be
+// stored flat on totals or inside a `rare` map; read either.
+const EXTRA_RESOURCES = [
+  ['alloys', 'Alloys', 'alloys'],
+  ['ice', 'Ice', 'hydrogen'],
+  ['quantum_dust', 'Quantum Dust', 'rare'],
+  ['plasma_core', 'Plasma Core', 'rare'],
+  ['dark_matter', 'Dark Matter', 'rare'],
+  ['antimatter', 'Antimatter', 'rare'],
+];
+
+const EXTRA_RES_KEYS_UI = EXTRA_RESOURCES.map(e => e[0]);
+
+function resourceVal(totals, key) {
+  if (totals && totals[key] != null) return totals[key];
+  return (totals && totals.rare && totals.rare[key]) || 0;
+}
+
+// Append the alloys + exotic-resource cards (alloys always; rares only when
+// some has been collected) to a collected-resources container.
+function appendExtraResourceCards(container, totals, suffix) {
+  for (const [key, label, cls] of EXTRA_RESOURCES) {
+    const v = resourceVal(totals, key);
+    if (key === 'alloys' || v > 0) container.appendChild(makeStatCard(`${label}${suffix}`, fmt(v), cls));
+  }
+}
+
 function appendRareCards(container, rare, suffix) {
   Object.entries(rare || {})
     .sort((a, b) => b[1] - a[1])
@@ -271,6 +356,7 @@ function renderLostCards(destroyedId, repairId, lost, periodLabel) {
 
 // Relative value of each resource, used to weight the net total.
 const RESOURCE_WEIGHTS = { ore: 1, silicates: 2, hydrogen: 3, alloys: 5 };
+const RARE_WEIGHT = 10;   // exotic resources (ice, quantum dust, …) in the net total
 
 // Net gain cards: resources collected minus ship build costs, per resource
 // (raw), plus a weighted total (ore×1, silicates×2, hydrogen×3, alloys×5).
@@ -291,9 +377,20 @@ function renderNetCards(containerId, collected, lost, periodLabel, fuelHydrogen 
     total += v * RESOURCE_WEIGHTS[key];
     el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), key));
   }
+  // Exotic resources — net (collected − any rare ship-cost), weighted ×10 in
+  // the total. Shown when present either side.
+  for (const [key, label, cls] of EXTRA_RESOURCES) {
+    if (key === 'alloys') continue;   // already a core field above
+    const got = resourceVal(collected, key);
+    const spent = resourceVal(cost, key);
+    if (!got && !spent) continue;
+    const v = got - spent;
+    total += v * RARE_WEIGHT;
+    el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), cls));
+  }
   const totalCard = makeStatCard(`Total net${periodLabel}`, (total >= 0 ? '+' : '') + fmt(total),
     '', total >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5. Rare resource losses not included.'
+  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5, exotics×10.'
     + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
   el.appendChild(totalCard);
 }

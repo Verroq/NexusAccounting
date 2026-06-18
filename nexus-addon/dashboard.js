@@ -67,6 +67,10 @@ function updateStatus(lastScrape, lastError) {
 // ── Render ─────────────────────────────────────────────────────────────────
 
 function renderAll() {
+  if (activeTab === 'global') {
+    renderGlobalTab();
+    return;
+  }
   if (activeTab === 'pirates') {
     renderPiratesTab();
     return;
@@ -112,6 +116,7 @@ function renderAll() {
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
 const TAB_CONTENT = {
+  global: 'global-content',
   surveys: 'main-content',
   pirates: 'pirates-content',
   mining: 'mining-content',
@@ -129,11 +134,20 @@ document.querySelectorAll('.tab').forEach(btn => {
       document.getElementById(id).style.display = tab === activeTab ? '' : 'none';
     }
     // View mode and records cap are meaningless on the finder and debris tabs.
-    document.querySelector('.controls').style.display =
-      (activeTab === 'finder' || activeTab === 'debris' || activeTab === 'techtree') ? 'none' : '';
+    document.getElementById('global-controls').style.display =
+      (activeTab === 'finder' || activeTab === 'techtree') ? 'none' : '';
+    positionControls();
     renderAll();
   });
 });
+
+// Keep the View/Window/Zone bar directly above the active tab's graphs.
+function positionControls() {
+  const bar = document.getElementById('global-controls');
+  const content = document.getElementById(TAB_CONTENT[activeTab]);
+  const charts = content && content.querySelector('.charts');
+  if (charts) charts.parentNode.insertBefore(bar, charts);
+}
 
 // ── Controls ───────────────────────────────────────────────────────────────
 
@@ -161,6 +175,7 @@ function onViewChange() {
 
 document.getElementById('mode-select').addEventListener('change', onViewChange);
 document.getElementById('zone-select').addEventListener('change', onViewChange);
+document.getElementById('window-select').addEventListener('change', onViewChange);
 document.getElementById('event-select').addEventListener('change', () => { currentPage = 1; renderAll(); });
 
 document.getElementById('btn-reset').addEventListener('click', async function () {
@@ -312,6 +327,7 @@ document.getElementById('import-file').addEventListener('change', async function
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
+positionControls();
 loadAll();
 
 browser.storage.onChanged.addListener((changes, area) => {
