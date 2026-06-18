@@ -4,6 +4,22 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.5] - 2026-06-18
+
+### Added
+- Sidebar launcher: an "Addon → Nexus Tracker" entry is injected into the
+  game's sidebar (using its own styling) to open the dashboard.
+- Graph time-window selector (last 5/7/14/30/all days; default 5), and the
+  View/Window/Zone controls now sit directly above each tab's graphs.
+
+### Changed
+- Fuel is now computed precisely from each mission's real fleet and real
+  distance, captured live from /api/fleet/missions by mission id (including
+  the actual launch system, not an assumed home). The earlier estimate is
+  removed — missions the addon didn't observe contribute no fuel rather
+  than a guess.
+- Date graphs fill empty days/hours so the time axis is continuous.
+
 ## [1.5.4] - 2026-06-17
 
 ### Added
