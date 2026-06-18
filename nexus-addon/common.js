@@ -356,6 +356,7 @@ function renderLostCards(destroyedId, repairId, lost, periodLabel) {
 
 // Relative value of each resource, used to weight the net total.
 const RESOURCE_WEIGHTS = { ore: 1, silicates: 2, hydrogen: 3, alloys: 5 };
+const RARE_WEIGHT = 10;   // exotic resources (ice, quantum dust, …) in the net total
 
 // Net gain cards: resources collected minus ship build costs, per resource
 // (raw), plus a weighted total (ore×1, silicates×2, hydrogen×3, alloys×5).
@@ -376,9 +377,20 @@ function renderNetCards(containerId, collected, lost, periodLabel, fuelHydrogen 
     total += v * RESOURCE_WEIGHTS[key];
     el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), key));
   }
+  // Exotic resources — net (collected − any rare ship-cost), weighted ×10 in
+  // the total. Shown when present either side.
+  for (const [key, label, cls] of EXTRA_RESOURCES) {
+    if (key === 'alloys') continue;   // already a core field above
+    const got = resourceVal(collected, key);
+    const spent = resourceVal(cost, key);
+    if (!got && !spent) continue;
+    const v = got - spent;
+    total += v * RARE_WEIGHT;
+    el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), cls));
+  }
   const totalCard = makeStatCard(`Total net${periodLabel}`, (total >= 0 ? '+' : '') + fmt(total),
     '', total >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5. Rare resource losses not included.'
+  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5, exotics×10.'
     + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
   el.appendChild(totalCard);
 }

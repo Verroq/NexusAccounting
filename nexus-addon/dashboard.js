@@ -67,6 +67,10 @@ function updateStatus(lastScrape, lastError) {
 // ── Render ─────────────────────────────────────────────────────────────────
 
 function renderAll() {
+  if (activeTab === 'global') {
+    renderGlobalTab();
+    return;
+  }
   if (activeTab === 'pirates') {
     renderPiratesTab();
     return;
@@ -112,6 +116,7 @@ function renderAll() {
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
 const TAB_CONTENT = {
+  global: 'global-content',
   surveys: 'main-content',
   pirates: 'pirates-content',
   mining: 'mining-content',

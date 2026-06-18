@@ -9,6 +9,7 @@
   <h1>Nexus Accounting</h1>
 
   <nav class="tabs">
+    <button class="tab" data-tab="global">Global</button>
     <button class="tab active" data-tab="surveys">Surveys</button>
     <button class="tab" data-tab="pirates">Pirates</button>
     <button class="tab" data-tab="mining">Mining</button>
@@ -66,6 +67,32 @@
       <span id="cap-warning" style="display:none; color:#ff7b72; font-size:0.75rem;">Must be a whole number ≥ 0</span>
       <button id="btn-save-cap">Save</button>
     </span>
+  </div>
+
+  <div id="global-content" style="display:none;">
+    <p style="color:#8b949e; font-size:0.85rem; margin-bottom:12px;">
+      Combined across surveys, pirate raids, mining, debris (precise) and expeditions.
+    </p>
+    <div class="section-label">Resources collected (all sources)</div>
+    <div class="stats" id="g-stats-collected"></div>
+
+    <div class="section-label">Net gain (collected − ship costs − fuel)</div>
+    <div class="stats" id="g-stats-net"></div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h2>Collected per period</h2>
+        <canvas id="chart-global-period"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Collected composition</h2>
+        <canvas id="chart-global"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Share by source (weighted)</h2>
+        <canvas id="chart-global-source"></canvas>
+      </div>
+    </div>
   </div>
 
   <div id="main-content">
@@ -512,6 +539,7 @@
   <script src="browser-polyfill.js"></script>
   <script src="chart.umd.js"></script>
   <script src="common.js"></script>
+  <script src="tabs/global.js"></script>
   <script src="tabs/surveys.js"></script>
   <script src="tabs/pirates.js"></script>
   <script src="tabs/mining.js"></script>

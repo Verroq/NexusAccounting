@@ -27,7 +27,7 @@ FILES = [
     'package.json',
     'background.js', 'sidebar-inject.js',
     'dashboard.html', 'dashboard.css', 'dashboard.js', 'common.js',
-    'tabs/surveys.js', 'tabs/pirates.js', 'tabs/mining.js',
+    'tabs/global.js', 'tabs/surveys.js', 'tabs/pirates.js', 'tabs/mining.js',
     'tabs/debris.js', 'tabs/expeditions.js', 'tabs/finder.js', 'tabs/techtree.js',
     'simulator.html', 'simulator.css', 'simulator.js',
     'simulator-intel.js', 'simulator-validate.js', 'engine.js',
