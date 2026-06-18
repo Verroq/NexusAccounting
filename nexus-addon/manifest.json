@@ -28,6 +28,13 @@
       "128": "icons/icon128.png"
     }
   },
+  "content_scripts": [
+    {
+      "matches": ["https://s0.nexuslegacy.space/*"],
+      "js": ["sidebar-inject.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "icons": {
     "128": "icons/icon128.png"
   },

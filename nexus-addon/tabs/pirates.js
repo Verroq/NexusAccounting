@@ -17,7 +17,8 @@ function getPirateTotalsForMode() {
     ships_destroyed: t.ships_destroyed + (r.ships_lost || 0),
     ships_damaged: t.ships_damaged + (r.ships_damaged || 0),
     pirates_destroyed: t.pirates_destroyed + (r.pirates_destroyed || 0),
-  }), { ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0 });
+    fuel: t.fuel + (r.fuel_est || 0),
+  }), { ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0, fuel: 0 });
 }
 
 function getPirateLostForMode() {

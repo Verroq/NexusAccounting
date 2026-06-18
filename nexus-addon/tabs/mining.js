@@ -23,7 +23,8 @@ function getMiningTotalsForMode(mode) {
     drill_breakdowns: t.drill_breakdowns + (r.drill_breakdowns || 0),
     ships_lost: t.ships_lost + (r.ships_lost || 0),
     stolen_total: t.stolen_total + (r.stolen_total || 0),
-  }), { ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0, stolen_total: 0 });
+    fuel: t.fuel + (r.fuel_est || 0),
+  }), { ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0, stolen_total: 0, fuel: 0 });
 }
 
 function getMiningSeriesForMode(mode) {

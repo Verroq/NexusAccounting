@@ -29,12 +29,20 @@
     <a href="simulator.html" style="color:#58a6ff; margin-left:auto;">Combat Simulator →</a>
   </div>
 
-  <div class="controls">
+  <div class="controls" id="global-controls">
     <label for="mode-select">View:</label>
     <select id="mode-select">
       <option value="all">All time</option>
       <option value="daily">Daily</option>
       <option value="hourly">Hourly</option>
+    </select>
+    <label for="window-select" style="margin-left:12px;">Window:</label>
+    <select id="window-select" title="How many days/hours of history the graph shows.">
+      <option value="5" selected>Last 5</option>
+      <option value="7">Last 7</option>
+      <option value="14">Last 14</option>
+      <option value="30">Last 30</option>
+      <option value="0">All</option>
     </select>
     <label for="zone-select" style="margin-left:12px;">Zone:</label>
     <select id="zone-select" title="Filter by the security zone where data was gathered. Zone-filtered totals are computed from the stored (capped) records.">

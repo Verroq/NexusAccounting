@@ -33,7 +33,8 @@ function getTotalsForMode() {
     silicates: t.silicates + (r.silicates || 0),
     missions: t.missions + 1,
     ships_lost: t.ships_lost + (r.ships_lost || 0),
-  }), { ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0 });
+    fuel: t.fuel + (r.fuel_est || 0),
+  }), { ore: 0, hydrogen: 0, silicates: 0, missions: 0, ships_lost: 0, fuel: 0 });
 }
 
 // Returns resources-lost for the current view.

@@ -17,6 +17,12 @@ function getMode() {
   return document.getElementById('mode-select').value; // 'all' | 'daily' | 'hourly'
 }
 
+// Number of trailing buckets (days or hours) the graph shows; 0 = all.
+function getWindow() {
+  const el = document.getElementById('window-select');
+  return el ? (parseInt(el.value, 10) || 0) : 5;
+}
+
 // Selected security zone, or 'all'.
 function getZone() {
   const el = document.getElementById('zone-select');
@@ -74,16 +80,35 @@ function recordsForMode(allRecords, mode) {
 function computeSeries(reports, mode, fieldGetters) {
   const byHour = mode === 'hourly';
   const keyName = byHour ? 'hour' : 'day';
+  const fields = Object.keys(fieldGetters);
   const map = {};
   for (const r of reports) {
     const k = byHour ? r.created_at.slice(0, 13) + ':00' : r.created_at.slice(0, 10);
     if (!map[k]) {
       map[k] = { [keyName]: k };
-      for (const f of Object.keys(fieldGetters)) map[k][f] = 0;
+      for (const f of fields) map[k][f] = 0;
     }
     for (const [f, get] of Object.entries(fieldGetters)) map[k][f] += get(r);
   }
-  return Object.values(map).sort((a, b) => a[keyName].localeCompare(b[keyName]));
+  const keys = Object.keys(map).sort();
+  if (keys.length < 2) return keys.map(k => map[k]);
+
+  // Fill empty days/hours with zero rows so the time axis stays continuous —
+  // otherwise the chart's equal-spaced labels misrepresent gaps in activity.
+  const step = byHour ? 3600000 : 86400000;
+  const toDate = k => new Date(byHour ? `${k}:00Z` : `${k}T00:00:00Z`);
+  const fmt = d => byHour ? d.toISOString().slice(0, 13) + ':00' : d.toISOString().slice(0, 10);
+  const blank = k => { const o = { [keyName]: k }; for (const f of fields) o[f] = 0; return o; };
+  const out = [];
+  const end = toDate(keys[keys.length - 1]).getTime();
+  let t = toDate(keys[0]).getTime(), guard = 0;
+  while (t <= end && guard++ < 100000) {
+    const k = fmt(new Date(t));
+    out.push(map[k] || blank(k));
+    t += step;
+  }
+  const win = getWindow();
+  return win > 0 ? out.slice(-win) : out;
 }
 
 // Hourly series from report history. fieldGetters: { field: r => value }.
