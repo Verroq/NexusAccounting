@@ -125,9 +125,14 @@
             <th class="sortable" data-key="ore">Ore</th>
             <th class="sortable" data-key="hydrogen">Hydrogen</th>
             <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
             <th class="sortable" data-key="ships_lost">Ships lost</th>
             <th class="sortable" data-key="ships_damaged">Ships damaged</th>
-            <th class="sortable" data-key="wormholes_detected">Wormholes</th>
           </tr>
         </thead>
         <tbody id="reports-tbody"></tbody>
@@ -181,6 +186,12 @@
             <th class="sortable" data-key="ore">Ore</th>
             <th class="sortable" data-key="hydrogen">Hydrogen</th>
             <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
             <th class="sortable" data-key="ships_lost">Ships destroyed</th>
             <th class="sortable" data-key="ships_damaged">Ships damaged</th>
             <th class="sortable" data-key="pirates_destroyed">Pirates destroyed</th>
@@ -232,6 +243,12 @@
             <th class="sortable" data-key="ore">Ore</th>
             <th class="sortable" data-key="silicates">Silicates</th>
             <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
             <th class="sortable" data-key="cycles">Cycles</th>
             <th class="sortable" data-key="drill_breakdowns">Breakdowns</th>
             <th class="sortable" data-key="ships_lost">Ships lost</th>
@@ -254,6 +271,10 @@
     <div class="stats" id="d-stats-lost"></div>
 
     <div class="charts">
+      <div class="chart-box">
+        <h2>Collected per period</h2>
+        <canvas id="chart-debris-period"></canvas>
+      </div>
       <div class="chart-box">
         <h2>Collected composition</h2>
         <canvas id="chart-debris"></canvas>
@@ -285,6 +306,11 @@
             <th class="sortable" data-key="silicates">Silicates</th>
             <th class="sortable" data-key="alloys">Alloys</th>
             <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
           </tr>
         </thead>
         <tbody id="d-collected-tbody"></tbody>
@@ -329,9 +355,13 @@
     <div class="stats" id="e-stats-lost"></div>
 
     <div class="charts">
-      <div class="chart-box" style="grid-column: 1 / -1;">
+      <div class="chart-box">
         <h2>Loot per period</h2>
         <canvas id="chart-expeditions"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Loot composition</h2>
+        <canvas id="chart-expeditions-comp"></canvas>
       </div>
     </div>
 
@@ -353,7 +383,15 @@
             <th class="sortable" data-key="location">Location</th>
             <th class="sortable" data-key="zone">Zone</th>
             <th class="sortable" data-key="event">Event</th>
-            <th>Loot</th>
+            <th class="sortable" data-key="ore">Ore</th>
+            <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
             <th class="sortable" data-key="ships_lost">Ships lost</th>
           </tr>
         </thead>

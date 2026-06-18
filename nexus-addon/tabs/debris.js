@@ -2,20 +2,53 @@
 
 // ── Debris tab ─────────────────────────────────────────────────────────────
 
-let chartDebris;
+let chartDebris, chartDebrisPeriod;
 const debrisSort = { key: 'ore', dir: -1 };
 attachSortable('d-fields-head', debrisSort, () => renderDebrisTab());
 
+// Collection log mapped so the shared mode/zone helpers (which key on
+// created_at) work on it.
+function debrisLog() {
+  return (store.debris_collection_log || []).map(r => ({ ...r, created_at: r.collected_at }));
+}
+
+// Collected-over-time series from the collection log.
+function getDebrisSeries(mode) {
+  const getters = { runs: () => 1 };
+  for (const d of RESOURCE_SERIES) getters[d.field] = r => r[d.field] || 0;
+  return computeSeries(filterZone(debrisLog()), mode, getters);
+}
+
+// Collected totals for the current view + zone. All-time/unfiltered uses the
+// precise cumulative total; period/zone sums the (capped) collection log.
+function getDebrisCollectedForMode(mode) {
+  if (mode === 'all' && getZone() === 'all') {
+    return store.debris_collected || { ore: 0, silicates: 0, alloys: 0, hydrogen: 0 };
+  }
+  const rows = filterZone(mode === 'all' ? debrisLog() : latestBucket(debrisLog(), mode));
+  const t = { ore: 0, silicates: 0, hydrogen: 0 };
+  for (const r of rows) {
+    t.ore += r.ore || 0; t.silicates += r.silicates || 0; t.hydrogen += r.hydrogen || 0;
+    for (const k of EXTRA_RES_KEYS_UI) t[k] = (t[k] || 0) + (r[k] || 0);
+  }
+  return t;
+}
+
 function renderDebrisTab() {
-  // Precise collection by your own fleets
-  const mine = store.debris_collected || { ore: 0, silicates: 0, alloys: 0, hydrogen: 0 };
+  const mode = getMode();
+  const periodLabel = periodLabelFor(mode);
+  // Precise collection by your own fleets, for the current view + zone.
+  const mine = getDebrisCollectedForMode(mode);
   const mineEl = document.getElementById('d-stats-mine');
   mineEl.textContent = '';
   mineEl.append(
-    makeStatCard('Ore', fmt(mine.ore), 'ore'),
-    makeStatCard('Silicates', fmt(mine.silicates), 'silicates'),
-    makeStatCard('Alloys', fmt(mine.alloys), 'alloys'),
-    makeStatCard('Runs', fmt((store.debris_collection_log || []).length), 'missions'),
+    makeStatCard(`Ore${periodLabel}`, fmt(mine.ore), 'ore'),
+    makeStatCard(`Silicates${periodLabel}`, fmt(mine.silicates), 'silicates'),
+    makeStatCard(`Hydrogen${periodLabel}`, fmt(mine.hydrogen), 'hydrogen'),
+  );
+  appendExtraResourceCards(mineEl, mine, periodLabel);
+  mineEl.append(
+    makeStatCard(`Runs${periodLabel}`, fmt(filterZone(mode === 'all' ? debrisLog() : latestBucket(debrisLog(), mode)).length), 'missions'),
   );
 
   const lost = store.debris_resources_lost || { destroyed: {}, repair: {} };
@@ -23,6 +56,10 @@ function renderDebrisTab() {
 
   if (chartDebris) chartDebris.destroy();
   chartDebris = makeResourceDoughnut('chart-debris', mine);
+
+  if (chartDebrisPeriod) chartDebrisPeriod.destroy();
+  chartDebrisPeriod = makeResourceLineChart('chart-debris-period', getDebrisSeries(mode),
+    getLabelKey(mode), { field: 'runs', label: 'Runs' });
 
   renderActiveRuns();
   renderCollectionLog();
@@ -33,8 +70,8 @@ function renderDebrisTab() {
   genEl.append(
     makeStatCard('Ore', fmt(gen.ore), 'ore'),
     makeStatCard('Silicates', fmt(gen.silicates), 'silicates'),
-    makeStatCard('Alloys', fmt(gen.alloys), 'alloys'),
   );
+  appendExtraResourceCards(genEl, gen, '');
 
   document.getElementById('d-last-check').textContent = store.debris_last_check
     ? `Last check: ${new Date(store.debris_last_check).toLocaleString()}`
@@ -115,7 +152,7 @@ function renderCollectionLog() {
   if (!log.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 7; td.style.color = '#484f58';
+    td.colSpan = 12; td.style.color = '#484f58';
     td.textContent = 'No collections recorded yet — they appear when a collect-debris fleet returns.';
     tr.appendChild(td); tbody.appendChild(tr);
     return;
@@ -129,7 +166,9 @@ function renderCollectionLog() {
     const tdSil = zeroCell(r.silicates); tdSil.className = 'silicates';
     const tdAl = zeroCell(r.alloys); tdAl.className = 'alloys';
     const tdHyd = zeroCell(r.hydrogen); tdHyd.className = 'hydrogen';
-    tr.append(tdWhen, tdSys, zoneCell(r.zone), tdOre, tdSil, tdAl, tdHyd);
+    tr.append(tdWhen, tdSys, zoneCell(r.zone), tdOre, tdSil, tdAl, tdHyd,
+              zeroCell(r.ice), zeroCell(r.quantum_dust), zeroCell(r.plasma_core),
+              zeroCell(r.dark_matter), zeroCell(r.antimatter));
     tbody.appendChild(tr);
   }
 }

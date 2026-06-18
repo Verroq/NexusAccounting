@@ -130,7 +130,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     }
     // View mode and records cap are meaningless on the finder and debris tabs.
     document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'debris' || activeTab === 'techtree') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'techtree') ? 'none' : '';
     positionControls();
     renderAll();
   });
