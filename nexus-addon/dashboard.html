@@ -529,7 +529,19 @@
       <span id="tt-summary" style="margin-left:12px; color:#8b949e; font-size:0.8rem;"></span>
     </div>
     <div id="tt-legend"></div>
-    <div id="techtree"></div>
+    <div class="tt-main">
+      <div id="techtree"></div>
+      <aside id="tt-queue">
+        <h3>Research queue</h3>
+        <div id="tt-launch-planet" style="display:none;">
+          <label for="tt-planet-select">Launch on:</label>
+          <select id="tt-planet-select"></select>
+        </div>
+        <div id="tt-queue-list" class="tt-queue-empty">Click <b>+</b> on a tech to plan it.</div>
+        <div id="tt-queue-totals"></div>
+        <button id="tt-queue-clear" style="display:none;">Clear queue</button>
+      </aside>
+    </div>
   </div>
 
   <div id="storage-footer" style="margin-top:24px; padding-top:10px; border-top:1px solid #21262d;

@@ -59,8 +59,99 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
   if (msg.type === 'GET_HOME') return getHome();
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
+  if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
+  if (msg.type === 'START_RESEARCH') return startResearch(msg.researchId, msg.planetId, msg.useFragments);
 });
+
+// Launch a research on a planet: POST /api/research/{id}/start { planetId }.
+// (Endpoint mirrors the game client.) Refreshes stored state on success so the
+// dashboard reflects the new active research.
+async function startResearch(researchId, planetId, useFragments = false) {
+  const token = await getToken();
+  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  if (researchId == null || planetId == null) return { error: 'Missing research or planet id.' };
+  try {
+    const body = { planetId };
+    if (useFragments) body.useFragments = true;
+    const r = await fetch(`${GAME_URL}/api/research/${researchId}/start`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      let m = `${r.status}`;
+      try { const j = await r.json(); m = j.message || j.error || m; } catch { /* non-JSON */ }
+      return { error: `Start failed: ${m}` };
+    }
+    const data = await r.json().catch(() => ({}));
+    await scrape();   // pick up the new active research
+    return { ok: true, data };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+// The highest-level Research Lab building in a planet response, or null.
+// `buildings` sits at the response wrapper level (a sibling of `planet`), so
+// pass the whole response; scan every array field for the research_lab entry.
+function findResearchLab(resp) {
+  let best = null;
+  for (const v of Object.values(resp || {})) {
+    if (!Array.isArray(v)) continue;
+    for (const b of v) {
+      if (b?.definition?.key === 'research_lab' || b?.key === 'research_lab') {
+        if (!best || (b.level || 0) > (best.level || 0)) best = b;
+      }
+    }
+  }
+  return best;
+}
+
+// Total stored resources + production rates across all your planets, plus
+// research-planner inputs: highest research-lab level (+ its definition and the
+// host planet's build-speed), the count of planets (= parallel research slots),
+// and any in-progress lab upgrade end time.
+async function getResources() {
+  const token = await getToken();
+  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  try {
+    const data = await apiFetch('/api/planets', token);
+    const planets = data.planets || [];
+    const keys = ['ore', 'silicates', 'hydrogen', 'alloys',
+      'oreRate', 'silicatesRate', 'hydrogenRate', 'alloysRate'];
+    const tot = Object.fromEntries(keys.map(k => [k, 0]));
+    let labLevel = 0, labDef = null, buildSpeedMult = 1, labUpgradeEndsAt = null;
+    const researchPlanets = [];   // { id, name, mult } — one research slot each
+    for (const p of planets) {
+      const d = await apiFetch(`/api/planets/${p.id}`, token);
+      const pl = d.planet || d;
+      for (const k of keys) tot[k] += pl[k] || 0;
+      const lab = findResearchLab(d);
+      if (lab && (lab.level || 0) > labLevel) {
+        labLevel = lab.level || 0;
+        labDef = lab.definition || null;
+        buildSpeedMult = d.buildSpeedMult || 1;
+        labUpgradeEndsAt = lab.isUpgrading ? (lab.upgradeEndsAt || null) : null;
+      }
+      // Research speed is per-planet; actual time = nextResearchTime × this mult.
+      try {
+        const r = await apiFetch(`/api/research?planetId=${p.id}`, token);
+        researchPlanets.push({ id: p.id, name: p.name || `Planet #${p.id}`, mult: r.researchSpeedMult || 1 });
+      } catch { /* skip this planet's slot */ }
+    }
+    tot.labLevel = labLevel;
+    tot.labDef = labDef;
+    tot.buildSpeedMult = buildSpeedMult;
+    tot.labUpgradeEndsAt = labUpgradeEndsAt;
+    tot.planetCount = planets.length;
+    tot.researchPlanets = researchPlanets;
+    tot.planetSpeeds = researchPlanets.map(rp => rp.mult);
+    return tot;
+  } catch (err) {
+    return { error: err.message };
+  }
+}
 
 // Your alliance tag + member ids, so the finder can flag alliance-owned
 // planets it scans.
@@ -1585,7 +1676,11 @@ async function scrape() {
       await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships, zones, wormholeZones, wormholeClasses || {});
       await processSystemDebris(systemDebrisData.debris || [], zones);
       await processMissions(missionsData.missions || [], zoneById || {}, ships);
-      await browser.storage.local.set({ research: researchData.research || [] });
+      await browser.storage.local.set({
+        research: researchData.research || [],
+        research_speed_mult: researchData.researchSpeedMult || 1,
+        active_research: researchData.activeResearches || (researchData.activeResearch ? [researchData.activeResearch] : []),
+      });
       await processSpyReports(spyData.reports || []);
       await processCampScoutReports(campScoutData.reports || []);
       await checkDrift();
@@ -1677,7 +1772,11 @@ function routeIntercepted(url, json) {
       return;
     }
     if (url.includes('/api/research')) {
-      await browser.storage.local.set({ research: json.research || [] });
+      await browser.storage.local.set({
+        research: json.research || [],
+        research_speed_mult: json.researchSpeedMult || 1,
+        active_research: json.activeResearches || (json.activeResearch ? [json.activeResearch] : []),
+      });
       return;
     }
     const { ships, system_zones, camp_zones, wormhole_zones, wormhole_classes } =
