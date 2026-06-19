@@ -4,6 +4,25 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.7] - 2026-06-19
+
+### Added
+- **Tech Tree research planner**: queue research targets and launch them
+  straight from the dashboard.
+  - Real lab level read from each planet's Research Lab building (highest
+    across planets) — replaces the previous estimate.
+  - Lab-upgrade steps are inserted automatically when a planned tech needs
+    a higher lab level, and gate the techs that depend on them.
+  - **Launch** button on each researchable step posts the research to the
+    game (with a confirm dialog) on a planet of your choice — a "Launch on"
+    picker lists every planet, with busy ones disabled.
+
+### Changed
+- Research time estimates are now accurate: they use the game's own
+  per-level time scaled by each planet's research-speed multiplier, and the
+  schedule models one research slot per planet (parallel) plus a
+  time-aware affordability check that accrues income over the queue.
+
 ## [1.5.6] - 2026-06-18
 
 ### Added
