@@ -251,7 +251,7 @@ const PIRATE_TIER = {
 // "Fluctuates each round" → uniform [0, 2×base] per-round draw; mean = base.
 // ponytail: log(1001) precomputed; adjust cap & curve once real battle data arrives.
 const EW_JAM_CAP = 0.30;
-const _EW_LN_NORM = Math.log(1001);
+const _EW_LN_NORM = Math.log(10001);
 
 function ewJamFraction(n) {
   if (!n) return 0;
