@@ -17,7 +17,25 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     game (with a confirm dialog) on a planet of your choice — a "Launch on"
     picker lists every planet, with busy ones disabled.
 
+### Fixed
+- Fuel formula recalibrated against real data: `rate × (0.0496 × distance + 3.48)`
+  (~6% mean error; the previous formula was ~2× too high due to a mislabeled
+  distance scale).
+- Fuel is now counted once per **launched** mission (stored in `fuel_log` by
+  type/date/zone). A survey's heavy investigation/collection fleet is counted
+  rather than the lighter scout probe; `investigate` and `anomaly` mission
+  types are both mapped to the survey zone.
+- Schema v7 clears `fuel_log` and stale coordinate/home/owned-system caches
+  so fuel rebuilds cleanly from launch records.
+
 ### Changed
+- Fuel cards appear on every tab (Surveys, Pirates, Mining, Debris,
+  Expeditions, Global) and the net-gain totals now label themselves
+  "− fuel". All fuel reads go through `fuelForMode` so they honour the
+  View and Zone selectors.
+- Removed the dead report-join fuel path and the `mission_origins`,
+  coordinate, home-system, and owned-system caches (superseded by the
+  launch-log approach).
 - Research time estimates are now accurate: they use the game's own
   per-level time scaled by each planet's research-speed multiplier, and the
   schedule models one research slot per planet (parallel) plus a
