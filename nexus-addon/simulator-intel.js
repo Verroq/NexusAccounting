@@ -16,15 +16,22 @@ async function resolveSystemCoords(inputEl) {
   return c || null;
 }
 
+let _resolvedDistanceAU = 0;
+
+// Galaxy-map coordinates are ~57.4× larger than the fuel-AU unit used in
+// ship fuelRate stats. Calibrated: 595.3 coord units → 10.37 fuel-AU
+// (50 cruisers + 34 scouts → 5,891 H round trip).
+const COORD_TO_FUEL_AU = 1 / 57.4;
+
 async function updateDistanceFromCoords() {
   const atkInput = document.getElementById('atk-system');
   const defInput = document.getElementById('def-system');
   const [a, d] = await Promise.all([resolveSystemCoords(atkInput), resolveSystemCoords(defInput)]);
   const display = document.getElementById('distance-display');
-  if (!a || !d) { display.textContent = ''; return; }
-  const dist = Math.sqrt((d.x - a.x) ** 2 + (d.y - a.y) ** 2);
-  document.getElementById('opt-distance').value = dist.toFixed(2);
-  display.textContent = `↔ ${dist.toFixed(1)} AU`;
+  if (!a || !d) { display.textContent = ''; _resolvedDistanceAU = 0; return; }
+  const coordDist = Math.sqrt((d.x - a.x) ** 2 + (d.y - a.y) ** 2);
+  _resolvedDistanceAU = coordDist * COORD_TO_FUEL_AU;
+  display.textContent = `↔ ${_resolvedDistanceAU.toFixed(2)} AU`;
 }
 
 // Clear cached coords when user types manually (so it re-resolves by name).
@@ -137,6 +144,8 @@ async function loadIntelReports() {
       id: `spy-${r.id}`,
       label: `Spy: ${r.target_name}${r.target_user ? ` (${r.target_user})` : ''} — ${new Date(r.created_at).toLocaleDateString()}`,
       fleet: r.fleet || [], buildings: r.buildings || [], resources: r.resources,
+      target_system_id:   r.target_system_id   || null,
+      target_system_name: r.target_system_name || null,
     });
   }
   const sel = document.getElementById('report-select');
@@ -185,8 +194,9 @@ document.getElementById('report-select').addEventListener('change', async functi
     const coords = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_COORDS', ids: [r.target_system_id] });
     const c = coords[r.target_system_id];
     const defInput = document.getElementById('def-system');
-    defInput.value = c?.name || String(r.target_system_id);
+    defInput.value = c?.name || r.target_system_name || '';
     if (c) { defInput.dataset.x = c.x; defInput.dataset.y = c.y; }
+    else { delete defInput.dataset.x; delete defInput.dataset.y; }
     updateDistanceFromCoords();
   }
 });

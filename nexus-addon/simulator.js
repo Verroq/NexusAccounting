@@ -2,7 +2,7 @@
 // lives in engine.js, shared between this page and the node test suite.
 
 function fmt(n) {
-  return Math.round(n).toLocaleString();
+  return Math.round(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
 const GROUP_ORDER = ['combat', 'special', 'recon', 'utility'];
@@ -214,23 +214,22 @@ function renderSampleBattle(attackerFleet, defenderFleet, opts) {
   tbody.appendChild(note);
 }
 
-// Fuel (hydrogen) for the whole attacking fleet: fuelRate is per-AU per ship.
 function renderFuel(attackerLosses, opts) {
   const el = document.getElementById('fuel-stats');
   el.textContent = '';
-  let perAU = 0, missing = false;
+  let rate = 0, missing = false;
   for (const [key, l] of Object.entries(attackerLosses)) {
     const def = shipDefs[key];
     if (!def) continue;
     if (!def.fuelRate) missing = true;
-    perAU += (def.fuelRate || 0) * l.sent;
+    rate += (def.fuelRate || 0) * l.sent;
   }
   const mult = opts.roundTrip ? 2 : 1;
-  const total = perAU * opts.distanceAU * mult;
+  const total = rate * opts.distanceAU * mult;
   el.append(
     makeStatCard(`Total fuel${opts.roundTrip ? ' (round trip)' : ' (one way)'}`,
-      opts.distanceAU > 0 ? fmt(Math.round(total)) : '— set distance', 'hydrogen'),
-    makeStatCard('Per AU (one way)', fmt(Math.round(perAU)), 'hydrogen'),
+      opts.distanceAU > 0 ? fmt(total) : '— set origin & target system', 'hydrogen'),
+    makeStatCard('Fleet rate (Σ fuelRate)', fmt(rate), 'hydrogen'),
   );
   if (missing) {
     const hint = document.createElement('div');
@@ -315,7 +314,7 @@ async function init() {
   status.textContent = `${defs.length} ship types loaded.`;
 }
 
-document.getElementById('btn-run').addEventListener('click', () => {
+document.getElementById('btn-run').addEventListener('click', async function() {
   const attackerFleet = readFleet('attacker');
   const defenderFleet = readFleet('defender');
   const status = document.getElementById('sim-status');
@@ -326,6 +325,8 @@ document.getElementById('btn-run').addEventListener('click', () => {
     return;
   }
   status.textContent = 'Simulating…';
+  await updateDistanceFromCoords();
+  const distanceAU = _resolvedDistanceAU;
 
   const opts = {
     sims: Math.min(10000, Math.max(1, parseInt(document.getElementById('opt-sims').value, 10) || 500)),
@@ -333,10 +334,11 @@ document.getElementById('btn-run').addEventListener('click', () => {
     variance: (parseInt(document.getElementById('opt-variance').value, 10) || 0) / 100,
     debrisRate: Math.min(1, Math.max(0, (parseInt(document.getElementById('opt-debris').value, 10) || 0) / 100)),
     shieldRegen: document.getElementById('opt-shield-regen').checked,
-    distanceAU: Math.max(0, parseFloat(document.getElementById('opt-distance').value) || 0),
+    distanceAU,
     roundTrip: document.getElementById('opt-roundtrip').checked,
     attackerMods: readMods('attacker'),
     defenderMods: readMods('defender'),
+    defenderTier: document.getElementById('def-marauder').checked ? 'marauder' : null,
     defense: {
       missile_defense: Math.max(0, parseInt(document.getElementById('def-missile').value, 10) || 0),
       laser_defense:   Math.max(0, parseInt(document.getElementById('def-laser').value, 10) || 0),

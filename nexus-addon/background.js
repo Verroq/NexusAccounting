@@ -289,12 +289,12 @@ async function getHomePlanetId(token) {
 }
 
 // ── Fuel ─────────────────────────────────────────────────────────────────────
-// Hydrogen burned by a mission, from its real fleet + real distance:
-//   fuel = Σ(fuelRate × qty) × (FUEL_K × distance + FUEL_BASE)
+// Hydrogen burned by a mission: fuel = Σ(fuelRate × qty) × (FUEL_K × distance + FUEL_BASE)
 // Constants fitted to 14 real send-fleet costs spanning mixed fleets and
-// distances (mean error ~6%). Retune if the game rebalances. Fuel is only
-// counted for missions captured live (uncaptured ones aren't estimated).
-const FUEL_K = 0.0496;
+// distances (mean error ~6%). Verified accurate for survey missions.
+// NOTE: m.distance from the API is NOT in the same units as galaxy-map
+// coordinates — the simulator uses COORD_TO_FUEL_AU (1/57.4) to convert.
+const FUEL_K    = 0.0496;
 const FUEL_BASE = 3.48;
 
 // Map a mission type to a dashboard tab key for fuel accounting.
@@ -506,8 +506,9 @@ function addShipCost(detail, ships, into, factor) {
 const ZONE_REFRESH_MS = 24 * 3600 * 1000;
 
 async function getSystemZones(token) {
-  const { system_zones, system_zones_at } = await browser.storage.local.get(['system_zones', 'system_zones_at']);
-  if (system_zones && system_zones_at && Date.now() - system_zones_at < ZONE_REFRESH_MS) {
+  const { system_zones, system_zones_at, system_coords_by_id } =
+    await browser.storage.local.get(['system_zones', 'system_zones_at', 'system_coords_by_id']);
+  if (system_zones && system_zones_at && system_coords_by_id && Date.now() - system_zones_at < ZONE_REFRESH_MS) {
     return system_zones;
   }
   try {
@@ -953,7 +954,8 @@ async function processSpyReports(reports) {
       outcome: r.outcome,
       target_name: r.targetPlanetName || r.targetStationName || r.targetFieldName || 'unknown target',
       target_user: r.targetUsername || null,
-      target_system_id: r.targetSystemId || null,
+      target_system_id:   r.targetSystemId   || null,
+      target_system_name: r.targetSystemName || null,
       fleet: extractFleet(r.fleetData),
       buildings: r.buildingData || [],
       defense: r.defenseData || null,
