@@ -311,7 +311,7 @@ async function init() {
   buildFleetInputs('defender-ships', 'defender');
   buildTechInputs('attacker-techs', 'attacker');
   buildTechInputs('defender-techs', 'defender');
-  await loadIntelReports();
+  await Promise.all([loadIntelReports(), populatePlanetPicker()]);
   status.textContent = `${defs.length} ship types loaded.`;
 }
 
@@ -319,8 +319,9 @@ document.getElementById('btn-run').addEventListener('click', () => {
   const attackerFleet = readFleet('attacker');
   const defenderFleet = readFleet('defender');
   const status = document.getElementById('sim-status');
-  const hasTurret = (parseInt(document.getElementById('def-turret').value, 10) || 0) > 0;
-  if (!Object.keys(attackerFleet).length || (!Object.keys(defenderFleet).length && !hasTurret)) {
+  const hasDefense = ['def-missile','def-laser','def-railgun','def-plasma','def-ion','def-ew']
+    .some(id => (parseInt(document.getElementById(id).value, 10) || 0) > 0);
+  if (!Object.keys(attackerFleet).length || (!Object.keys(defenderFleet).length && !hasDefense)) {
     status.textContent = 'Attacker needs ships; defender needs ships or a turret level.';
     return;
   }
@@ -337,9 +338,12 @@ document.getElementById('btn-run').addEventListener('click', () => {
     attackerMods: readMods('attacker'),
     defenderMods: readMods('defender'),
     defense: {
-      turret: Math.max(0, parseInt(document.getElementById('def-turret').value, 10) || 0),
-      shieldGen: Math.max(0, parseInt(document.getElementById('def-shield').value, 10) || 0),
-      ew: Math.max(0, parseInt(document.getElementById('def-ew').value, 10) || 0),
+      missile_defense: Math.max(0, parseInt(document.getElementById('def-missile').value, 10) || 0),
+      laser_defense:   Math.max(0, parseInt(document.getElementById('def-laser').value, 10) || 0),
+      railgun_defense: Math.max(0, parseInt(document.getElementById('def-railgun').value, 10) || 0),
+      plasma_defense:  Math.max(0, parseInt(document.getElementById('def-plasma').value, 10) || 0),
+      ion_defense:     Math.max(0, parseInt(document.getElementById('def-ion').value, 10) || 0),
+      ew_system:       Math.max(0, parseInt(document.getElementById('def-ew').value, 10) || 0),
     },
   };
 

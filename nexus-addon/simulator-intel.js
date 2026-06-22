@@ -1,25 +1,120 @@
 // Simulator: fleet import and intel auto-fill (spy + camp scout reports).
 
+// ── System coordinates & distance ──────────────────────────────────────────
+
+// Resolve a system name input to {x, y}. Uses cached dataset coords if already
+// resolved (from fleet load or intel select), else looks up by name.
+async function resolveSystemCoords(inputEl) {
+  if (inputEl.dataset.x && inputEl.dataset.y) {
+    return { x: parseFloat(inputEl.dataset.x), y: parseFloat(inputEl.dataset.y) };
+  }
+  const name = inputEl.value.trim();
+  if (!name) return null;
+  const res = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_COORDS', names: [name] });
+  const c = res[name];
+  if (c) { inputEl.dataset.x = c.x; inputEl.dataset.y = c.y; }
+  return c || null;
+}
+
+async function updateDistanceFromCoords() {
+  const atkInput = document.getElementById('atk-system');
+  const defInput = document.getElementById('def-system');
+  const [a, d] = await Promise.all([resolveSystemCoords(atkInput), resolveSystemCoords(defInput)]);
+  const display = document.getElementById('distance-display');
+  if (!a || !d) { display.textContent = ''; return; }
+  const dist = Math.sqrt((d.x - a.x) ** 2 + (d.y - a.y) ** 2);
+  document.getElementById('opt-distance').value = dist.toFixed(2);
+  display.textContent = `↔ ${dist.toFixed(1)} AU`;
+}
+
+// Clear cached coords when user types manually (so it re-resolves by name).
+function coordInputHandler(inputEl) {
+  inputEl.addEventListener('input', () => {
+    delete inputEl.dataset.x;
+    delete inputEl.dataset.y;
+    updateDistanceFromCoords();
+  });
+}
+
 // ── Load my fleet ──────────────────────────────────────────────────────────
+
+async function populatePlanetPicker() {
+  const sel = document.getElementById('fleet-planet');
+  const res = await browser.runtime.sendMessage({ type: 'GET_PLANETS' });
+  if (res.error || !res.planets?.length) return;
+  sel.textContent = '';
+  const allOpt = document.createElement('option');
+  allOpt.value = 'all';
+  allOpt.textContent = 'All planets';
+  sel.appendChild(allOpt);
+  for (const p of res.planets) {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.isHomeworld ? `${p.name} (home)` : p.name;
+    if (p.systemName) o.dataset.systemName = p.systemName;
+    if (p.systemId != null) o.dataset.systemId = p.systemId;
+    if (p.isHomeworld) o.selected = true;
+    sel.appendChild(o);
+  }
+}
 
 document.getElementById('btn-load-fleet').addEventListener('click', async function () {
   this.disabled = true;
   const status = document.getElementById('sim-status');
   try {
-    const res = await browser.runtime.sendMessage({ type: 'GET_FLEET' });
+    const planetId = document.getElementById('fleet-planet').value;
+    const classFilter = document.getElementById('fleet-class').value;
+    const res = await browser.runtime.sendMessage({ type: 'GET_FLEET', planetId });
     if (res.error) {
       status.textContent = `Load fleet failed: ${res.error}`;
       return;
     }
+    let total = 0;
     document.querySelectorAll('input[data-side="attacker"][data-key]').forEach(input => {
-      input.value = res.fleet[input.dataset.key] || 0;
+      const key = input.dataset.key;
+      if (classFilter && shipDefs[key]?.shipClass !== classFilter) return;
+      const qty = res.fleet[key] || 0;
+      input.value = qty;
+      total += qty;
     });
-    const total = Object.values(res.fleet).reduce((s, n) => s + n, 0);
-    status.textContent = `Loaded ${total} stationed ships into attacker fleet.`;
+    const selOpt = document.getElementById('fleet-planet').selectedOptions[0];
+    const planetLabel = selOpt?.textContent || '';
+    const typeLabel = classFilter
+      ? document.getElementById('fleet-class').selectedOptions[0]?.textContent
+      : 'all types';
+    status.textContent = `Loaded ${total} ships (${typeLabel}) from ${planetLabel}.`;
+    if (selOpt?.dataset.systemName) {
+      document.getElementById('atk-system').value = selOpt.dataset.systemName;
+      updateDistanceFromCoords();
+    }
   } finally {
     this.disabled = false;
   }
 });
+
+// ── Fill tech levels from stored research ──────────────────────────────────
+
+async function fillTechLevels(side) {
+  const status = document.getElementById('sim-status');
+  const { research } = await browser.storage.local.get('research');
+  if (!research?.length) {
+    status.textContent = 'No research data — open the game and click Scrape Now first.';
+    return;
+  }
+  const levels = {};
+  for (const t of research) levels[t.key] = t.level || 0;
+  let filled = 0;
+  document.querySelectorAll(`input[data-tech-side="${side}"]`).forEach(input => {
+    const lvl = levels[input.dataset.tech] || 0;
+    input.value = lvl;
+    if (lvl > 0) filled++;
+  });
+  updateFleetStats(side);
+  status.textContent = `Filled ${filled} research levels into ${side} tech.`;
+}
+
+document.getElementById('btn-fill-tech-attacker').addEventListener('click', () => fillTechLevels('attacker'));
+document.getElementById('btn-fill-tech-defender').addEventListener('click', () => fillTechLevels('defender'));
 
 // ── Intel reports (spy + camp scout) → defender auto-fill ──────────────────
 
@@ -54,7 +149,7 @@ async function loadIntelReports() {
   }
 }
 
-document.getElementById('report-select').addEventListener('change', function () {
+document.getElementById('report-select').addEventListener('change', async function () {
   const r = intelReports.find(x => x.id === this.value);
   if (!r) return;
 
@@ -63,22 +158,37 @@ document.getElementById('report-select').addEventListener('change', function () 
     input.value = item ? item.quantity : 0;
   });
 
-  let turret = 0, shieldGen = 0, ew = 0;
+  const defLevels = { missile_defense: 0, laser_defense: 0, railgun_defense: 0, plasma_defense: 0, ion_defense: 0, ew_system: 0 };
   for (const b of (r.buildings || [])) {
-    const k = (b.key || '').toLowerCase();
+    const k = (b.key || '').toLowerCase().replace(/[\s-]/g, '_');
     const lvl = b.level || 0;
-    if (k.includes('turret') || k.includes('railgun') || k.includes('defense')) turret = Math.max(turret, lvl);
-    else if (k.includes('shield')) shieldGen = Math.max(shieldGen, lvl);
-    else if (k.includes('ew') || k.includes('electronic')) ew = Math.max(ew, lvl);
+    if (k.includes('missile')) defLevels.missile_defense = Math.max(defLevels.missile_defense, lvl);
+    else if (k.includes('laser')) defLevels.laser_defense = Math.max(defLevels.laser_defense, lvl);
+    else if (k.includes('railgun')) defLevels.railgun_defense = Math.max(defLevels.railgun_defense, lvl);
+    else if (k.includes('plasma')) defLevels.plasma_defense = Math.max(defLevels.plasma_defense, lvl);
+    else if (k.includes('ion')) defLevels.ion_defense = Math.max(defLevels.ion_defense, lvl);
+    else if (k.includes('ew') || k.includes('electronic')) defLevels.ew_system = Math.max(defLevels.ew_system, lvl);
   }
-  document.getElementById('def-turret').value = turret;
-  document.getElementById('def-shield').value = shieldGen;
-  document.getElementById('def-ew').value = ew;
+  document.getElementById('def-missile').value = defLevels.missile_defense;
+  document.getElementById('def-laser').value   = defLevels.laser_defense;
+  document.getElementById('def-railgun').value = defLevels.railgun_defense;
+  document.getElementById('def-plasma').value  = defLevels.plasma_defense;
+  document.getElementById('def-ion').value     = defLevels.ion_defense;
+  document.getElementById('def-ew').value      = defLevels.ew_system;
 
   renderTargetIntel(r);
   const total = r.fleet.reduce((s, f) => s + f.quantity, 0);
+  const defSummary = Object.entries(defLevels).filter(([,v]) => v > 0).map(([k,v]) => `${k.replace(/_/g,' ')} ${v}`).join(', ') || 'no defenses';
   document.getElementById('sim-status').textContent =
-    `Defender filled from report: ${total} ships, turret ${turret}, shield ${shieldGen}, EW ${ew}.`;
+    `Defender filled from report: ${total} ships, ${defSummary}.`;
+  if (r.target_system_id) {
+    const coords = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_COORDS', ids: [r.target_system_id] });
+    const c = coords[r.target_system_id];
+    const defInput = document.getElementById('def-system');
+    defInput.value = c?.name || String(r.target_system_id);
+    if (c) { defInput.dataset.x = c.x; defInput.dataset.y = c.y; }
+    updateDistanceFromCoords();
+  }
 });
 
 const LOOT_FACTOR = 0.5; // assumed share of resources lootable in a raid
@@ -126,3 +236,6 @@ function renderTargetIntel(r) {
     panel.appendChild(note('Amounts are qualitative — higher spy power gives numbers and a cargo estimate.'));
   }
 }
+
+coordInputHandler(document.getElementById('atk-system'));
+coordInputHandler(document.getElementById('def-system'));

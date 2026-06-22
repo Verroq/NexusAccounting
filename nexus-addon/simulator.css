@@ -3,9 +3,14 @@
 .fleet-box {
   background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px;
 }
-.fleet-title { font-size: 1rem; margin-bottom: 10px; }
+.fleet-title { font-size: 1rem; margin-bottom: 8px; }
 .fleet-title.attacker { color: #ff7b72; }
 .fleet-title.defender { color: #79c0ff; }
+
+.load-fleet-bar {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;
+}
+.load-fleet-bar .inline-btn { margin-left: 0; }
 
 .tech-panel {
   margin-bottom: 12px; padding: 8px 10px;
@@ -58,6 +63,17 @@
 .sim-options button:hover { background: #2ea043; }
 .sim-options button#btn-clear { background: #21262d; border-color: #30363d; color: #e6edf3; }
 .sim-options button#btn-clear:hover { background: #30363d; }
+
+.coord-bar {
+  display: flex; gap: 6px; align-items: center; margin-bottom: 8px;
+  font-size: 0.75rem; color: #8b949e;
+}
+.coord-label { white-space: nowrap; }
+.coord-input {
+  width: 100px; background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 3px 8px; border-radius: 6px; font-size: 0.8rem;
+}
+.coord-distance { color: #58a6ff; white-space: nowrap; }
 
 .inline-btn {
   background: #21262d; border: 1px solid #30363d; color: #e6edf3;

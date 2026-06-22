@@ -31,7 +31,7 @@
       <input id="opt-shield-regen" type="checkbox" />
       Shields regenerate each round
     </label>
-    <label>Distance (AU)
+    <label title="Set automatically from system coordinates above, or enter manually">Distance (AU)
       <input id="opt-distance" type="number" value="0" min="0" step="0.1" />
     </label>
     <label class="checkbox-label">
@@ -44,11 +44,29 @@
 
   <div class="sim-layout">
     <div class="fleet-box">
-      <h2 class="fleet-title attacker">Attacker fleet
+      <h2 class="fleet-title attacker">Attacker fleet</h2>
+      <div class="load-fleet-bar">
+        <select id="fleet-planet" class="inline-btn" title="Planet to import ships from">
+          <option value="home">Home planet</option>
+        </select>
+        <select id="fleet-class" class="inline-btn" title="Filter by ship type">
+          <option value="">All types</option>
+          <option value="combat">Combat</option>
+          <option value="special">Special</option>
+          <option value="recon">Recon</option>
+          <option value="utility">Utility</option>
+        </select>
         <button id="btn-load-fleet" class="inline-btn">Load my fleet</button>
-      </h2>
+      </div>
+      <div class="coord-bar">
+        <span class="coord-label">Origin system</span>
+        <input id="atk-system" type="text" class="coord-input" placeholder="e.g. A12-27" />
+      </div>
       <details class="tech-panel">
         <summary>Research levels</summary>
+        <div class="load-fleet-bar">
+          <button id="btn-fill-tech-attacker" class="inline-btn">Fill my levels</button>
+        </div>
         <div class="tech-grid" id="attacker-techs"></div>
       </details>
       <table class="fleet-table"><tbody id="attacker-ships"></tbody></table>
@@ -59,17 +77,31 @@
           <option value="">Fill from intel report…</option>
         </select>
       </h2>
+      <div class="coord-bar">
+        <span class="coord-label">Target system</span>
+        <input id="def-system" type="text" class="coord-input" placeholder="e.g. G35-41" />
+        <span id="distance-display" class="coord-distance"></span>
+      </div>
       <details class="tech-panel">
         <summary>Research levels</summary>
+        <div class="load-fleet-bar">
+          <button id="btn-fill-tech-defender" class="inline-btn">Fill my levels</button>
+        </div>
         <div class="tech-grid" id="defender-techs"></div>
       </details>
       <div class="tech-panel" style="padding:8px 10px;">
-        <span class="tech-label" title="Defense turret building level. Fights as a structure: estimated 150 ATK and 2,500 HP per level, laser/heavy. Bombers get exact ×5 rapid fire against it.">Turret lvl ~</span>
-        <input type="number" id="def-turret" class="tech-input" min="0" value="0" />
-        <span class="tech-label" title="Shield generator level. Adds an estimated 1,500 planetary shield HP per level to the turret structure; regenerates every round per the guide.">Shield gen lvl ~</span>
-        <input type="number" id="def-shield" class="tech-input" min="0" value="0" />
-        <span class="tech-label" title="Electronic Warfare level. Reduces attacker damage by an estimated 3% per level.">EW lvl ~</span>
-        <input type="number" id="def-ew" class="tech-input" min="0" value="0" />
+        <span class="tech-label" title="Missile Defense level (1–15). Missile weapon, heavy armor. RF: probe ×5, spy probe ×5, scout ×4, fighter ×3, interceptor ×2, assault shuttle ×2.">Missile Def</span>
+        <input type="number" id="def-missile" class="tech-input" min="0" max="15" value="0" />
+        <span class="tech-label" title="Laser Defense level (1–15). Laser weapon, heavy armor. No rapid fire.">Laser Def</span>
+        <input type="number" id="def-laser" class="tech-input" min="0" max="15" value="0" />
+        <span class="tech-label" title="Railgun Defense level (1–15). Kinetic weapon, heavy armor. RF: cruiser ×4, missile cruiser ×2, bomber ×2.">Railgun Def</span>
+        <input type="number" id="def-railgun" class="tech-input" min="0" max="15" value="0" />
+        <span class="tech-label" title="Plasma Defense level (1–15). Plasma weapon, heavy armor. RF: battleship ×2, carrier ×2, dreadnought ×2, titan ×2.">Plasma Def</span>
+        <input type="number" id="def-plasma" class="tech-input" min="0" max="15" value="0" />
+        <span class="tech-label" title="Ion Defense level (1–15). Ion weapon, heavy armor. Strong vs shielded ships (×2.0). No rapid fire.">Ion Def</span>
+        <input type="number" id="def-ion" class="tech-input" min="0" max="15" value="0" />
+        <span class="tech-label" title="Electronic Warfare level (1–10). No attack. Reduces attacker damage by 3% per level (max 30%). Bombers get ×3 RF against it.">EW</span>
+        <input type="number" id="def-ew" class="tech-input" min="0" max="10" value="0" />
       </div>
       <div id="target-intel" style="display:none;" class="tech-panel"></div>
       <table class="fleet-table"><tbody id="defender-ships"></tbody></table>
