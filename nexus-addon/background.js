@@ -59,6 +59,8 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
   if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
+  if (msg.type === 'GET_MARKET_ORDERS') return getOrders('/api/market/orders');
+  if (msg.type === 'GET_ALLIANCE_ORDERS') return getOrders('/api/alliance-trade/orders');
   if (msg.type === 'START_RESEARCH') return startResearch(msg.researchId, msg.planetId, msg.useFragments);
 });
 
@@ -197,6 +199,30 @@ function jwtUserId(token) {
     return JSON.parse(atob(payload)).userId ?? null;
   } catch {
     return null;
+  }
+}
+
+// All open orders from a paginated orders endpoint (public market or alliance
+// trade), across every page.
+async function getOrders(path) {
+  const token = await getToken();
+  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  try {
+    const first = await apiFetch(`${path}?page=1&limit=100`, token);
+    const limit = first.pagination?.limit || 100;        // server may cap below 100
+    const total = first.pagination?.total ?? (first.orders || []).length;
+    const orders = [...(first.orders || [])];
+    const pages = Math.ceil(total / limit);
+    if (pages > 1) {
+      const rest = await Promise.all(
+        Array.from({ length: pages - 1 }, (_, i) =>
+          apiFetch(`${path}?page=${i + 2}&limit=${limit}`, token)
+            .then(d => d.orders || []).catch(() => [])));
+      for (const o of rest) orders.push(...o);
+    }
+    return { orders };
+  } catch (err) {
+    return { error: err.message };
   }
 }
 

@@ -16,6 +16,7 @@
     <button class="tab" data-tab="debris">Debris</button>
     <button class="tab" data-tab="expeditions">Expeditions</button>
     <button class="tab" data-tab="finder">Planet Finder</button>
+    <button class="tab" data-tab="market">Market</button>
     <button class="tab" data-tab="techtree">Tech Tree</button>
   </nav>
 
@@ -515,6 +516,69 @@
       <canvas id="f-map" width="1100" height="640" style="width:100%; max-height:none; cursor:crosshair;"></canvas>
       <div id="f-tooltip" style="display:none; position:absolute; background:#161b22; border:1px solid #30363d;
            border-radius:6px; padding:6px 10px; font-size:0.75rem; pointer-events:none; z-index:10;"></div>
+    </div>
+  </div>
+
+  <div id="market-content" style="display:none;">
+    <div class="controls" style="margin-top:0; align-items:flex-start;">
+      <div class="m-filter">
+        <label>Market:</label>
+        <span style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:#8b949e;">
+          <span>Public</span>
+          <input type="checkbox" id="m-source" class="m-switch" title="Switch between public market and alliance trade">
+          <span>Alliance</span>
+        </span>
+      </div>
+      <div class="m-filter" style="margin-left:12px;">
+        <label>Buy (offered):</label>
+        <span id="m-buy" class="res-icons"></span>
+      </div>
+      <div class="m-filter" style="margin-left:12px;">
+        <label>Sell (you pay):</label>
+        <span id="m-sell" class="res-icons"></span>
+      </div>
+      <div class="m-filter" style="margin-left:12px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <label for="m-hub" id="m-hub-label">Trade Hub:</label>
+          <select id="m-hub"><option value="">any</option></select>
+        </div>
+        <div style="position:relative; margin-top:6px;">
+          <canvas id="m-map" width="317" height="224"
+            style="display:block; border:1px solid #30363d; border-radius:6px; background:#0d1117;"></canvas>
+          <div id="m-tooltip" style="display:none; position:absolute; background:#161b22;
+            border:1px solid #30363d; border-radius:6px; padding:3px 7px; font-size:0.75rem;
+            pointer-events:none; z-index:10; white-space:nowrap;"></div>
+        </div>
+      </div>
+      <button id="m-clear" style="margin-left:12px;">Clear filters</button>
+      <button id="m-refresh" style="margin-left:12px;">Refresh</button>
+      <span id="m-progress" style="margin-left:12px; color:#8b949e; font-size:0.8rem;"></span>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Open offers</h2>
+        <span id="m-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span style="color:#8b949e; font-size:0.75rem; display:flex; align-items:center; gap:6px;">
+          Deal vs market average:
+          <span style="background:rgba(88,130,96,0.55); padding:1px 7px; border-radius:4px; color:#e6edf3;">above</span>
+          <span style="background:rgba(150,96,94,0.55); padding:1px 7px; border-radius:4px; color:#e6edf3;">below</span>
+          <span style="opacity:0.7;">deeper shade = further from the pair average (worst 5% ignored)</span>
+        </span>
+      </div>
+      <table>
+        <thead id="m-head">
+          <tr>
+            <th class="sortable" data-key="hub" id="m-hub-col">Hub</th>
+            <th class="sortable" data-key="username">Seller</th>
+            <th class="sortable" data-key="offerResource">Offering</th>
+            <th class="sortable" data-key="requestResource">For</th>
+            <th class="sortable" data-key="rate" title="Cost of one unit of the offered resource">Rate</th>
+            <th class="sortable" data-key="ratio" title="Received per unit paid — higher is a better deal">Ratio</th>
+          </tr>
+        </thead>
+        <tbody id="m-tbody"></tbody>
+      </table>
     </div>
   </div>
 

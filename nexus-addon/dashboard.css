@@ -220,3 +220,25 @@ th.sortable .arrow { margin-left: 4px; color: #58a6ff; }
 .tt-edge.tt-dim { opacity: 0.06; }
 .tt-edge-hi { stroke: #58a6ff !important; stroke-width: 2.5; }
 .tt-node { transition: opacity 0.1s; }
+
+/* Market resource-icon filter toggles */
+.m-filter { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.res-icons { display: inline-grid; grid-template-columns: repeat(5, auto); gap: 4px; vertical-align: middle; }
+.res-icon { width: 51px; height: 51px; padding: 2px; border: 2px solid transparent;
+  border-radius: 6px; opacity: 0.45; cursor: pointer; font-size: 0.65rem; color: #8b949e; }
+.res-icon:hover { opacity: 0.85; }
+.res-icon.sel { opacity: 1; border-color: #58a6ff; background: #1f6feb22; }
+
+/* Toggle switch (market source) — the checkbox itself is the sliding switch */
+.m-switch {
+  appearance: none; -webkit-appearance: none; margin: 0;
+  position: relative; width: 44px; height: 22px; flex-shrink: 0;
+  background: #30363d; border-radius: 22px; cursor: pointer;
+  transition: background 0.2s; vertical-align: middle;
+}
+.m-switch::before {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+  background: #e6edf3; border-radius: 50%; transition: transform 0.2s;
+}
+.m-switch:checked { background: #1f6feb; }
+.m-switch:checked::before { transform: translateX(22px); }
