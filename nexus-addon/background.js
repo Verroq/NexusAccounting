@@ -51,13 +51,15 @@ browser.action.onClicked.addListener(() => {
 browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SCRAPE_NOW') return scrape().then(() => ({ ok: true }));
   if (msg.type === 'GET_STATUS') return getStatus();
-  if (msg.type === 'GET_FLEET') return getFleet();
+  if (msg.type === 'GET_FLEET') return getFleet(msg.planetId);
+  if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
   if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
   if (msg.type === 'GET_ARMS') return apiGet('/api/galaxy/arms');
   if (msg.type === 'GET_GALAXY_MAP') return apiGet('/api/galaxy/map');
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
   if (msg.type === 'GET_HOME') return getHome();
+  if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
   if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
@@ -287,12 +289,12 @@ async function getHomePlanetId(token) {
 }
 
 // ── Fuel ─────────────────────────────────────────────────────────────────────
-// Hydrogen burned by a mission, from its real fleet + real distance:
-//   fuel = Σ(fuelRate × qty) × (FUEL_K × distance + FUEL_BASE)
+// Hydrogen burned by a mission: fuel = Σ(fuelRate × qty) × (FUEL_K × distance + FUEL_BASE)
 // Constants fitted to 14 real send-fleet costs spanning mixed fleets and
-// distances (mean error ~6%). Retune if the game rebalances. Fuel is only
-// counted for missions captured live (uncaptured ones aren't estimated).
-const FUEL_K = 0.0496;
+// distances (mean error ~6%). Verified accurate for survey missions.
+// NOTE: m.distance from the API is NOT in the same units as galaxy-map
+// coordinates — the simulator uses COORD_TO_FUEL_AU (1/57.4) to convert.
+const FUEL_K    = 0.0496;
 const FUEL_BASE = 3.48;
 
 // Map a mission type to a dashboard tab key for fuel accounting.
@@ -328,17 +330,43 @@ function missionFuel(mo, ships) {
 }
 
 // Current stationed fleet as { shipKey: usableQuantity } — for the simulator.
-async function getFleet() {
+async function getPlanets() {
   const token = await getToken();
   if (!token) return { error: 'Not logged in to Nexus Legacy.' };
   try {
-    const planetId = await getHomePlanetId(token);
-    const data = await apiFetch(`/api/planets/${planetId}/fleet`, token);
+    const data = await apiFetch('/api/planets', token);
+    const planets = (data.planets || []).map(p => ({
+      id: p.id,
+      name: p.name || `Planet ${p.id}`,
+      isHomeworld: !!p.isHomeworld,
+      systemId: p.systemId ?? p.system?.id ?? null,
+      systemName: p.systemName || null,
+    }));
+    return { planets };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+async function getFleet(planetId) {
+  const token = await getToken();
+  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  try {
+    let targets;
+    if (planetId === 'all') {
+      const data = await apiFetch('/api/planets', token);
+      targets = (data.planets || []).map(p => p.id);
+    } else {
+      targets = [planetId || await getHomePlanetId(token)];
+    }
     const fleet = {};
-    for (const f of (data.fleet || [])) {
-      const key = f.definition?.key;
-      const qty = (f.quantity || 0) - (f.damagedQuantity || 0);
-      if (key && qty > 0) fleet[key] = (fleet[key] || 0) + qty;
+    for (const id of targets) {
+      const data = await apiFetch(`/api/planets/${id}/fleet`, token);
+      for (const f of (data.fleet || [])) {
+        const key = f.definition?.key;
+        const qty = (f.quantity || 0) - (f.damagedQuantity || 0);
+        if (key && qty > 0) fleet[key] = (fleet[key] || 0) + qty;
+      }
     }
     return { fleet };
   } catch (err) {
@@ -478,27 +506,46 @@ function addShipCost(detail, ships, into, factor) {
 const ZONE_REFRESH_MS = 24 * 3600 * 1000;
 
 async function getSystemZones(token) {
-  const { system_zones, system_zones_at } = await browser.storage.local.get(['system_zones', 'system_zones_at']);
-  if (system_zones && system_zones_at && Date.now() - system_zones_at < ZONE_REFRESH_MS) {
+  const { system_zones, system_zones_at, system_coords_by_id } =
+    await browser.storage.local.get(['system_zones', 'system_zones_at', 'system_coords_by_id']);
+  if (system_zones && system_zones_at && system_coords_by_id && Date.now() - system_zones_at < ZONE_REFRESH_MS) {
     return system_zones;
   }
   try {
     const data = await apiFetch('/api/galaxy/map', token);
-    const map = {};       // name → zone
-    const byId = {};      // systemId → zone (for mission targets, which carry only the id)
+    const map = {};        // name → zone
+    const byId = {};       // systemId → zone
+    const coordsById = {}; // systemId → {x, y}  (AU — galaxy map units = AU, verified 2026-06-22)
+    const coordsByName = {};
     for (const s of (data.systems || [])) {
       if (s.securityZone) {
         if (s.name) map[s.name] = s.securityZone;
         if (s.id != null) byId[s.id] = s.securityZone;
       }
+      if (s.id != null && s.x != null) {
+        coordsById[s.id] = { x: s.x, y: s.y, name: s.name || null };
+        if (s.name) coordsByName[s.name] = { x: s.x, y: s.y };
+      }
     }
     await browser.storage.local.set({
       system_zones: map, system_zone_by_id: byId, system_zones_at: Date.now(),
+      system_coords_by_id: coordsById, system_coords_by_name: coordsByName,
     });
     return map;
   } catch {
     return system_zones || {};   // keep the stale map on failure
   }
+}
+
+async function getSystemCoords(names, ids) {
+  const { system_coords_by_id, system_coords_by_name } =
+    await browser.storage.local.get(['system_coords_by_id', 'system_coords_by_name']);
+  const byId = system_coords_by_id || {};
+  const byName = system_coords_by_name || {};
+  const result = {};
+  for (const n of names) result[n] = byName[n] || null;
+  for (const id of ids) result[id] = byId[id] || null;
+  return result;
 }
 
 // "A12-27 / A12-27-AF1" or "A12-27-AF1" → system "A12-27".
@@ -607,7 +654,7 @@ function buildShipCatalog(shipyardData) {
       shieldHp: s.shieldHp || 0,
       attack: s.attack || 0,
       weaponType: s.weaponType || null,
-      armorType: s.armorType || 'light',
+      armorType: s.armorType || null,
       shipClass: s.shipClass || 'utility',
       shipSize: s.shipSize || 'small',
       sortOrder: s.sortOrder || 0,
@@ -907,6 +954,8 @@ async function processSpyReports(reports) {
       outcome: r.outcome,
       target_name: r.targetPlanetName || r.targetStationName || r.targetFieldName || 'unknown target',
       target_user: r.targetUsername || null,
+      target_system_id:   r.targetSystemId   || null,
+      target_system_name: r.targetSystemName || null,
       fleet: extractFleet(r.fleetData),
       buildings: r.buildingData || [],
       defense: r.defenseData || null,

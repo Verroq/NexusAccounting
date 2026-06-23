@@ -8,6 +8,12 @@
 // calibrated against real pirate battle reports.
 
 // Guide matrix: Strong=1.5, Good=1.25, Neutral=1.0, Weak=0.75, Very Strong=2.0
+// Armor types (confirmed from Stats.txt, 2026-06-22):
+//   shielded — titan
+//   heavy    — battleship, dreadnought, missile_cruiser, carrier, bomber
+//   medium   — cruiser
+//   light    — interceptor, fighter, scout, torpedo_frigate, gas_collector, probes, civs
+// Ships missing armorType in the API will have null and take neutral damage (×1.0 vs all weapons).
 const WEAPON_VS_ARMOR = {
   kinetic: { light: 1.5,  medium: 1.0,  heavy: 0.75, shielded: 0.75 },
   laser:   { light: 1.0,  medium: 1.0,  heavy: 1.0,  shielded: 1.0  },
@@ -30,7 +36,10 @@ const RAPID_FIRE = {
   battleship:      { interceptor: 5, cruiser: 4, missile_cruiser: 3 },
   missile_cruiser: { fighter: 5, interceptor: 4, bomber: 3 },
   torpedo_frigate: { battleship: 3, dreadnought: 2, titan: 2 },
-  bomber:          { defense_turret: 3 },   // ×3 vs every defense-building type
+  bomber:          { missile_defense: 3, laser_defense: 3, railgun_defense: 3, plasma_defense: 3, ion_defense: 3, ew_system: 3 },
+  missile_defense: { probe: 5, spy_probe: 5, scout: 4, fighter: 3, interceptor: 2, assault_shuttle: 2 },
+  railgun_defense: { cruiser: 4, missile_cruiser: 2, bomber: 2 },
+  plasma_defense:  { battleship: 2, carrier: 2, dreadnought: 2, titan: 2 },
   dreadnought:     { cruiser: 5, bomber: 4, battleship: 3, missile_cruiser: 3, fighter: 3, interceptor: 2, carrier: 2 },
   titan:           { scout: 20, fighter: 15, interceptor: 10, cruiser: 8, battleship: 5, missile_cruiser: 5, bomber: 5, carrier: 5, dreadnought: 3 },
 };
@@ -109,8 +118,9 @@ let shipDefs = {};   // key → def (from storage, built by background scrape)
 
 // fleet: { shipKey: quantity } → array of live ship instances.
 // mods: output of computeMods (research bonuses).
-function buildInstances(fleet, mods) {
+function buildInstances(fleet, mods, hpMult) {
   const m = mods || NO_MODS;
+  const hp_ = hpMult || 1;
   const out = [];
   for (const [key, qty] of Object.entries(fleet)) {
     // Pirate/NPC ships (wormhole_pirate_fighter, …) aren't in the player
@@ -119,8 +129,8 @@ function buildInstances(fleet, mods) {
     const def = shipDefs[key] || shipDefs[normalizeShipKey(key)];
     if (!def || !qty) continue;
     const attackBonus = (m.weapon[def.weaponType] || 0) + m.weaponAll + (m.ship[key] || 0);
-    const maxHp = def.hp * (1 + m.hull);
-    const maxShield = def.shieldHp * (1 + m.shield);
+    const maxHp = def.hp * (1 + m.hull) * hp_;
+    const maxShield = def.shieldHp * (1 + m.shield) * hp_;
     const attack = def.attack * (1 + attackBonus);
     const drMult = 1 - m.damageReduction;
     for (let i = 0; i < qty; i++) {
@@ -154,10 +164,11 @@ function pickTarget(targets) {
 
 // One side fires at the other. Hull damage is queued (pendingHull) and applied
 // after both sides have fired (simultaneous fire per the guide). Rapid fire
-// gives extra shots based on the first target's type, and EACH shot picks its
-// own target so a multi-shot attacker spreads across the enemy rather than
-// dumping everything into one ship.
-function fireVolley(shooters, targets, opts) {
+// gives extra shots based on the first target's type; follow-up shots stay
+// within the same ship type ONLY when that type is the highest-RF target
+// available — otherwise they fall back to the globally weakest so the burst
+// isn't wasted on a suboptimal class when a better RF target exists.
+function fireVolley(shooters, targets, opts, dmgMult = 1) {
   if (!targets.length) return;
   for (const s of shooters) {
     if (s.hp <= 0) continue;            // destroyed in prior rounds only; this round's hull damage is applied after both volleys (simultaneous fire).
@@ -166,11 +177,49 @@ function fireVolley(shooters, targets, opts) {
     const first = pickTarget(targets);
     const shots = rapidFireShots(s.key, first.key);
     const burn = SHIELD_BURN[s.def.weaponType] || 1.0;
+
+    // Determine whether RF follow-up shots should concentrate on the trigger
+    // type. Two conditions must both hold:
+    //   1. Trigger type is the best RF target available (shots >= bestRF) —
+    //      prevents accidental bursts on suboptimal targets (e.g. interceptor
+    //      ×4 vs fighters when scouts ×5 exist) from pinning fire on a harder
+    //      class instead of flowing back to the weakest.
+    //   2. Trigger type is NOT already the globally weakest — when it already
+    //      is weakest, pickTarget naturally concentrates there (with beneficial
+    //      leakage to other types), so the explicit filter would only suppress
+    //      that useful spread without helping.
+    let sameType = null;
+    if (shots > 1) {
+      const firstNorm = normalizeShipKey(first.key);
+      const bestRF = targets.reduce((best, x) => {
+        const rf = rapidFireShots(s.key, x.key);
+        return rf > best ? rf : best;
+      }, 1);
+      if (shots >= bestRF) {
+        // Check if any alive non-trigger-type ship is weaker than the trigger.
+        const firstEHP = effectiveHp(first);
+        const isGloballyWeakest = !targets.some(
+          x => normalizeShipKey(x.key) !== firstNorm && effectiveHp(x) > 0 && effectiveHp(x) < firstEHP
+        );
+        if (!isGloballyWeakest) {
+          sameType = targets.filter(x => normalizeShipKey(x.key) === firstNorm);
+        }
+      }
+    }
+
     for (let i = 0; i < shots; i++) {
-      const t = i === 0 ? first : pickTarget(targets);
+      let t;
+      if (i === 0) {
+        t = first;
+      } else if (sameType) {
+        const aliveInType = sameType.filter(x => effectiveHp(x) > 0);
+        t = aliveInType.length ? pickTarget(aliveInType) : pickTarget(targets);
+      } else {
+        t = pickTarget(targets);
+      }
       const mult = (WEAPON_VS_ARMOR[s.def.weaponType] || {})[t.def.armorType] ?? 1.0;
       const variance = 1 + (Math.random() * 2 - 1) * opts.variance;
-      let dmg = atk * mult * variance * t.drMult;
+      let dmg = atk * mult * variance * t.drMult * dmgMult;
       if (t.shield > 0) {
         const absorbed = Math.min(t.shield, dmg * burn);
         t.shield -= absorbed;
@@ -191,40 +240,100 @@ function applyPending(instances) {
   return instances.filter(s => s.hp > 0);
 }
 
-// Planetary defense estimates — the game hides building combat stats.
-// Turret fights as one structure; bombers get their exact ×5 vs it.
-const DEFENSE_EST = {
-  turretAtkPerLvl: 150,
-  turretHpPerLvl: 2500,
-  shieldHpPerLvl: 1500,  // shield generator, regenerates every round per the guide
-  ewDrPerLvl: 0.03,      // Electronic Warfare: attacker damage reduction
+// HP multiplier per pirate tier, calibrated against live survey-report battles
+// (dead space, 2026-06-22). heavy_raider = baseline; marauder = 1.15× HP+shield.
+// Pass opts.defenderTier to simulateOnce / runSimulations to activate.
+const PIRATE_TIER = {
+  marauder: 1.15,
 };
 
-function buildDefenseInstance(defense) {
-  if (!defense || !(defense.turret > 0)) return null;
-  const maxShield = (defense.shieldGen || 0) * DEFENSE_EST.shieldHpPerLvl;
-  const attack = defense.turret * DEFENSE_EST.turretAtkPerLvl;
-  return {
-    key: 'defense_turret',
-    hp: defense.turret * DEFENSE_EST.turretHpPerLvl,
-    shield: maxShield,
-    maxShield,
-    attack,
-    drMult: 1,
-    def: { key: 'defense_turret', weaponType: 'laser', armorType: 'heavy' },
-  };
+// EW ship: logarithmic jam that caps at EW_JAM_CAP at 1000 ships.
+// "Fluctuates each round" → uniform [0, 2×base] per-round draw; mean = base.
+// ponytail: log(1001) precomputed; adjust cap & curve once real battle data arrives.
+const EW_JAM_CAP = 0.30;
+const _EW_LN_NORM = Math.log(10001);
+
+function ewJamFraction(n) {
+  if (!n) return 0;
+  return EW_JAM_CAP * Math.log(n + 1) / _EW_LN_NORM;
+}
+
+function _roundJamMult(fleet) {
+  const n = fleet.filter(s => s.key === 'electronic_warfare_ship').length;
+  if (!n) return 1;
+  return 1 - Math.min(EW_JAM_CAP, ewJamFraction(n) * 2 * Math.random());
+}
+
+// Per-level stats for planetary defense buildings, from Stats.txt (2026-06-22).
+// Index 0 = level 1. EW has no attack; its ewDrPerLvl applies to attacker damage.
+const DEFENSE_BUILDINGS = {
+  missile_defense: {
+    name: 'Missile Defense', weaponType: 'missile', armorType: 'heavy',
+    atk: [29, 61, 97, 136, 178, 225, 275, 330, 390, 456, 526, 603, 686, 776, 873],
+    hp:  [273, 573, 902, 1264, 1659, 2090, 2560, 3073, 3630, 4235, 4891, 5603, 6373, 7206, 8107],
+  },
+  laser_defense: {
+    name: 'Laser Defense', weaponType: 'laser', armorType: 'heavy',
+    atk: [57, 121, 191, 267, 350, 442, 541, 650, 767, 895, 1034, 1185, 1348, 1524, 1715],
+    hp:  [546, 1146, 1805, 2528, 3318, 4181, 5121, 6146, 7260, 8470, 9783, 11206, 12746, 14413, 16215],
+  },
+  railgun_defense: {
+    name: 'Railgun Defense', weaponType: 'kinetic', armorType: 'heavy',
+    atk: [94, 198, 312, 437, 574, 723, 886, 1063, 1256, 1466, 1693, 1939, 2206, 2494, 2806],
+    hp:  [504, 1058, 1666, 2333, 3063, 3859, 4727, 5673, 6701, 7818, 9030, 10344, 11766, 13305, 14968],
+  },
+  plasma_defense: {
+    name: 'Plasma Defense', weaponType: 'plasma', armorType: 'heavy',
+    atk: [136, 286, 451, 632, 829, 1045, 1280, 1536, 1815, 2117, 2445, 2801, 3186, 3603, 4053],
+    hp:  [945, 1984, 3125, 4375, 5743, 7236, 8864, 10637, 12565, 14660, 16932, 19395, 22062, 24947, 28065],
+  },
+  ion_defense: {
+    name: 'Ion Defense', weaponType: 'ion', armorType: 'heavy',
+    atk: [68, 143, 225, 316, 414, 522, 640, 768, 907, 1058, 1222, 1400, 1593, 1801, 2026],
+    hp:  [682, 1433, 2257, 3160, 4147, 5226, 6402, 7682, 9075, 10587, 12228, 14007, 15933, 18017, 20269],
+  },
+  ew_system: {
+    name: 'EW System', weaponType: null, armorType: 'heavy',
+    atk: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    hp:  [336, 705, 1111, 1555, 2042, 2572, 3151, 3782, 4467, 5212],
+    ewDrPerLvl: 0.03,   // 3% attacker damage reduction per level, max 30%
+  },
+};
+
+// defense: { missile_defense: lvl, laser_defense: lvl, ... } → array of combat instances.
+// Each building is a single structure with real ATK/HP from Stats.txt. EW has no attack
+// but its DR effect is applied separately in simulateOnce.
+function buildDefenseInstances(defense) {
+  if (!defense) return [];
+  const out = [];
+  for (const [key, bld] of Object.entries(DEFENSE_BUILDINGS)) {
+    const lvl = defense[key] || 0;
+    if (lvl < 1) continue;
+    const idx = Math.min(lvl, bld.hp.length) - 1;
+    out.push({
+      key,
+      hp: bld.hp[idx],
+      shield: 0, maxShield: 0,
+      attack: bld.atk[idx] || 0,
+      drMult: 1,
+      def: { key, weaponType: bld.weaponType, armorType: bld.armorType },
+    });
+  }
+  return out;
 }
 
 function simulateOnce(attackerFleet, defenderFleet, opts) {
   let attackers = buildInstances(attackerFleet, opts.attackerMods);
-  let defenders = buildInstances(defenderFleet, opts.defenderMods);
+  const tierMult = PIRATE_TIER[opts.defenderTier] || 1;
+  let defenders = buildInstances(defenderFleet, opts.defenderMods, tierMult);
   let rounds = 0;
 
-  const turret = buildDefenseInstance(opts.defense);
-  if (turret) defenders.push(turret);
-  if (opts.defense?.ew) {
-    // EW reduces attacker accuracy — everything on the defending side takes less damage.
-    const ewMult = Math.max(0, 1 - opts.defense.ew * DEFENSE_EST.ewDrPerLvl);
+  defenders.push(...buildDefenseInstances(opts.defense));
+  const ewLevel = opts.defense?.ew_system || 0;
+  if (ewLevel > 0) {
+    // EW reduces attacker accuracy — all defender units take less damage.
+    // Effect applied once at battle start based on initial level (static even if EW is destroyed).
+    const ewMult = 1 - Math.min(0.30, ewLevel * DEFENSE_BUILDINGS.ew_system.ewDrPerLvl);
     for (const s of defenders) s.drMult *= ewMult;
   }
 
@@ -239,11 +348,10 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
     if (opts.shieldRegen) {
       for (const s of attackers) s.shield = s.maxShield;
       for (const s of defenders) s.shield = s.maxShield;
-    } else if (turret && turret.hp > 0) {
-      turret.shield = turret.maxShield; // planetary shield always regenerates
     }
-    fireVolley(attackers, defenders, opts);
-    fireVolley(defenders, attackers, opts);
+    // EW ships jam the opposing side's targeting; fluctuates per round.
+    fireVolley(attackers, defenders, opts, _roundJamMult(defenders));
+    fireVolley(defenders, attackers, opts, _roundJamMult(attackers));
     attackers = applyPending(attackers);
     defenders = applyPending(defenders);
     if (trace) {
@@ -324,8 +432,9 @@ function setShipDefs(defs) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     WEAPON_VS_ARMOR, SHIELD_BURN, RAPID_FIRE, rapidFireShots, normalizeShipKey,
-    TECHS, TECH_MAX_LEVEL, computeMods, NO_MODS,
-    DEFENSE_EST, buildDefenseInstance, buildInstances,
+    TECHS, TECH_MAX_LEVEL, computeMods, NO_MODS, PIRATE_TIER,
+    EW_JAM_CAP, ewJamFraction,
+    DEFENSE_BUILDINGS, buildDefenseInstances, buildInstances,
     pickTarget, fireVolley, applyPending,
     simulateOnce, runSimulations, lossesToResources, setShipDefs,
   };
