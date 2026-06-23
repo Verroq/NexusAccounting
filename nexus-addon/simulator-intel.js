@@ -1,5 +1,8 @@
 // Simulator: fleet import and intel auto-fill (spy + camp scout reports).
 
+import { shipDefs } from './engine.js';
+import { fmt, updateFleetStats } from './simulator.js';   // circular: both are functions, only called from handlers
+
 // ── System coordinates & distance ──────────────────────────────────────────
 
 // Resolve a system name input to {x, y}. Uses cached dataset coords if already
@@ -262,5 +265,7 @@ function renderTargetIntel(r) {
 coordInputHandler(document.getElementById('atk-system'));
 coordInputHandler(document.getElementById('def-system'));
 
-// ponytail: node-only export for unit tests; guard keeps it inert in the browser.
-if (typeof module !== 'undefined') module.exports = { classifyDefenses, coordDistanceAU, COORD_TO_FUEL_AU };
+export {
+  updateDistanceFromCoords, loadIntelReports, populatePlanetPicker,
+  _resolvedDistanceAU, classifyDefenses, coordDistanceAU, COORD_TO_FUEL_AU,
+};

@@ -112,7 +112,7 @@ function computeMods(levels) {
 
 const NO_MODS = computeMods({});
 
-let shipDefs = {};   // key → def (from storage, built by background scrape)
+export let shipDefs = {};   // key → def (from storage, built by background scrape)
 
 // ── Simulation engine ──────────────────────────────────────────────────────
 
@@ -423,19 +423,17 @@ function lossesToResources(losses) {
 }
 
 
-// Allow the engine to run under node for tests. In the browser this file is
-// loaded as a plain script before simulator.js, which shares its globals.
+// Engine ship stats are injected at runtime: by simulator.js in the browser,
+// by the test harness under node. shipDefs is a live binding (see export above).
 function setShipDefs(defs) {
   shipDefs = defs;
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    WEAPON_VS_ARMOR, SHIELD_BURN, RAPID_FIRE, rapidFireShots, normalizeShipKey,
-    TECHS, TECH_MAX_LEVEL, computeMods, NO_MODS, PIRATE_TIER,
-    EW_JAM_CAP, ewJamFraction,
-    DEFENSE_BUILDINGS, buildDefenseInstances, buildInstances,
-    pickTarget, fireVolley, applyPending,
-    simulateOnce, runSimulations, lossesToResources, setShipDefs,
-  };
-}
+export {
+  WEAPON_VS_ARMOR, SHIELD_BURN, RAPID_FIRE, rapidFireShots, normalizeShipKey,
+  TECHS, TECH_MAX_LEVEL, computeMods, NO_MODS, PIRATE_TIER,
+  EW_JAM_CAP, ewJamFraction,
+  DEFENSE_BUILDINGS, buildDefenseInstances, buildInstances,
+  pickTarget, fireVolley, applyPending,
+  simulateOnce, runSimulations, lossesToResources, setShipDefs,
+};

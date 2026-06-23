@@ -2,18 +2,20 @@
 
 // ── Debris tab ─────────────────────────────────────────────────────────────
 
-let chartDebris, chartDebrisPeriod;
-const debrisSort = { key: 'ore', dir: -1 };
+import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, getZone, latestBucket, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, store, zeroCell, zoneCell } from '../common.js';
+
+export let chartDebris, chartDebrisPeriod;
+export const debrisSort = { key: 'ore', dir: -1 };
 attachSortable('d-fields-head', debrisSort, () => renderDebrisTab());
 
 // Collection log mapped so the shared mode/zone helpers (which key on
 // created_at) work on it.
-function debrisLog() {
+export function debrisLog() {
   return (store.debris_collection_log || []).map(r => ({ ...r, created_at: r.collected_at }));
 }
 
 // Collected-over-time series from the collection log.
-function getDebrisSeries(mode) {
+export function getDebrisSeries(mode) {
   const getters = { runs: () => 1 };
   for (const d of RESOURCE_SERIES) getters[d.field] = r => r[d.field] || 0;
   return computeSeries(filterZone(debrisLog()), mode, getters);
@@ -21,7 +23,7 @@ function getDebrisSeries(mode) {
 
 // Collected totals for the current view + zone. All-time/unfiltered uses the
 // precise cumulative total; period/zone sums the (capped) collection log.
-function getDebrisCollectedForMode(mode) {
+export function getDebrisCollectedForMode(mode) {
   if (mode === 'all' && getZone() === 'all') {
     return store.debris_collected || { ore: 0, silicates: 0, alloys: 0, hydrogen: 0 };
   }
@@ -34,7 +36,7 @@ function getDebrisCollectedForMode(mode) {
   return t;
 }
 
-function renderDebrisTab() {
+export function renderDebrisTab() {
   const mode = getMode();
   const periodLabel = periodLabelFor(mode);
   // Precise collection by your own fleets, for the current view + zone.
@@ -108,16 +110,16 @@ function renderDebrisTab() {
   }
 }
 
-function cargoText(r) {
+export function cargoText(r) {
   return ['ore', 'silicates', 'alloys', 'hydrogen']
     .filter(k => r[k]).map(k => `${k}: ${Number(r[k]).toLocaleString()}`).join(', ') || '—';
 }
 
-function fleetText(fleet) {
+export function fleetText(fleet) {
   return (fleet || []).map(f => `${f.quantity}× ${(f.key || '?').replace(/_/g, ' ')}`).join(', ') || '—';
 }
 
-function renderActiveRuns() {
+export function renderActiveRuns() {
   const tbody = document.getElementById('d-active-tbody');
   tbody.textContent = '';
   const runs = (store.debris_active_runs || []).slice()
@@ -143,10 +145,10 @@ function renderActiveRuns() {
   }
 }
 
-const collectedSort = { key: 'collected_at', dir: -1 };
+export const collectedSort = { key: 'collected_at', dir: -1 };
 attachSortable('d-collected-head', collectedSort, () => renderCollectionLog());
 
-function renderCollectionLog() {
+export function renderCollectionLog() {
   const tbody = document.getElementById('d-collected-tbody');
   tbody.textContent = '';
   const log = applySort('d-collected-head', store.debris_collection_log || [], collectedSort, 'collected_at');

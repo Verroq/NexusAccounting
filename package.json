@@ -2,6 +2,7 @@
   "name": "nexusaccounting",
   "version": "1.0.0",
   "description": "Firefox addon that tracks survey mission data from [Nexus Legacy](https://s0.nexuslegacy.space).",
+  "type": "module",
   "main": "index.js",
   "directories": {
     "doc": "docs",

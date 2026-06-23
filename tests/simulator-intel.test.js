@@ -1,9 +1,11 @@
-'use strict';
-const test = require('node:test');
-const assert = require('node:assert');
-const { loadIntel } = require('./helpers');
+import test from 'node:test';
+import assert from 'node:assert';
+import { setupDomStub } from './helpers.js';
 
-const { classifyDefenses, coordDistanceAU } = loadIntel();
+// simulator-intel.js wires DOM listeners and pulls in the simulator chain at
+// import; stub the DOM/browser globals first.
+setupDomStub();
+const { classifyDefenses, coordDistanceAU } = await import('../nexus-addon/simulator-intel.js');
 
 test('classifyDefenses maps building keys to defense levels', () => {
   const d = classifyDefenses([

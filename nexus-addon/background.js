@@ -1,10 +1,7 @@
-// Chrome's service worker exposes `chrome.*` (callback APIs) but not `browser.*`.
-// Load Mozilla's polyfill so the rest of the file uses the promise-based
-// `browser.*` namespace on both browsers. Firefox already provides `browser`
-// natively, so it skips this.
-if (typeof browser === 'undefined' && typeof importScripts === 'function') {
-  importScripts('browser-polyfill.js');
-}
+// The `browser.*` polyfill is loaded by the service-worker entry
+// (background-sw.js) via a static import before this module runs, so `browser`
+// is defined here on both Chrome (polyfilled) and Firefox (native). Tests import
+// this file directly with a stubbed `browser`, skipping the polyfill entirely.
 
 const GAME_URL = 'https://s0.nexuslegacy.space';
 const REPORTS_PATH = '/api/fleet/survey-reports';
@@ -1844,3 +1841,11 @@ function routeIntercepted(url, json) {
   });
 }
 
+// Exposed for the node test harness (tests/processors.test.js). The service
+// worker itself drives everything through the listeners registered above.
+export {
+  processSurveyReports, processPirateReports, processMiningReports,
+  processExpeditionReports, processSystemDebris, rebuildAggregates,
+  checkDrift, ensureSchema, appendToArchive, loadArchive,
+  systemFromLocation, resolveZone, backfillZones, processMissions,
+};

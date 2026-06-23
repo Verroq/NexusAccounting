@@ -4,8 +4,18 @@
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-async function loadAll() {
-  store = await browser.storage.local.get([
+import { activeTab, fuelForMode, getLabelKey, getMode, periodLabelFor, renderNetCards, setActiveTab, setStore, store } from './common.js';
+import { renderDebrisTab } from './tabs/debris.js';
+import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
+import { initFinderTab } from './tabs/finder.js';
+import { renderGlobalTab } from './tabs/global.js';
+import { renderMiningTab, setMiningPage } from './tabs/mining.js';
+import { renderPiratesTab, setPirateCurrentPage } from './tabs/pirates.js';
+import { getEventBreakdownForMode, getResourcesLostForMode, getSeriesForMode, getTotalsForMode, populateEventOptions, renderByEventChart, renderCollected, renderEventsChart, renderLost, renderResourceChart, renderTable, setCurrentPage } from './tabs/surveys.js';
+import { renderTechTreeTab } from './tabs/techtree.js';
+
+export async function loadAll() {
+  setStore(await browser.storage.local.get([
     'totals', 'daily', 'hourly', 'resources_lost', 'event_breakdown',
     'recent_reports', 'ships', 'last_scrape', 'last_error', 'records_cap',
     'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
@@ -15,7 +25,7 @@ async function loadAll() {
     'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
     'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'stats_drift',
     'research', 'research_speed_mult', 'active_research', 'fuel_log',
-  ]);
+  ]));
 
   const cap = store.records_cap ?? 500;
   document.getElementById('records-cap').value = cap === Infinity ? 0 : cap;
@@ -25,7 +35,7 @@ async function loadAll() {
 }
 
 // Archived record counts + rough storage size, shown in the footer.
-async function updateStorageFooter() {
+export async function updateStorageFooter() {
   const el = document.getElementById('storage-footer');
   if (!el) return;
   const all = await browser.storage.local.get(null);
@@ -41,7 +51,7 @@ async function updateStorageFooter() {
   el.textContent = `${reports.toLocaleString()} reports archived · ~${size} stored · last auto-backup: ${backup}`;
 }
 
-function updateStatus(lastScrape, lastError) {
+export function updateStatus(lastScrape, lastError) {
   const el = document.getElementById('status-text');
   el.textContent = '';
   if (lastError) {
@@ -66,7 +76,7 @@ function updateStatus(lastScrape, lastError) {
 
 // ── Render ─────────────────────────────────────────────────────────────────
 
-function renderAll() {
+export function renderAll() {
   if (activeTab === 'global') {
     renderGlobalTab();
     return;
@@ -115,7 +125,7 @@ function renderAll() {
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
-const TAB_CONTENT = {
+export const TAB_CONTENT = {
   global: 'global-content',
   surveys: 'main-content',
   pirates: 'pirates-content',
@@ -128,7 +138,7 @@ const TAB_CONTENT = {
 
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
-    activeTab = btn.dataset.tab;
+    setActiveTab(btn.dataset.tab);
     document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b === btn));
     for (const [tab, id] of Object.entries(TAB_CONTENT)) {
       document.getElementById(id).style.display = tab === activeTab ? '' : 'none';
@@ -142,7 +152,7 @@ document.querySelectorAll('.tab').forEach(btn => {
 });
 
 // Keep the View/Window/Zone bar directly above the active tab's graphs.
-function positionControls() {
+export function positionControls() {
   const bar = document.getElementById('global-controls');
   const content = document.getElementById(TAB_CONTENT[activeTab]);
   const charts = content && content.querySelector('.charts');
@@ -158,25 +168,25 @@ document.getElementById('btn-scrape').addEventListener('click', async function (
     await browser.runtime.sendMessage({ type: 'SCRAPE_NOW' });
     await loadAll();
     this.textContent = 'Done ✓';
-  } catch (e) {
+  } catch {
     this.textContent = 'Error';
   } finally {
     setTimeout(() => { this.disabled = false; this.textContent = 'Scrape Now'; }, 2000);
   }
 });
 
-function onViewChange() {
-  currentPage = 1;
-  pirateCurrentPage = 1;
-  miningPage = 1;
-  expPage = 1;
+export function onViewChange() {
+  setCurrentPage(1);
+  setPirateCurrentPage(1);
+  setMiningPage(1);
+  setExpPage(1);
   renderAll();
 }
 
 document.getElementById('mode-select').addEventListener('change', onViewChange);
 document.getElementById('zone-select').addEventListener('change', onViewChange);
 document.getElementById('window-select').addEventListener('change', onViewChange);
-document.getElementById('event-select').addEventListener('change', () => { currentPage = 1; renderAll(); });
+document.getElementById('event-select').addEventListener('change', () => { setCurrentPage(1); renderAll(); });
 
 document.getElementById('btn-reset').addEventListener('click', async function () {
   if (!confirm('Drop all recorded data? A backup is written to Downloads/NexusAccounting first.')) return;
@@ -233,7 +243,7 @@ document.getElementById('btn-rebuild').addEventListener('click', async function 
     await browser.runtime.sendMessage({ type: 'REBUILD_AGGREGATES' });
     await loadAll();
     this.textContent = 'Rebuilt ✓';
-  } catch (e) {
+  } catch {
     this.textContent = 'Error';
   } finally {
     setTimeout(() => { this.disabled = false; this.textContent = 'Rebuild stats'; }, 2000);
@@ -268,7 +278,7 @@ document.getElementById('btn-import').addEventListener('click', () => {
 
 // Shape checks on a backup before anything is cleared. Catches truncated or
 // hand-edited files; unknown keys are allowed through untouched.
-function validateBackupData(data) {
+export function validateBackupData(data) {
   const arrays = [
     'recent_reports', 'daily', 'hourly', 'event_breakdown', 'seen_ids',
     'pirate_recent_reports', 'pirate_seen_ids', 'pirate_daily', 'pirate_outcomes',

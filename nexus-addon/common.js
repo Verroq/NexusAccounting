@@ -1,24 +1,26 @@
 // Shared state and helpers used by every dashboard tab.
 // Loaded first — all other dashboard scripts depend on it.
 
-let store = {};   // full storage snapshot
+export let store = {};   // full storage snapshot
+export function setStore(s) { store = s; }   // setter: other modules can't reassign an import
 
-let activeTab = 'surveys';
+export let activeTab = 'surveys';
+export function setActiveTab(t) { activeTab = t; }
 
-const PER_PAGE = 20;
+export const PER_PAGE = 20;
 
-function fmt(n) {
+export function fmt(n) {
   return n == null ? '0' : Number(n).toLocaleString();
 }
 
 // ── Mode-aware data helpers ────────────────────────────────────────────────
 
-function getMode() {
+export function getMode() {
   return document.getElementById('mode-select').value; // 'all' | 'daily' | 'hourly'
 }
 
 // Number of trailing buckets (days or hours) the graph shows; 0 = all.
-function getWindow() {
+export function getWindow() {
   const el = document.getElementById('window-select');
   return el ? (parseInt(el.value, 10) || 0) : 5;
 }
@@ -26,7 +28,7 @@ function getWindow() {
 // Fuel (hydrogen) spent, summed from the per-mission fuel log for a tab type
 // ('survey'|'pirate'|'mining'|'debris'|'expedition'|'all'), honouring the
 // current View + Zone. Counted per launched fleet, independent of reports.
-function fuelForMode(type, mode) {
+export function fuelForMode(type, mode) {
   let rows = store.fuel_log || [];
   if (type !== 'all') rows = rows.filter(e => e.type === type);
   rows = filterZone(rows);
@@ -35,29 +37,29 @@ function fuelForMode(type, mode) {
 }
 
 // Selected security zone, or 'all'.
-function getZone() {
+export function getZone() {
   const el = document.getElementById('zone-select');
   return el ? el.value : 'all';
 }
 
 // Filter records to the selected zone (passthrough when 'all'). Records from
 // before zones were tracked have no `zone` → treated as 'unknown'.
-function filterZone(reports) {
+export function filterZone(reports) {
   const z = getZone();
   if (z === 'all') return reports || [];
   return (reports || []).filter(r => (r.zone || 'unknown') === z);
 }
 
 // True when the precomputed all-time totals can be used as-is (no zone filter).
-function isUnfiltered() {
+export function isUnfiltered() {
   return getZone() === 'all';
 }
 
-function getLabelKey(mode) {
+export function getLabelKey(mode) {
   return mode === 'hourly' ? 'hour' : 'day';
 }
 
-function periodLabelFor(mode) {
+export function periodLabelFor(mode) {
   return mode === 'all' ? '' : mode === 'daily' ? ' (latest day)' : ' (latest hour)';
 }
 
@@ -67,7 +69,7 @@ function periodLabelFor(mode) {
 // three-resource line chart. The per-tab code only supplies field getters.
 
 // Latest day/hour slice of a report list for daily/hourly view modes.
-function latestBucket(reports, mode) {
+export function latestBucket(reports, mode) {
   const keyFn = r => mode === 'daily'
     ? r.created_at.slice(0, 10)
     : r.created_at.slice(0, 13) + ':00';
@@ -81,14 +83,14 @@ function latestBucket(reports, mode) {
 
 // Records to aggregate for the current mode + zone: zone-filtered all-time for
 // 'all' mode, else the latest day/hour bucket of the zone-filtered records.
-function recordsForMode(allRecords, mode) {
+export function recordsForMode(allRecords, mode) {
   const filtered = filterZone(allRecords || []);
   return mode === 'all' ? filtered : latestBucket(filtered, mode);
 }
 
 // Time series grouped by day (all/daily modes) or hour (hourly mode).
 // fieldGetters: { field: r => value }.
-function computeSeries(reports, mode, fieldGetters) {
+export function computeSeries(reports, mode, fieldGetters) {
   const byHour = mode === 'hourly';
   const keyName = byHour ? 'hour' : 'day';
   const fields = Object.keys(fieldGetters);
@@ -123,7 +125,7 @@ function computeSeries(reports, mode, fieldGetters) {
 }
 
 // Hourly series from report history. fieldGetters: { field: r => value }.
-function computeHourlySeries(reports, fieldGetters) {
+export function computeHourlySeries(reports, fieldGetters) {
   const map = {};
   for (const r of reports) {
     const hour = r.created_at.slice(0, 13) + ':00';
@@ -136,7 +138,7 @@ function computeHourlySeries(reports, fieldGetters) {
   return Object.values(map).sort((a, b) => a.hour.localeCompare(b.hour));
 }
 
-const RESOURCE_SERIES = [
+export const RESOURCE_SERIES = [
   { field: 'ore',          label: 'Ore',          color: '#f0883e' },
   { field: 'silicates',    label: 'Silicates',    color: '#56d364' },
   { field: 'hydrogen',     label: 'Hydrogen',     color: '#79c0ff' },
@@ -149,13 +151,13 @@ const RESOURCE_SERIES = [
 ];
 
 // fieldGetters covering every chartable resource, for computeSeries.
-const SERIES_GETTERS = {};
+export const SERIES_GETTERS = {};
 for (const d of RESOURCE_SERIES) SERIES_GETTERS[d.field] = r => r[d.field] || 0;
 
 // Resource line chart. Ore/silicates/hydrogen always shown; alloys + exotics
 // only when the series actually carries some (avoids a wall of flat-zero lines).
 // `count` = { field, label } adds a report-count line on a secondary y-axis.
-function makeResourceLineChart(canvasId, series, labelKey, count) {
+export function makeResourceLineChart(canvasId, series, labelKey, count) {
   const ALWAYS = new Set(['ore', 'silicates', 'hydrogen']);
   const shown = RESOURCE_SERIES.filter(d =>
     ALWAYS.has(d.field) || series.some(r => (r[d.field] || 0) > 0));
@@ -199,7 +201,7 @@ function makeResourceLineChart(canvasId, series, labelKey, count) {
 
 // ── Pure aggregation helpers ───────────────────────────────────────────────
 
-function computeEventBreakdown(reports) {
+export function computeEventBreakdown(reports) {
   const map = {};
   for (const r of reports) {
     const et = r.event_type || 'unknown';
@@ -214,15 +216,15 @@ function computeEventBreakdown(reports) {
 }
 
 // A damaged ship costs half its build cost to repair.
-const REPAIR_FACTOR = 0.5;
+export const REPAIR_FACTOR = 0.5;
 
-function emptyResources() {
+export function emptyResources() {
   return { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
 }
 
 // Loss split into full-cost destruction and half-cost repair of damaged ships.
 // Returns { destroyed, repair }, each an emptyResources()-shaped object.
-function computeResourcesLost(reports, ships) {
+export function computeResourcesLost(reports, ships) {
   const out = { destroyed: emptyResources(), repair: emptyResources() };
   const add = (into, detail, factor) => {
     for (const [defId, qty] of Object.entries(detail || {})) {
@@ -246,7 +248,7 @@ function computeResourcesLost(reports, ships) {
 }
 
 // Per-resource destroyed + repair, for net calculations.
-function combinedLost(lost) {
+export function combinedLost(lost) {
   const d = lost.destroyed || {}, r = lost.repair || {};
   const out = emptyResources();
   for (const k of ['ore', 'silicates', 'hydrogen', 'alloys']) out[k] = (d[k] || 0) + (r[k] || 0);
@@ -258,7 +260,7 @@ function combinedLost(lost) {
 
 // ── Stat cards ─────────────────────────────────────────────────────────────
 
-function makeStatCard(label, value, valueClass, valueStyle) {
+export function makeStatCard(label, value, valueClass, valueStyle) {
   const card = document.createElement('div');
   card.className = 'stat-card';
   const labelDiv = document.createElement('div');
@@ -274,14 +276,14 @@ function makeStatCard(label, value, valueClass, valueStyle) {
 
 // ── Charts ─────────────────────────────────────────────────────────────────
 
-const SCALE_OPTS = {
+export const SCALE_OPTS = {
   x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
   y: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
 };
 
 // ── Shared helpers for the newer tabs ──────────────────────────────────────
 
-function zeroCell(v) {
+export function zeroCell(v) {
   const td = document.createElement('td');
   if (v) {
     td.textContent = Number(v).toLocaleString();
@@ -296,7 +298,7 @@ function zeroCell(v) {
 
 // Alloys + exotic resources, shown as their own collected cards. Values may be
 // stored flat on totals or inside a `rare` map; read either.
-const EXTRA_RESOURCES = [
+export const EXTRA_RESOURCES = [
   ['alloys', 'Alloys', 'alloys'],
   ['ice', 'Ice', 'hydrogen'],
   ['quantum_dust', 'Quantum Dust', 'rare'],
@@ -305,23 +307,23 @@ const EXTRA_RESOURCES = [
   ['antimatter', 'Antimatter', 'rare'],
 ];
 
-const EXTRA_RES_KEYS_UI = EXTRA_RESOURCES.map(e => e[0]);
+export const EXTRA_RES_KEYS_UI = EXTRA_RESOURCES.map(e => e[0]);
 
-function resourceVal(totals, key) {
+export function resourceVal(totals, key) {
   if (totals && totals[key] != null) return totals[key];
   return (totals && totals.rare && totals.rare[key]) || 0;
 }
 
 // Append the alloys + exotic-resource cards (alloys always; rares only when
 // some has been collected) to a collected-resources container.
-function appendExtraResourceCards(container, totals, suffix) {
+export function appendExtraResourceCards(container, totals, suffix) {
   for (const [key, label, cls] of EXTRA_RESOURCES) {
     const v = resourceVal(totals, key);
     if (key === 'alloys' || v > 0) container.appendChild(makeStatCard(`${label}${suffix}`, fmt(v), cls));
   }
 }
 
-function appendRareCards(container, rare, suffix) {
+export function appendRareCards(container, rare, suffix) {
   Object.entries(rare || {})
     .sort((a, b) => b[1] - a[1])
     .forEach(([k, v]) => container.appendChild(
@@ -329,7 +331,7 @@ function appendRareCards(container, rare, suffix) {
     ));
 }
 
-function renderPagedTable(reports, page, infoId, prevId, nextId, tbodyId, rowFn) {
+export function renderPagedTable(reports, page, infoId, prevId, nextId, tbodyId, rowFn) {
   const totalPages = Math.ceil(reports.length / PER_PAGE);
   const maxPage = Math.max(1, totalPages);
   const safePage = Math.min(Math.max(1, page), maxPage);
@@ -344,7 +346,7 @@ function renderPagedTable(reports, page, infoId, prevId, nextId, tbodyId, rowFn)
 }
 
 // Fill a stats container with ore/silicates/hydrogen/alloys + rare cards.
-function fillResourceCards(containerId, res, suffix) {
+export function fillResourceCards(containerId, res, suffix) {
   const el = document.getElementById(containerId);
   if (!el) return;
   res = res || emptyResources();
@@ -360,19 +362,19 @@ function fillResourceCards(containerId, res, suffix) {
 
 // Renders a { destroyed, repair } loss into two separate titled containers.
 // Pass repairId = null for tabs with no repair concept (debris, expeditions).
-function renderLostCards(destroyedId, repairId, lost, periodLabel) {
+export function renderLostCards(destroyedId, repairId, lost, periodLabel) {
   fillResourceCards(destroyedId, lost.destroyed, periodLabel);
   if (repairId) fillResourceCards(repairId, lost.repair, periodLabel);
 }
 
 // Relative value of each resource, used to weight the net total.
-const RESOURCE_WEIGHTS = { ore: 1, silicates: 2, hydrogen: 3, alloys: 5 };
-const RARE_WEIGHT = 10;   // exotic resources (ice, quantum dust, …) in the net total
+export const RESOURCE_WEIGHTS = { ore: 1, silicates: 2, hydrogen: 3, alloys: 5 };
+export const RARE_WEIGHT = 10;   // exotic resources (ice, quantum dust, …) in the net total
 
 // Net gain cards: resources collected minus ship build costs, per resource
 // (raw), plus a weighted total (ore×1, silicates×2, hydrogen×3, alloys×5).
 // Rare resource losses are not in the total (no common valuation).
-function renderNetCards(containerId, collected, lost, periodLabel, fuelHydrogen = 0) {
+export function renderNetCards(containerId, collected, lost, periodLabel, fuelHydrogen = 0) {
   const el = document.getElementById(containerId);
   if (!el) return;
   el.textContent = '';
@@ -409,12 +411,12 @@ function renderNetCards(containerId, collected, lost, periodLabel, fuelHydrogen 
 // Doughnut of a loot/resource breakdown (ore, silicates, hydrogen, alloys and
 // any rares) for the current view period. `totals` is a mode-aware totals
 // object; returns the Chart instance.
-const RESOURCE_COLORS = {
+export const RESOURCE_COLORS = {
   ore: '#f0883e', silicates: '#56d364', hydrogen: '#79c0ff', alloys: '#e3b341',
 };
-const RARE_PALETTE = ['#bc8cff', '#d2a8ff', '#ff7b72', '#ffa657', '#a5d6ff', '#7ee787'];
+export const RARE_PALETTE = ['#bc8cff', '#d2a8ff', '#ff7b72', '#ffa657', '#a5d6ff', '#7ee787'];
 
-function makeResourceDoughnut(canvasId, totals) {
+export function makeResourceDoughnut(canvasId, totals) {
   const entries = [];
   for (const k of ['ore', 'silicates', 'hydrogen', 'alloys']) {
     if (totals[k] > 0) entries.push([k, totals[k], RESOURCE_COLORS[k]]);
@@ -451,10 +453,10 @@ function makeResourceDoughnut(canvasId, totals) {
 }
 
 // Colored zone badge cell for report tables.
-const ZONE_COLORS = {
+export const ZONE_COLORS = {
   sentinel: '#56d364', open: '#f0883e', dead: '#ff7b72', rift: '#d2a8ff', unknown: '#8b949e',
 };
-function zoneCell(zone) {
+export function zoneCell(zone) {
   const z = zone || 'unknown';
   const td = document.createElement('td');
   const badge = document.createElement('span');
@@ -468,7 +470,7 @@ function zoneCell(zone) {
 // ── Sortable tables ─────────────────────────────────────────────────────────
 // Click a th.sortable[data-key] to sort; click again to flip. `state` is a
 // plain { key, dir } object the caller keeps; `rerender` redraws the table.
-function attachSortable(headId, state, rerender) {
+export function attachSortable(headId, state, rerender) {
   const head = document.getElementById(headId);
   if (!head) return;
   head.addEventListener('click', e => {
@@ -481,7 +483,7 @@ function attachSortable(headId, state, rerender) {
 }
 
 // Sort a copy of records by the state, draw the header arrow, and return it.
-function applySort(headId, records, state, tiebreak = 'created_at') {
+export function applySort(headId, records, state, tiebreak = 'created_at') {
   const { key, dir } = state;
   document.querySelectorAll(`#${headId} th.sortable`).forEach(th => {
     const old = th.querySelector('.arrow');

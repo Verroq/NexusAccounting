@@ -1,29 +1,32 @@
 // Tech Tree tab — research from /api/research, laid out as a dependency graph.
 
-const BRANCH_ORDER = ['military', 'science', 'economy'];
-const BRANCH_COLORS = { military: '#ff7b72', science: '#58a6ff', economy: '#e3b341' };
-const STATUS_LEGEND = [
+import { fmt, store } from '../common.js';
+import { loadAll } from '../dashboard.js';
+
+export const BRANCH_ORDER = ['military', 'science', 'economy'];
+export const BRANCH_COLORS = { military: '#ff7b72', science: '#58a6ff', economy: '#e3b341' };
+export const STATUS_LEGEND = [
   ['maxed', '#56d364', 'Maxed'], ['researched', '#58a6ff', 'Researched'],
   ['researching', '#e3b341', 'Researching'], ['available', '#8b949e', 'Available'],
   ['locked', '#484f58', 'Locked'],
 ];
-const SVGNS = 'http://www.w3.org/2000/svg';
-let ttPinned = null;   // pinned tech key (click to lock highlight)
-let ttDragged = false;  // a pan just happened — suppress the trailing click
-let ttZoom = 1;        // wheel zoom factor
-let ttCanvas = null, ttCanvasW = 0, ttCanvasH = 0;   // last rendered canvas + dims
-let ttTargets = [];    // [{key, level}] — techs the user wants, at a target level
-let ttResearch = [];   // last rendered research array (for the queue planner)
-let ttLevelsRef = {};  // key → current level
-let ttTargetsLoaded = false;
-let ttResources = null;   // { ore, silicates, …, oreRate, … } or { error }
+export const SVGNS = 'http://www.w3.org/2000/svg';
+export let ttPinned = null;   // pinned tech key (click to lock highlight)
+export let ttDragged = false;  // a pan just happened — suppress the trailing click
+export let ttZoom = 1;        // wheel zoom factor
+export let ttCanvas = null, ttCanvasW = 0, ttCanvasH = 0;   // last rendered canvas + dims
+export let ttTargets = [];    // [{key, level}] — techs the user wants, at a target level
+export let ttResearch = [];   // last rendered research array (for the queue planner)
+export let ttLevelsRef = {};  // key → current level
+export let ttTargetsLoaded = false;
+export let ttResources = null;   // { ore, silicates, …, oreRate, … } or { error }
 
 // ── Research queue planner ──────────────────────────────────────────────────
-function techByKey(key) { return ttResearch.find(t => t.key === key); }
+export function techByKey(key) { return ttResearch.find(t => t.key === key); }
 
-function saveTargets() { browser.storage.local.set({ tt_queue_targets: ttTargets }); }
+export function saveTargets() { browser.storage.local.set({ tt_queue_targets: ttTargets }); }
 
-async function loadTargets() {
+export async function loadTargets() {
   const { tt_queue_targets } = await browser.storage.local.get('tt_queue_targets');
   ttTargets = Array.isArray(tt_queue_targets) ? tt_queue_targets : [];
   ttTargetsLoaded = true;
@@ -31,7 +34,7 @@ async function loadTargets() {
   updateQueueBadges();
 }
 
-async function fetchResources() {
+export async function fetchResources() {
   const res = await browser.runtime.sendMessage({ type: 'GET_RESOURCES' });
   ttResources = res;
   renderQueue();
@@ -39,7 +42,7 @@ async function fetchResources() {
 
 // Estimated lab level = highest required-lab-level among techs already at L≥1
 // (you couldn't have researched them otherwise).
-function estLabLevel() {
+export function estLabLevel() {
   let lab = 0;
   for (const t of ttResearch) {
     if ((ttLevelsRef[t.key] || 0) > 0 && (t.requiredLabLevel || 0) > lab) lab = t.requiredLabLevel;
@@ -49,14 +52,14 @@ function estLabLevel() {
 
 // Real lab level (highest Research Lab across planets, from the API) when
 // available; otherwise the estimate above. estimated=true marks the fallback.
-function currentLabLevel() {
+export function currentLabLevel() {
   const R = ttResources;
   if (R && !R.error && R.labLevel != null) return { level: R.labLevel, estimated: false };
   return { level: estLabLevel(), estimated: true };
 }
 
 // Queue a tech up to its max level.
-function maxToQueue(key) {
+export function maxToQueue(key) {
   const t = techByKey(key);
   if (!t) return;
   const max = t.maxLevel || 1;
@@ -67,8 +70,8 @@ function maxToQueue(key) {
 }
 
 // Cost / time for a single level L of a tech (1-indexed): base × factor^(L-1).
-function costAt(t, field, L) { return Math.round((t[field] || 0) * Math.pow(t.costFactor || 1, L - 1)); }
-function rareAt(t, L) {
+export function costAt(t, field, L) { return Math.round((t[field] || 0) * Math.pow(t.costFactor || 1, L - 1)); }
+export function rareAt(t, L) {
   const o = {};
   for (const [k, v] of Object.entries(t.rareCosts || {})) o[k] = Math.round(v * Math.pow(t.costFactor || 1, L - 1));
   return o;
@@ -78,7 +81,7 @@ function rareAt(t, L) {
 // level (the `researchTime × timeFactor^(L-1)` formula does NOT match it); we
 // extrapolate deeper levels by timeFactor. The actual time on a given planet is
 // this × that planet's researchSpeedMult, applied by the scheduler per slot.
-function baseTimeAt(t, L) {
+export function baseTimeAt(t, L) {
   const cur = t.level || 0;
   const nextT = (t.nextResearchTime || 0) || (t.researchTime || 0) * Math.pow(t.timeFactor || 1, Math.max(0, cur));
   return nextT * Math.pow(t.timeFactor || 1, Math.max(0, L - cur - 1));
@@ -86,14 +89,14 @@ function baseTimeAt(t, L) {
 
 // Per-planet research speed mults (one slot each). Falls back to a single slot
 // at the global mult when per-planet data isn't loaded.
-function planetSpeeds() {
+export function planetSpeeds() {
   const s = ttResources && !ttResources.error ? ttResources.planetSpeeds : null;
   if (Array.isArray(s) && s.length) return s.slice();
   return [store.research_speed_mult || 1];
 }
 
 // Planets with an idle research slot (not currently researching), fastest first.
-function freeResearchPlanets() {
+export function freeResearchPlanets() {
   const all = (ttResources && !ttResources.error && ttResources.researchPlanets) || [];
   const busy = new Set((store.active_research || []).map(a => a.planetId).filter(x => x != null));
   return all.filter(p => !busy.has(p.id)).sort((a, b) => a.mult - b.mult);
@@ -101,7 +104,7 @@ function freeResearchPlanets() {
 
 // A step can be launched right now: it's the tech's immediate next level, the
 // lab requirement is met, and every research prerequisite is already owned.
-function isLaunchable(t, level) {
+export function isLaunchable(t, level) {
   if (!t || level !== (t.level || 0) + 1) return false;
   if ((t.requiredLabLevel || 0) > currentLabLevel().level) return false;
   return (t.requirements || []).every(r =>
@@ -110,7 +113,7 @@ function isLaunchable(t, level) {
 
 // Fill the "Launch on" planet picker: all planets, busy ones disabled, the
 // previous choice kept when still free else the fastest free planet selected.
-function populatePlanetSelect() {
+export function populatePlanetSelect() {
   const wrap = document.getElementById('tt-launch-planet');
   const sel = document.getElementById('tt-planet-select');
   if (!wrap || !sel) return;
@@ -135,7 +138,7 @@ function populatePlanetSelect() {
 // Which planet a launch will run on, or null if none is free. Research isn't
 // tied to any planet — any planet with an idle lab slot can run any tech — so
 // use the dropdown choice, else the fastest free one.
-function launchPlanetFor() {
+export function launchPlanetFor() {
   const free = freeResearchPlanets();
   if (!free.length) return null;
   const sel = document.getElementById('tt-planet-select');
@@ -145,7 +148,7 @@ function launchPlanetFor() {
 
 // Launch the immediate next level of a tech, after an explicit confirm. Real,
 // resource-spending action (cancel refunds only 90%).
-async function launchResearch(t, level) {
+export async function launchResearch(t, level) {
   const planet = launchPlanetFor();
   if (!planet) { alert('No free research slot — every planet is already researching.'); return; }
   const eta = fmtDuration(baseTimeAt(t, level) * planet.mult);
@@ -165,7 +168,7 @@ async function launchResearch(t, level) {
 //   cost(L)  = baseCost × Π factor(l), l=2..L, factor(l)= l<=costDoubleAfter
 //              ? costFactor : highLevelFactor
 //   time(L)  = baseBuildTime × buildTimeFactor^(L-1) / buildSpeedMult (seconds)
-function buildCostAt(def, field, L) {
+export function buildCostAt(def, field, L) {
   const base = def?.[`baseCost${field}`] || 0;
   if (!base) return 0;
   const cf = def.costFactor || 1, hf = def.highLevelFactor || cf;
@@ -174,14 +177,14 @@ function buildCostAt(def, field, L) {
   for (let l = 2; l <= L; l++) mult *= (l <= cd ? cf : hf);
   return Math.round(base * mult);
 }
-function buildTimeAt(def, L, buildSpeedMult) {
+export function buildTimeAt(def, L, buildSpeedMult) {
   const t = (def?.baseBuildTime || 0) * Math.pow(def?.buildTimeFactor || 1, L - 1);
   return buildSpeedMult ? t / buildSpeedMult : t;
 }
 
 // Lab-upgrade steps needed so every planned tech meets its requiredLabLevel.
 // Empty when the lab definition isn't loaded yet.
-function labStepsNeeded(researchSteps) {
+export function labStepsNeeded(researchSteps) {
   const def = ttResources && !ttResources.error ? ttResources.labDef : null;
   if (!def) return [];
   const cur = currentLabLevel().level;
@@ -202,7 +205,7 @@ function labStepsNeeded(researchSteps) {
 // queue, and every step waits for its prerequisites (prereq techs, the prior
 // level of the same tech, and the lab reaching its required level) to finish.
 // Returns items with start/finish/cost, the overall finish time, and slot count.
-function computeSchedule() {
+export function computeSchedule() {
   const research = buildPlan();
   const labSteps = labStepsNeeded(research);
   const def = ttResources && !ttResources.error ? ttResources.labDef : null;
@@ -284,7 +287,7 @@ function computeSchedule() {
 // Expand the targets into ordered per-level steps: every prerequisite is
 // brought up to its required level (recursively) before the tech, and a tech
 // targeted above its current level is expanded into one step per level.
-function buildPlan() {
+export function buildPlan() {
   const planned = {}, steps = [], visiting = new Set();
   const targetKeys = new Set(ttTargets.map(x => x.key));
   function need(key, level) {
@@ -306,7 +309,7 @@ function buildPlan() {
   return steps;
 }
 
-function addToQueue(key) {
+export function addToQueue(key) {
   const t = techByKey(key);
   if (!t) return;
   const ex = ttTargets.find(x => x.key === key);
@@ -320,7 +323,7 @@ function addToQueue(key) {
 }
 
 // Does this single target's plan include `key` at `level` or higher?
-function targetNeeds(tg, key, level) {
+export function targetNeeds(tg, key, level) {
   const planned = {}, visiting = new Set();
   let hit = false;
   (function need(k, l) {
@@ -343,7 +346,7 @@ function targetNeeds(tg, key, level) {
 // in at this level or above.
 // Add every dependency in a target's plan as its own target, so the deps
 // survive when the tech that pulled them in is removed.
-function promoteDeps(targetKey, targetLevel) {
+export function promoteDeps(targetKey, targetLevel) {
   const planned = {}, visiting = new Set(), deps = {};
   (function need(k, l) {
     const t = techByKey(k);
@@ -363,7 +366,7 @@ function promoteDeps(targetKey, targetLevel) {
   }
 }
 
-function removeStep(key, level) {
+export function removeStep(key, level) {
   const tgt = ttTargets.find(t => t.key === key);
   const cur = ttLevelsRef[key] || 0;
   if (tgt && level <= tgt.level && level > cur) {
@@ -381,13 +384,13 @@ function removeStep(key, level) {
   saveTargets();
 }
 
-function updateQueueBadges() {
+export function updateQueueBadges() {
   const inPlan = new Set(buildPlan().map(s => s.key));
   document.querySelectorAll('#techtree .tt-add').forEach(el =>
     el.classList.toggle('queued', inPlan.has(el.dataset.key)));
 }
 
-function fmtDuration(sec) {
+export function fmtDuration(sec) {
   sec = Math.round(sec);
   const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600);
   const m = Math.floor(sec % 3600 / 60), s = sec % 60;
@@ -395,14 +398,14 @@ function fmtDuration(sec) {
     .filter(Boolean).join(' ');
 }
 
-function fmtClock(ms) {
+export function fmtClock(ms) {
   return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // Time-aware affordability: walk the scheduled steps in start order, accruing
 // income up to each step's start, and find the largest per-resource shortfall.
 // Returns null when there's no resource data, else { ok, waitH, infeasible }.
-function scheduleAffordability(items, now) {
+export function scheduleAffordability(items, now) {
   const R = ttResources;
   if (!R || R.error) return null;
   const fields = [['ore', 'oreRate'], ['silicates', 'silicatesRate'], ['hydrogen', 'hydrogenRate'], ['alloys', 'alloysRate']];
@@ -424,7 +427,7 @@ function scheduleAffordability(items, now) {
   return { ok: !short, waitH, infeasible };
 }
 
-function renderQueue() {
+export function renderQueue() {
   const list = document.getElementById('tt-queue-list');
   const totalsEl = document.getElementById('tt-queue-totals');
   const clearBtn = document.getElementById('tt-queue-clear');
@@ -508,7 +511,7 @@ function renderQueue() {
 }
 
 // Build an orthogonal path through anchor points with rounded corners.
-function roundedOrthoPath(pts, R) {
+export function roundedOrthoPath(pts, R) {
   const O = [[pts[0][0], pts[0][1]]];
   let px = pts[0][0], py = pts[0][1];
   for (let i = 1; i < pts.length; i++) {
@@ -535,7 +538,7 @@ function roundedOrthoPath(pts, R) {
 
 // Apply the current zoom to the canvas. transform scales visually; the margin
 // extends/contracts the scroll area so the viewport scrolls to the scaled box.
-function applyZoom() {
+export function applyZoom() {
   if (!ttCanvas) return;
   ttCanvas.style.transformOrigin = '0 0';
   ttCanvas.style.transform = `scale(${ttZoom})`;
@@ -544,7 +547,7 @@ function applyZoom() {
 }
 
 // Status of a tech given the level map (key → level) for requirement checks.
-function techStatus(t, levels) {
+export function techStatus(t, levels) {
   if (t.isMaxed || (t.maxLevel && t.level >= t.maxLevel)) return 'maxed';
   if (t.status === 'researching' || t.status === 'in_progress' || t.status === 'active') return 'researching';
   if (t.level > 0) return 'researched';
@@ -554,7 +557,7 @@ function techStatus(t, levels) {
   return 'locked';
 }
 
-function techTooltip(t, levels) {
+export function techTooltip(t, levels) {
   const lines = [t.description || ''];
   if (t.requirements?.length) {
     lines.push('Requires: ' + t.requirements.map(r => {
@@ -575,7 +578,7 @@ function techTooltip(t, levels) {
   return lines.filter(Boolean).join('\n');
 }
 
-function populateBranchOptions(research) {
+export function populateBranchOptions(research) {
   const sel = document.getElementById('tt-branch');
   if (!sel) return;
   const branches = [...new Set(research.map(t => t.branch).filter(Boolean))];
@@ -594,7 +597,7 @@ function populateBranchOptions(research) {
 }
 
 // Dependency depth = longest chain of research prerequisites. Drives columns.
-function computeDepths(research) {
+export function computeDepths(research) {
   const byKey = {};
   for (const t of research) byKey[t.key] = t;
   // Lab-level floor: map each distinct required lab level to a compact rank so
@@ -619,9 +622,9 @@ function computeDepths(research) {
   return depth;
 }
 
-const NODE_W = 165, NODE_H = 60, GAP_X = 40, GAP_Y = 120, PAD = 10;
+export const NODE_W = 165, NODE_H = 60, GAP_X = 40, GAP_Y = 120, PAD = 10;
 
-function renderTechTreeTab() {
+export function renderTechTreeTab() {
   const research = store.research || [];
   populateBranchOptions(research);
 
@@ -1021,7 +1024,7 @@ function renderTechTreeTab() {
 }
 
 // Legend: branch colours, status colours, edge meaning.
-function renderLegend() {
+export function renderLegend() {
   const el = document.getElementById('tt-legend');
   if (!el) return;
   const swatch = (color, label, kind) =>

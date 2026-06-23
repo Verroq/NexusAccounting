@@ -1,12 +1,14 @@
 // Pirates tab.
 
-let chartPirateLoot, chartPirateOutcomes;
+import { EXTRA_RES_KEYS_UI, PER_PAGE, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, store, zoneCell } from '../common.js';
 
-let pirateCurrentPage = 1;
+export let chartPirateLoot, chartPirateOutcomes;
+
+export let pirateCurrentPage = 1;
 
 // ── Pirates tab ────────────────────────────────────────────────────────────
 
-function getPirateTotalsForMode() {
+export function getPirateTotalsForMode() {
   const mode = getMode();
   if (mode === 'all' && isUnfiltered()) return store.pirate_totals || {};
   return recordsForMode(store.pirate_recent_reports, mode).reduce((t, r) => ({
@@ -21,13 +23,13 @@ function getPirateTotalsForMode() {
   }), { ore: 0, hydrogen: 0, silicates: 0, raids: 0, ships_destroyed: 0, ships_damaged: 0, pirates_destroyed: 0 });
 }
 
-function getPirateLostForMode() {
+export function getPirateLostForMode() {
   const mode = getMode();
   if (mode === 'all' && isUnfiltered()) return store.pirate_resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
   return computeResourcesLost(recordsForMode(store.pirate_recent_reports, mode), store.ships || {});
 }
 
-function getPirateDebrisForMode() {
+export function getPirateDebrisForMode() {
   const mode = getMode();
   if (mode === 'all' && isUnfiltered()) return store.pirate_debris_total || { ore: 0, alloys: 0, silicates: 0 };
   return recordsForMode(store.pirate_recent_reports, mode).reduce((t, r) => ({
@@ -37,7 +39,7 @@ function getPirateDebrisForMode() {
   }), { ore: 0, alloys: 0, silicates: 0 });
 }
 
-function getPirateOutcomesForMode() {
+export function getPirateOutcomesForMode() {
   const mode = getMode();
   if (mode === 'all' && isUnfiltered()) return store.pirate_outcomes || [];
   const map = {};
@@ -52,14 +54,14 @@ function getPirateOutcomesForMode() {
   return Object.values(map).sort((a, b) => b.count - a.count);
 }
 
-function getPirateSeriesForMode() {
+export function getPirateSeriesForMode() {
   const mode = getMode();
   if (mode !== 'hourly' && isUnfiltered()) return store.pirate_daily || [];
   return computeSeries(filterZone(store.pirate_recent_reports || []), mode,
     { ...SERIES_GETTERS, raids: () => 1 });
 }
 
-function renderPiratesTab() {
+export function renderPiratesTab() {
   const mode = getMode();
   const periodLabel = periodLabelFor(mode);
   const t = getPirateTotalsForMode();
@@ -107,12 +109,12 @@ function renderPiratesTab() {
   renderPirateTable();
 }
 
-function renderPirateLootChart(series, labelKey) {
+export function renderPirateLootChart(series, labelKey) {
   if (chartPirateLoot) chartPirateLoot.destroy();
   chartPirateLoot = makeResourceLineChart('chart-pirate-loot', series, labelKey, { field: 'raids', label: 'Raids' });
 }
 
-function renderPirateOutcomesChart(outcomes) {
+export function renderPirateOutcomesChart(outcomes) {
   const total = outcomes.reduce((s, o) => s + o.count, 0);
   const labels = outcomes.map(o => {
     const pct = total ? (o.count / total * 100).toFixed(1) : 0;
@@ -140,10 +142,10 @@ function renderPirateOutcomesChart(outcomes) {
   });
 }
 
-const pirateSort = { key: 'created_at', dir: -1 };
+export const pirateSort = { key: 'created_at', dir: -1 };
 attachSortable('p-reports-head', pirateSort, () => { pirateCurrentPage = 1; renderPirateTable(); });
 
-function renderPirateTable() {
+export function renderPirateTable() {
   const allReports = applySort('p-reports-head', filterZone(store.pirate_recent_reports || []), pirateSort);
   const totalPages = Math.ceil(allReports.length / PER_PAGE);
   document.getElementById('p-page-info').textContent = `Page ${pirateCurrentPage} / ${Math.max(1, totalPages)} (${allReports.length} total)`;
@@ -195,7 +197,7 @@ function renderPirateTable() {
   }
 }
 
-function changePiratePage(delta) {
+export function changePiratePage(delta) {
   pirateCurrentPage += delta;
   renderPirateTable();
 }
@@ -203,3 +205,5 @@ function changePiratePage(delta) {
 document.getElementById('p-btn-prev').addEventListener('click', () => changePiratePage(-1));
 
 document.getElementById('p-btn-next').addEventListener('click', () => changePiratePage(1));
+
+export function setPirateCurrentPage(n) { pirateCurrentPage = n; }

@@ -1,9 +1,5 @@
-'use strict';
 // Shared test fixtures and the browser-API stub used to run background.js
 // under node.
-
-const fs = require('fs');
-const path = require('path');
 
 // Real ship stats from the in-game ship screens (Stats.txt, 2026-06-22).
 const SHIP_DEFS = {
@@ -56,30 +52,25 @@ function makeBrowserStub(store = {}) {
   return store;
 }
 
-// Evaluates background.js into an object exposing its top-level functions.
-function loadBackground() {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'nexus-addon', 'background.js'), 'utf8');
-  const exports = [
-    'processSurveyReports', 'processPirateReports', 'processMiningReports',
-    'processExpeditionReports', 'processSystemDebris', 'rebuildAggregates',
-    'checkDrift', 'ensureSchema', 'appendToArchive', 'loadArchive',
-    'systemFromLocation', 'resolveZone', 'backfillZones', 'processMissions',
-  ];
-  return eval(`${src}\n({ ${exports.join(', ')} })`);
+// Imports background.js (ESM service worker) and returns its exported
+// functions. Stub the browser API (makeBrowserStub) before calling. The query
+// param busts the module cache so each call gets a fresh instance, matching the
+// old eval-based harness (per-call isolation of any module-level state).
+let _bgN = 0;
+async function loadBackground() {
+  return import(`../nexus-addon/background.js?n=${_bgN++}`);
 }
 
-// Evaluates simulator-intel.js for its pure helpers. The file wires DOM event
-// listeners at load, so stub just enough of document/browser to let it run.
-function loadIntel() {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'nexus-addon', 'simulator-intel.js'), 'utf8');
-  const el = { addEventListener() {}, dataset: {} };
-  const document = { getElementById: () => el, querySelectorAll: () => [] };
-  const browser = { runtime: { sendMessage: async () => ({}) }, storage: { local: { get: async () => ({}) } } };
-  const shipDefs = {}, fmt = String, updateFleetStats = () => {};
-  const module = { exports: {} };
-  void document; void browser; void shipDefs; void fmt; void updateFleetStats;
-  eval(src);
-  return module.exports;
+// Stubs document + browser globally so DOM-wiring modules (the simulator
+// chain) can be imported under node without a real DOM.
+function setupDomStub() {
+  const el = {
+    addEventListener() {}, appendChild() {}, remove() {}, scrollIntoView() {},
+    querySelectorAll: () => [], dataset: {}, style: {}, options: { length: 0 },
+    selectedOptions: [], value: '', textContent: '', className: '', checked: false,
+  };
+  global.document = { getElementById: () => el, querySelectorAll: () => [] };
+  makeBrowserStub();
 }
 
-module.exports = { SHIP_DEFS, makeBrowserStub, loadBackground, loadIntel };
+export { SHIP_DEFS, makeBrowserStub, loadBackground, setupDomStub };

@@ -1,30 +1,32 @@
 // Surveys tab.
 
-let chartResources, chartEvents, chartByEvent;
+import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, SCALE_OPTS, SERIES_GETTERS, appendExtraResourceCards, computeEventBreakdown, computeResourcesLost, computeSeries, filterZone, fmt, fuelForMode, getMode, isUnfiltered, latestBucket, makeResourceLineChart, makeStatCard, recordsForMode, renderLostCards, store, zoneCell } from '../common.js';
 
-let currentPage = 1;
+export let chartResources, chartEvents, chartByEvent;
+
+export let currentPage = 1;
 
 // Survey-only event-type filter (combines with the global zone + view).
-function getSurveyEvent() {
+export function getSurveyEvent() {
   const el = document.getElementById('event-select');
   return el ? el.value : 'all';
 }
-function filterEvent(reports) {
+export function filterEvent(reports) {
   const e = getSurveyEvent();
   return e === 'all' ? reports : (reports || []).filter(r => (r.event_type || 'unknown') === e);
 }
 // No filter active → precomputed all-time totals can be used.
-function surveyUnfiltered() {
+export function surveyUnfiltered() {
   return isUnfiltered() && getSurveyEvent() === 'all';
 }
 // Records for the current view, zone and event filters.
-function surveyRecordsForMode(mode) {
+export function surveyRecordsForMode(mode) {
   const filtered = filterEvent(filterZone(store.recent_reports || []));
   return mode === 'all' ? filtered : latestBucket(filtered, mode);
 }
 
 // Returns {ore, hydrogen, silicates, missions, ships_lost} for the current view.
-function getTotalsForMode() {
+export function getTotalsForMode() {
   const mode = getMode();
   if (mode === 'all' && surveyUnfiltered()) return store.totals || {};
   return surveyRecordsForMode(mode).reduce((t, r) => {
@@ -36,7 +38,7 @@ function getTotalsForMode() {
 }
 
 // Returns resources-lost for the current view.
-function getResourcesLostForMode() {
+export function getResourcesLostForMode() {
   const mode = getMode();
   if (mode === 'all' && surveyUnfiltered()) return store.resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
   return computeResourcesLost(surveyRecordsForMode(mode), store.ships || {});
@@ -44,14 +46,14 @@ function getResourcesLostForMode() {
 
 // Event-type breakdown — zone-aware but NOT event-filtered (it is the selector
 // context, so it always shows the full distribution).
-function getEventBreakdownForMode() {
+export function getEventBreakdownForMode() {
   const mode = getMode();
   if (mode === 'all' && isUnfiltered()) return store.event_breakdown || [];
   return computeEventBreakdown(recordsForMode(store.recent_reports, mode));
 }
 
 // Returns time-series data array for the resources-over-time chart.
-function getSeriesForMode() {
+export function getSeriesForMode() {
   const mode = getMode();
   if (mode !== 'hourly' && surveyUnfiltered()) return store.daily || [];
   return computeSeries(filterEvent(filterZone(store.recent_reports || [])), mode,
@@ -60,7 +62,7 @@ function getSeriesForMode() {
 
 // Populate the event dropdown from the event types present, preserving the
 // current selection.
-function populateEventOptions() {
+export function populateEventOptions() {
   const sel = document.getElementById('event-select');
   if (!sel) return;
   const types = (store.event_breakdown || []).map(e => e.event_type).filter(Boolean).sort();
@@ -79,7 +81,7 @@ function populateEventOptions() {
   sel.value = types.includes(current) || current === 'all' ? current : 'all';
 }
 
-function renderCollected(t, periodLabel) {
+export function renderCollected(t, periodLabel) {
   const container = document.getElementById('stats-collected');
   container.textContent = '';
   const noData = !store.totals || !store.totals.missions;
@@ -109,16 +111,16 @@ function renderCollected(t, periodLabel) {
   );
 }
 
-function renderLost(rl, periodLabel) {
+export function renderLost(rl, periodLabel) {
   renderLostCards('stats-lost', 'stats-repair', rl, periodLabel);
 }
 
-function renderResourceChart(series, labelKey) {
+export function renderResourceChart(series, labelKey) {
   if (chartResources) chartResources.destroy();
   chartResources = makeResourceLineChart('chart-resources', series, labelKey, { field: 'missions', label: 'Missions' });
 }
 
-function renderEventsChart(events) {
+export function renderEventsChart(events) {
   const total = events.reduce((s, e) => s + e.count, 0);
   const labels = events.map(e => {
     const pct = total ? (e.count / total * 100).toFixed(1) : 0;
@@ -146,7 +148,7 @@ function renderEventsChart(events) {
   });
 }
 
-function renderByEventChart(events) {
+export function renderByEventChart(events) {
   const filtered = events.filter(e => RESOURCE_SERIES.some(d => (e[d.field] || 0) > 0));
   const labels = filtered.map(e => e.event_type.replace(/_/g, ' '));
   const ALWAYS = new Set(['ore', 'silicates', 'hydrogen']);
@@ -173,7 +175,7 @@ function renderByEventChart(events) {
 
 // ── Reports table ──────────────────────────────────────────────────────────
 
-let surveySort = { key: 'created_at', dir: -1 };
+export let surveySort = { key: 'created_at', dir: -1 };
 
 document.getElementById('reports-head').addEventListener('click', e => {
   const th = e.target.closest('th.sortable');
@@ -184,7 +186,7 @@ document.getElementById('reports-head').addEventListener('click', e => {
   renderTable();
 });
 
-function renderTable() {
+export function renderTable() {
   const { key, dir } = surveySort;
   const allReports = filterEvent(filterZone(store.recent_reports || [])).slice().sort((a, b) => {
     const va = a[key], vb = b[key];
@@ -256,7 +258,7 @@ function renderTable() {
   }
 }
 
-function changePage(delta) {
+export function changePage(delta) {
   currentPage += delta;
   renderTable();
 }
@@ -264,3 +266,5 @@ function changePage(delta) {
 document.getElementById('btn-prev').addEventListener('click', () => changePage(-1));
 
 document.getElementById('btn-next').addEventListener('click', () => changePage(1));
+
+export function setCurrentPage(n) { currentPage = n; }

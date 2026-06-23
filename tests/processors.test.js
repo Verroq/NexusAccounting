@@ -1,7 +1,6 @@
-'use strict';
-const { test } = require('node:test');
-const assert = require('node:assert');
-const { makeBrowserStub, loadBackground } = require('./helpers.js');
+import { test } from 'node:test';
+import assert from 'node:assert';
+import { makeBrowserStub, loadBackground } from './helpers.js';
 
 const SHIPS = { 21: { costOre: 100, costSilicates: 50, costHydrogen: 0, costAlloys: 10, rareCosts: { cryo_ice: 5 } } };
 
@@ -15,7 +14,7 @@ function surveyReport(id, day, ore = 100) {
 
 test('survey processor: dedupe, totals, loss valuation, archive shard', async () => {
   const store = makeBrowserStub();
-  const bg = loadBackground();
+  const bg = await loadBackground();
 
   await bg.processSurveyReports([surveyReport(1, '2026-06-10')], SHIPS);
   await bg.processSurveyReports([surveyReport(1, '2026-06-10'), surveyReport(2, '2026-06-11')], SHIPS);
@@ -30,7 +29,7 @@ test('survey processor: dedupe, totals, loss valuation, archive shard', async ()
 
 test('damaged ships add 50% repair cost to losses', async () => {
   const store = makeBrowserStub({ ships: SHIPS });   // rebuild reads the catalog from storage
-  const bg = loadBackground();
+  const bg = await loadBackground();
 
   // 1 destroyed scout (full cost) + 2 damaged scouts (half cost each).
   const rep = {
@@ -54,8 +53,8 @@ test('damaged ships add 50% repair cost to losses', async () => {
   assert.equal(store.resources_lost.repair.ore, 100, 'rebuild keeps repair');
 });
 
-test('security zone resolution', () => {
-  const bg = loadBackground();
+test('security zone resolution', async () => {
+  const bg = await loadBackground();
   assert.equal(bg.systemFromLocation('A12-27 / A12-27-AF1'), 'A12-27');
   assert.equal(bg.systemFromLocation('B3-9-XY2'), 'B3-9');
   assert.equal(bg.systemFromLocation(''), null);
@@ -67,7 +66,7 @@ test('security zone resolution', () => {
 
 test('survey zone from securityZone, mining zone from locationName', async () => {
   const store = makeBrowserStub({ ships: {} });
-  const bg = loadBackground();
+  const bg = await loadBackground();
   const zones = { 'A12-27': 'sentinel' };
 
   await bg.processSurveyReports([{
@@ -92,7 +91,7 @@ test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
 
   // debris mission ambushed: shipsDestroyed by key { key, lost }
   const store = makeBrowserStub({});
-  let bg = loadBackground();
+  let bg = await loadBackground();
   await bg.processMissions([{
     id: 1, missionType: 'collect_debris', status: 'returning', returnDepartsAt: 'y',
     targetSystemId: 5, cargo: { ore: 100 }, shipsDestroyed: [{ key: 'scout', lost: 2 }],
@@ -101,7 +100,7 @@ test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
 
   // expedition run: totalShipsLost by shipDefId { shipDefId, quantity }
   const s2 = makeBrowserStub({ ships });
-  bg = loadBackground();
+  bg = await loadBackground();
   await bg.processExpeditionReports([], [{
     id: 9, createdAt: '2026-06-14T10:00:00Z', status: 'completed', wormholeId: 1,
     totalLoot: { ore: 5 }, totalShipsLost: [{ shipDefId: 21, quantity: 3 }],
@@ -111,7 +110,7 @@ test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
 
 test('debris collection: returning collect_debris cargo recorded once', async () => {
   const store = makeBrowserStub({});
-  const bg = loadBackground();
+  const bg = await loadBackground();
   const zoneById = { 568: 'sentinel' };
 
   // outbound: live run, nothing committed
@@ -146,7 +145,7 @@ test('zone back-fill stamps existing records once', async () => {
     },
     'survey_archive_2026-06': [{ id: 1, system_name: 'A12-27' }],
   });
-  const bg = loadBackground();
+  const bg = await loadBackground();
   await bg.backfillZones({ 'A12-27': 'sentinel' });
 
   assert.deepEqual(store.recent_reports.map(r => r.zone), ['sentinel', 'unknown']);
@@ -162,7 +161,7 @@ test('zone back-fill stamps existing records once', async () => {
 
 test('pirate zone resolved from campId via camp→zone map', async () => {
   const store = makeBrowserStub({ ships: {} });
-  const bg = loadBackground();
+  const bg = await loadBackground();
   const raid = (id, campId) => ({
     id, createdAt: '2026-06-13T10:00:00Z', campId,
     attackerFleet: [], pirateFleet: [], attackerLosses: [], pirateLosses: [],
@@ -176,7 +175,7 @@ test('pirate zone resolved from campId via camp→zone map', async () => {
 
 test('wormhole zone from wormholeId, back-fill from location string', async () => {
   const store = makeBrowserStub({ ships: {} });
-  const bg = loadBackground();
+  const bg = await loadBackground();
   await bg.processExpeditionReports([], [{
     id: 540, createdAt: '2026-06-14T10:00:00Z', status: 'completed',
     wormholeId: 65656, totalLoot: { ore: 10 }, totalShipsLost: [],
@@ -189,14 +188,14 @@ test('wormhole zone from wormholeId, back-fill from location string', async () =
     exp_recent_reports: [{ id: 'wh-1', location: 'Wormhole #65656' }],
     archive_index: { survey: { months: [], count: 0 }, pirate: { months: [], count: 0 }, mining: { months: [], count: 0 }, exp: { months: [], count: 0 } },
   });
-  const bg2 = loadBackground();
+  const bg2 = await loadBackground();
   await bg2.backfillZones({}, {}, { 65656: 'dead' });
   assert.equal(s2.exp_recent_reports[0].zone, 'dead');
 });
 
 test('wormhole runs: totalLoot parsed, in-progress runs skipped', async () => {
   const store = makeBrowserStub();
-  const bg = loadBackground();
+  const bg = await loadBackground();
 
   const completed = {
     id: 540, createdAt: '2026-06-13T12:41:16.733Z', status: 'completed', wormholeId: 64185,
@@ -217,7 +216,7 @@ test('wormhole runs: totalLoot parsed, in-progress runs skipped', async () => {
 
 test('uninvestigated and uncollected reports are deferred, not lost', async () => {
   const store = makeBrowserStub();
-  const bg = loadBackground();
+  const bg = await loadBackground();
 
   const pending = { ...surveyReport(1, '2026-06-10'), investigated: false };
   await bg.processSurveyReports([pending], SHIPS);
@@ -229,7 +228,7 @@ test('uninvestigated and uncollected reports are deferred, not lost', async () =
 
 test('archive shards: only the report month is touched', async () => {
   const store = makeBrowserStub();
-  const bg = loadBackground();
+  const bg = await loadBackground();
 
   await bg.appendToArchive('survey', [
     { id: 1, created_at: '2026-05-20T10:00:00Z' },
@@ -252,7 +251,7 @@ test('migration v4 moves legacy archives into shards', async () => {
       { id: 2, created_at: '2026-06-10T10:00:00Z', ore: 20 },
     ],
   });
-  const bg = loadBackground();
+  const bg = await loadBackground();
 
   await bg.ensureSchema();
   assert.equal(store.survey_archive, undefined, 'legacy key removed');
@@ -263,7 +262,7 @@ test('migration v4 moves legacy archives into shards', async () => {
 
 test('drift detection flags corruption; rebuild repairs and clears it', async () => {
   const store = makeBrowserStub({ ships: SHIPS });
-  const bg = loadBackground();
+  const bg = await loadBackground();
 
   await bg.processSurveyReports([surveyReport(1, '2026-06-10'), surveyReport(2, '2026-06-11')], SHIPS);
   await bg.checkDrift();
@@ -280,7 +279,7 @@ test('drift detection flags corruption; rebuild repairs and clears it', async ()
 
 test('debris snapshot: live fields recorded with first-seen', async () => {
   const store = makeBrowserStub();
-  const bg = loadBackground();
+  const bg = await loadBackground();
 
   await bg.processSystemDebris([{ id: 5, systemName: 'A1', ore: 1000, silicates: 500, alloys: 100 }], { A1: 'open' });
   const f = store.debris_fields[0];
