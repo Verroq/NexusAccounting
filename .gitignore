@@ -30,3 +30,7 @@ nexus_legacy_survey_tracker-*.xpi
 nexus-accounting-*.zip
 
 Stats.txt
+
+# Working notes (not part of the addon)
+report_dead_code.md
+todolist.md
