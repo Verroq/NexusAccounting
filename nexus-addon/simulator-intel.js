@@ -23,14 +23,18 @@ let _resolvedDistanceAU = 0;
 // (50 cruisers + 34 scouts → 5,891 H round trip).
 const COORD_TO_FUEL_AU = 1 / 57.4;
 
+// Euclidean coordinate distance between two systems, scaled to fuel-AU.
+function coordDistanceAU(a, d) {
+  return Math.sqrt((d.x - a.x) ** 2 + (d.y - a.y) ** 2) * COORD_TO_FUEL_AU;
+}
+
 async function updateDistanceFromCoords() {
   const atkInput = document.getElementById('atk-system');
   const defInput = document.getElementById('def-system');
   const [a, d] = await Promise.all([resolveSystemCoords(atkInput), resolveSystemCoords(defInput)]);
   const display = document.getElementById('distance-display');
   if (!a || !d) { display.textContent = ''; _resolvedDistanceAU = 0; return; }
-  const coordDist = Math.sqrt((d.x - a.x) ** 2 + (d.y - a.y) ** 2);
-  _resolvedDistanceAU = coordDist * COORD_TO_FUEL_AU;
+  _resolvedDistanceAU = coordDistanceAU(a, d);
   display.textContent = `↔ ${_resolvedDistanceAU.toFixed(2)} AU`;
 }
 
@@ -125,6 +129,24 @@ document.getElementById('btn-fill-tech-defender').addEventListener('click', () =
 
 // ── Intel reports (spy + camp scout) → defender auto-fill ──────────────────
 
+// Map intel building list → defender defense levels. Substring-matches the
+// normalized building key; takes the highest level per type. Unknown buildings
+// (e.g. Shield Generator) are ignored.
+function classifyDefenses(buildings) {
+  const d = { missile_defense: 0, laser_defense: 0, railgun_defense: 0, plasma_defense: 0, ion_defense: 0, ew_system: 0 };
+  for (const b of (buildings || [])) {
+    const k = (b.key || '').toLowerCase().replace(/[\s-]/g, '_');
+    const lvl = b.level || 0;
+    if (k.includes('missile')) d.missile_defense = Math.max(d.missile_defense, lvl);
+    else if (k.includes('laser')) d.laser_defense = Math.max(d.laser_defense, lvl);
+    else if (k.includes('railgun')) d.railgun_defense = Math.max(d.railgun_defense, lvl);
+    else if (k.includes('plasma')) d.plasma_defense = Math.max(d.plasma_defense, lvl);
+    else if (k.includes('ion')) d.ion_defense = Math.max(d.ion_defense, lvl);
+    else if (k.includes('ew') || k.includes('electronic')) d.ew_system = Math.max(d.ew_system, lvl);
+  }
+  return d;
+}
+
 let intelReports = [];
 
 async function loadIntelReports() {
@@ -167,17 +189,7 @@ document.getElementById('report-select').addEventListener('change', async functi
     input.value = item ? item.quantity : 0;
   });
 
-  const defLevels = { missile_defense: 0, laser_defense: 0, railgun_defense: 0, plasma_defense: 0, ion_defense: 0, ew_system: 0 };
-  for (const b of (r.buildings || [])) {
-    const k = (b.key || '').toLowerCase().replace(/[\s-]/g, '_');
-    const lvl = b.level || 0;
-    if (k.includes('missile')) defLevels.missile_defense = Math.max(defLevels.missile_defense, lvl);
-    else if (k.includes('laser')) defLevels.laser_defense = Math.max(defLevels.laser_defense, lvl);
-    else if (k.includes('railgun')) defLevels.railgun_defense = Math.max(defLevels.railgun_defense, lvl);
-    else if (k.includes('plasma')) defLevels.plasma_defense = Math.max(defLevels.plasma_defense, lvl);
-    else if (k.includes('ion')) defLevels.ion_defense = Math.max(defLevels.ion_defense, lvl);
-    else if (k.includes('ew') || k.includes('electronic')) defLevels.ew_system = Math.max(defLevels.ew_system, lvl);
-  }
+  const defLevels = classifyDefenses(r.buildings);
   document.getElementById('def-missile').value = defLevels.missile_defense;
   document.getElementById('def-laser').value   = defLevels.laser_defense;
   document.getElementById('def-railgun').value = defLevels.railgun_defense;
@@ -249,3 +261,6 @@ function renderTargetIntel(r) {
 
 coordInputHandler(document.getElementById('atk-system'));
 coordInputHandler(document.getElementById('def-system'));
+
+// ponytail: node-only export for unit tests; guard keeps it inert in the browser.
+if (typeof module !== 'undefined') module.exports = { classifyDefenses, coordDistanceAU, COORD_TO_FUEL_AU };

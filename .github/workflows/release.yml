@@ -28,7 +28,7 @@ jobs:
           node-version: 22
 
       - name: Run tests
-        run: node --test tests/engine.test.js tests/processors.test.js
+        run: node --test
 
       - name: Check tag matches manifest version
         run: |

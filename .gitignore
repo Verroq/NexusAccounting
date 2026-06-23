@@ -26,7 +26,8 @@ web-ext-artifacts/
 .amo-upload-uuid
 nexus_legacy_survey_tracker-*.xpi
 
-# Chrome package (built alongside the xpi; distributed via the Web Store)
+# Built packages (rebuilt by CI and attached to releases; not tracked)
+nexus-accounting-*.xpi
 nexus-accounting-*.zip
 
 Stats.txt

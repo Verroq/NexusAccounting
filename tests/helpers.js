@@ -69,4 +69,19 @@ function loadBackground() {
   return eval(`${src}\n({ ${exports.join(', ')} })`);
 }
 
-module.exports = { SHIP_DEFS, makeBrowserStub, loadBackground };
+// Evaluates simulator-intel.js for its pure helpers. The file wires DOM event
+// listeners at load, so stub just enough of document/browser to let it run.
+function loadIntel() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'nexus-addon', 'simulator-intel.js'), 'utf8');
+  const el = { addEventListener() {}, dataset: {} };
+  const document = { getElementById: () => el, querySelectorAll: () => [] };
+  const browser = { runtime: { sendMessage: async () => ({}) }, storage: { local: { get: async () => ({}) } } };
+  const shipDefs = {}, fmt = String, updateFleetStats = () => {};
+  const module = { exports: {} };
+  void document; void browser; void shipDefs; void fmt; void updateFleetStats;
+  // eslint-disable-next-line no-eval
+  eval(src);
+  return module.exports;
+}
+
+module.exports = { SHIP_DEFS, makeBrowserStub, loadBackground, loadIntel };
