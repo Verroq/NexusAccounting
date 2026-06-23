@@ -63,7 +63,6 @@ function loadBackground() {
     'processSurveyReports', 'processPirateReports', 'processMiningReports',
     'processExpeditionReports', 'processSystemDebris', 'rebuildAggregates',
     'checkDrift', 'ensureSchema', 'appendToArchive', 'loadArchive',
-    'buildShipCatalog', 'extractFleet', 'numericResources', 'MIGRATIONS',
     'systemFromLocation', 'resolveZone', 'backfillZones', 'processMissions',
   ];
   // eslint-disable-next-line no-eval

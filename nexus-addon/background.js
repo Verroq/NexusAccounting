@@ -50,7 +50,6 @@ browser.action.onClicked.addListener(() => {
 
 browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SCRAPE_NOW') return scrape().then(() => ({ ok: true }));
-  if (msg.type === 'GET_STATUS') return getStatus();
   if (msg.type === 'GET_FLEET') return getFleet(msg.planetId);
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
@@ -1642,7 +1641,8 @@ const MIGRATIONS = {
   },
   // v7: fuel is now counted per launched mission into fuel_log. Clear the log
   // (early entries mis-tagged "investigate" survey fleets as "other") plus the
-  // now-unused per-report fuel/coords caches; it rebuilds from new launches.
+  // stale coords caches; system_coords_by_id/_by_name get re-populated by
+  // getSystemZones() on the next galaxy map refresh, the rest rebuild from new launches.
   7: async () => {
     await browser.storage.local.remove([
       'fuel_log', 'fuel_counted_ids', 'mission_origins',
@@ -1844,9 +1844,3 @@ function routeIntercepted(url, json) {
   });
 }
 
-// ── Status ─────────────────────────────────────────────────────────────────
-
-async function getStatus() {
-  const data = await browser.storage.local.get(['last_scrape', 'last_error', 'totals']);
-  return data;
-}

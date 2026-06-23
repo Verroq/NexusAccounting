@@ -23,7 +23,6 @@
   gap: 4px 8px; align-items: center; margin-top: 8px;
 }
 .tech-label { cursor: help; border-bottom: 1px dotted #484f58; }
-.tech-label .est { color: #e3b341; }
 .tech-input {
   width: 50px; background: #21262d; border: 1px solid #30363d; color: #e6edf3;
   padding: 3px 6px; border-radius: 6px; font-size: 0.8rem;
