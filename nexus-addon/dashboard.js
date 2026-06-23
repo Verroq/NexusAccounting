@@ -8,6 +8,7 @@ import { activeTab, fuelForMode, getLabelKey, getMode, periodLabelFor, renderNet
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
 import { initFinderTab } from './tabs/finder.js';
+import { initMarketTab } from './tabs/market.js';
 import { renderGlobalTab } from './tabs/global.js';
 import { renderMiningTab, setMiningPage } from './tabs/mining.js';
 import { renderPiratesTab, setPirateCurrentPage } from './tabs/pirates.js';
@@ -101,6 +102,10 @@ export function renderAll() {
     initFinderTab();
     return;
   }
+  if (activeTab === 'market') {
+    initMarketTab();
+    return;
+  }
   if (activeTab === 'techtree') {
     renderTechTreeTab();
     return;
@@ -133,6 +138,7 @@ export const TAB_CONTENT = {
   debris: 'debris-content',
   expeditions: 'expeditions-content',
   finder: 'finder-content',
+  market: 'market-content',
   techtree: 'techtree-content',
 };
 
@@ -145,7 +151,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     }
     // View mode and records cap are meaningless on the finder and debris tabs.
     document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'techtree') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'techtree' || activeTab === 'market') ? 'none' : '';
     positionControls();
     renderAll();
   });
