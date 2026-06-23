@@ -1,5 +1,8 @@
 // Simulator: engine validation against recorded pirate raids.
 
+import { shipDefs, runSimulations } from './engine.js';
+import { makeStatCard } from './simulator.js';   // circular: function, used only in the handler
+
 // ── Engine validation against recorded raids ───────────────────────────────
 
 const VALIDATE_OPTS = { sims: 200, maxRounds: 10, variance: 0.1, debrisRate: 0.3, shieldRegen: false };

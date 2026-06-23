@@ -1,9 +1,5 @@
-'use strict';
 // Shared test fixtures and the browser-API stub used to run background.js
 // under node.
-
-const fs = require('fs');
-const path = require('path');
 
 // Real ship stats from the in-game ship screens (Stats.txt, 2026-06-22).
 const SHIP_DEFS = {
@@ -56,18 +52,25 @@ function makeBrowserStub(store = {}) {
   return store;
 }
 
-// Evaluates background.js into an object exposing its top-level functions.
-function loadBackground() {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'nexus-addon', 'background.js'), 'utf8');
-  const exports = [
-    'processSurveyReports', 'processPirateReports', 'processMiningReports',
-    'processExpeditionReports', 'processSystemDebris', 'rebuildAggregates',
-    'checkDrift', 'ensureSchema', 'appendToArchive', 'loadArchive',
-    'buildShipCatalog', 'extractFleet', 'numericResources', 'MIGRATIONS',
-    'systemFromLocation', 'resolveZone', 'backfillZones', 'processMissions',
-  ];
-  // eslint-disable-next-line no-eval
-  return eval(`${src}\n({ ${exports.join(', ')} })`);
+// Imports background.js (ESM service worker) and returns its exported
+// functions. Stub the browser API (makeBrowserStub) before calling. The query
+// param busts the module cache so each call gets a fresh instance, matching the
+// old eval-based harness (per-call isolation of any module-level state).
+let _bgN = 0;
+async function loadBackground() {
+  return import(`../nexus-addon/background.js?n=${_bgN++}`);
 }
 
-module.exports = { SHIP_DEFS, makeBrowserStub, loadBackground };
+// Stubs document + browser globally so DOM-wiring modules (the simulator
+// chain) can be imported under node without a real DOM.
+function setupDomStub() {
+  const el = {
+    addEventListener() {}, appendChild() {}, remove() {}, scrollIntoView() {},
+    querySelectorAll: () => [], dataset: {}, style: {}, options: { length: 0 },
+    selectedOptions: [], value: '', textContent: '', className: '', checked: false,
+  };
+  global.document = { getElementById: () => el, querySelectorAll: () => [] };
+  makeBrowserStub();
+}
+
+export { SHIP_DEFS, makeBrowserStub, loadBackground, setupDomStub };

@@ -2,11 +2,13 @@
 
 // ── Mining tab ─────────────────────────────────────────────────────────────
 
-let chartMining;
+import { EXTRA_RES_KEYS_UI, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeSeries, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, zeroCell, zoneCell } from '../common.js';
 
-let miningPage = 1;
+export let chartMining;
 
-function getMiningTotalsForMode(mode) {
+export let miningPage = 1;
+
+export function getMiningTotalsForMode(mode) {
   if (mode === 'all' && isUnfiltered()) {
     return store.mining_totals || {
       ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
@@ -27,13 +29,13 @@ function getMiningTotalsForMode(mode) {
   }), { ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0, stolen_total: 0 });
 }
 
-function getMiningSeriesForMode(mode) {
+export function getMiningSeriesForMode(mode) {
   if (mode !== 'hourly' && isUnfiltered()) return store.mining_daily || [];
   return computeSeries(filterZone(store.mining_recent_reports || []), mode,
     { ...SERIES_GETTERS, deliveries: () => 1 });
 }
 
-function renderMiningTab() {
+export function renderMiningTab() {
   const mode = getMode();
   const periodLabel = periodLabelFor(mode);
   const t = getMiningTotalsForMode(mode);
@@ -88,10 +90,10 @@ function renderMiningTab() {
   renderMiningTable();
 }
 
-const miningSort = { key: 'created_at', dir: -1 };
+export const miningSort = { key: 'created_at', dir: -1 };
 attachSortable('m-reports-head', miningSort, () => { miningPage = 1; renderMiningTable(); });
 
-function renderMiningTable() {
+export function renderMiningTable() {
   const reports = applySort('m-reports-head', filterZone(store.mining_recent_reports || []), miningSort);
   renderPagedTable(reports, miningPage, 'm-page-info', 'm-btn-prev', 'm-btn-next', 'm-reports-tbody', r => {
     const tr = document.createElement('tr');
@@ -115,3 +117,5 @@ function renderMiningTable() {
 document.getElementById('m-btn-prev').addEventListener('click', () => { miningPage--; renderMiningTable(); });
 
 document.getElementById('m-btn-next').addEventListener('click', () => { miningPage++; renderMiningTable(); });
+
+export function setMiningPage(n) { miningPage = n; }

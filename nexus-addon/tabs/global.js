@@ -1,18 +1,20 @@
 // Global tab: totals aggregated across every source, honouring the View,
 // Zone and Window selectors.
 
-let chartGlobal, chartGlobalPeriod, chartGlobalSrc;
+import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, combinedLost, computeResourcesLost, computeSeries, emptyResources, fmt, fuelForMode, getLabelKey, getMode, getZone, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderNetCards, resourceVal, store } from '../common.js';
+
+export let chartGlobal, chartGlobalPeriod, chartGlobalSrc;
 
 // Resource keys we total (core + alloys + exotics).
-const GLOBAL_RES_KEYS = ['ore', 'silicates', 'hydrogen', ...EXTRA_RES_KEYS_UI];
+export const GLOBAL_RES_KEYS = ['ore', 'silicates', 'hydrogen', ...EXTRA_RES_KEYS_UI];
 
-const SOURCE_COLORS = {
+export const SOURCE_COLORS = {
   Survey: '#58a6ff', Pirates: '#ff7b72', Mining: '#e3b341',
   Debris: '#56d364', Expeditions: '#bc8cff',
 };
 
 // Weighted value of a resource bag (ore×1 … alloys×5, exotics×10).
-function weightedValue(res) {
+export function weightedValue(res) {
   let v = 0;
   for (const k of GLOBAL_RES_KEYS) v += resourceVal(res, k) * (RESOURCE_WEIGHTS[k] || RARE_WEIGHT);
   return v;
@@ -20,7 +22,7 @@ function weightedValue(res) {
 
 // Per-report records from every source, tagged { src, r } and normalised to
 // flat resource fields + created_at + zone (+ loss detail where available).
-function globalRecords() {
+export function globalRecords() {
   const recs = [];
   const add = (src, list, norm) => {
     for (const r of (list || [])) recs.push({ src, r: norm ? norm(r) : r });
@@ -41,7 +43,7 @@ function globalRecords() {
   return recs;
 }
 
-function sumResources(records) {
+export function sumResources(records) {
   const c = emptyResources();
   for (const r of records) {
     for (const k of GLOBAL_RES_KEYS) {
@@ -52,7 +54,7 @@ function sumResources(records) {
   return c;
 }
 
-function globalLostAllTime() {
+export function globalLostAllTime() {
   const lost = emptyResources();
   for (const L of [store.resources_lost, store.pirate_resources_lost,
     store.mining_resources_lost, store.debris_resources_lost, store.exp_resources_lost]) {
@@ -64,7 +66,7 @@ function globalLostAllTime() {
   return lost;
 }
 
-function renderGlobalTab() {
+export function renderGlobalTab() {
   const mode = getMode();
   const periodLabel = periodLabelFor(mode);
   const ships = store.ships || {};
@@ -132,7 +134,7 @@ function renderGlobalTab() {
 }
 
 // Doughnut of each source's share of the (weighted) collected value.
-function renderSourceShare(bySrc) {
+export function renderSourceShare(bySrc) {
   const entries = Object.entries(bySrc).filter(([, v]) => v > 0);
   const totalV = entries.reduce((s, e) => s + e[1], 0);
   if (chartGlobalSrc) chartGlobalSrc.destroy();

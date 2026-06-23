@@ -17,10 +17,11 @@
     "*://nexuslegacy.space/*"
   ],
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "background-sw.js",
     "scripts": [
-      "background.js"
-    ]
+      "background-sw.js"
+    ],
+    "type": "module"
   },
   "action": {
     "default_title": "Nexus Accounting",

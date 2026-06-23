@@ -2,43 +2,43 @@
 
 // ── Planet Finder tab ──────────────────────────────────────────────────────
 
-const SCAN_CACHE_TTL = 24 * 3600 * 1000;   // planets rarely change
+export const SCAN_CACHE_TTL = 24 * 3600 * 1000;   // planets rarely change
 
-const SCAN_CACHE_MAX = 800;                // systems kept in the cache
+export const SCAN_CACHE_MAX = 800;                // systems kept in the cache
 
-let galaxySystems = null;     // full /api/galaxy/map systems array
+export let galaxySystems = null;     // full /api/galaxy/map systems array
 
-let finderArms = null;
+export let finderArms = null;
 
-let finderInited = false;
+export let finderInited = false;
 
-let finderRunning = false;
+export let finderRunning = false;
 
-let finderHits = [];          // matching planets
+export let finderHits = [];          // matching planets
 
-let hitSystems = {};          // systemId → {x, y, screenX, screenY, planets: []}
+export let hitSystems = {};          // systemId → {x, y, screenX, screenY, planets: []}
 
-let mapBounds = null;
+export let mapBounds = null;
 
-let homeSys = null;           // {x, y} of the home system, for distance
+export let homeSys = null;           // {x, y} of the home system, for distance
 
-let myUserId = null;          // player's user id, for "exclude mine"
+export let myUserId = null;          // player's user id, for "exclude mine"
 
-let mapView = { scale: 1, ox: 0, oy: 0 };   // pan/zoom transform on the map
+export let mapView = { scale: 1, ox: 0, oy: 0 };   // pan/zoom transform on the map
 
-let selectedSystemId = null;  // system focused from a results row
+export let selectedSystemId = null;  // system focused from a results row
 
-let myOwnedSystems = new Set();   // system ids where you own a planet
+export let myOwnedSystems = new Set();   // system ids where you own a planet
 
-let myAllianceTag = null;         // your alliance tag (e.g. "SWORD")
+export let myAllianceTag = null;         // your alliance tag (e.g. "SWORD")
 
-let allianceMemberIds = new Set();// userIds of your alliance members
+export let allianceMemberIds = new Set();// userIds of your alliance members
 
-let allianceSystems = {};         // systemId → owner name (alliance, found while scanning)
+export let allianceSystems = {};         // systemId → owner name (alliance, found while scanning)
 
-let galaxyHubs = [];              // market hubs: {name, x, y}
+export let galaxyHubs = [];              // market hubs: {name, x, y}
 
-async function initFinderTab() {
+export async function initFinderTab() {
   if (finderInited) return;
   finderInited = true;
   const status = document.getElementById('f-progress');
@@ -102,14 +102,14 @@ async function initFinderTab() {
   drawGalaxyMap();
 }
 
-function systemDistance(s) {
+export function systemDistance(s) {
   if (!homeSys) return null;
   return Math.round(Math.hypot(s.x - homeSys.x, s.y - homeSys.y));
 }
 
 // Sector field accepts a single sector ("35") or a range ("33-35").
 // Empty means the whole arm.
-function regionSectorIds() {
+export function regionSectorIds() {
   const armId = parseInt(document.getElementById('f-arm').value, 10) || 1;
   const arm = finderArms.find(a => a.id === armId) || { sectorCount: 50 };
   const raw = document.getElementById('f-sector').value.trim();
@@ -126,17 +126,17 @@ function regionSectorIds() {
   return { armId, from, to, min: base + from, max: base + to };
 }
 
-const MAP_PAD = 14;
+export const MAP_PAD = 14;
 
 // Base projection (data coords → canvas px, before pan/zoom).
-function mapBaseX(canvas, x) {
+export function mapBaseX(canvas, x) {
   return MAP_PAD + (x - mapBounds.minX) / (mapBounds.maxX - mapBounds.minX) * (canvas.width - 2 * MAP_PAD);
 }
-function mapBaseY(canvas, y) {
+export function mapBaseY(canvas, y) {
   return MAP_PAD + (y - mapBounds.minY) / (mapBounds.maxY - mapBounds.minY) * (canvas.height - 2 * MAP_PAD);
 }
 
-function drawGalaxyMap() {
+export function drawGalaxyMap() {
   const canvas = document.getElementById('f-map');
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#0d1117';
@@ -221,7 +221,7 @@ function drawGalaxyMap() {
 }
 
 // Center the map on a system and select it (called from a results row).
-function focusSystem(systemId) {
+export function focusSystem(systemId) {
   const canvas = document.getElementById('f-map');
   const s = galaxySystems && galaxySystems.find(x => x.id === systemId);
   if (!s) return;
@@ -233,7 +233,7 @@ function focusSystem(systemId) {
   canvas.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-async function getSystemPlanets(systemId, cache) {
+export async function getSystemPlanets(systemId, cache) {
   const entry = cache[systemId];
   if (entry && Date.now() - entry.at < SCAN_CACHE_TTL) return entry.data;
   const data = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_PLANETS', systemId });
@@ -242,7 +242,7 @@ async function getSystemPlanets(systemId, cache) {
   return data;
 }
 
-function moonCount(planet, moons) {
+export function moonCount(planet, moons) {
   return (moons || []).filter(m => m.planetId === planet.id || m.parentPlanetId === planet.id).length;
 }
 
@@ -299,7 +299,7 @@ document.getElementById('f-search').addEventListener('click', async function () 
       let data;
       try {
         data = await getSystemPlanets(s.id, cache);
-      } catch (e) {
+      } catch {
         errors++;   // skip the flaky system, keep scanning
         done++;
         continue;
@@ -361,7 +361,7 @@ document.getElementById('f-search').addEventListener('click', async function () 
   renderFinderResults();
 });
 
-let finderSort = { key: 'size', dir: -1 };
+export let finderSort = { key: 'size', dir: -1 };
 
 document.getElementById('f-results-head').addEventListener('click', e => {
   const th = e.target.closest('th.sortable');
@@ -371,7 +371,7 @@ document.getElementById('f-results-head').addEventListener('click', e => {
   renderFinderResults();
 });
 
-function renderFinderResults() {
+export function renderFinderResults() {
   const tbody = document.getElementById('f-results-tbody');
   tbody.textContent = '';
   document.getElementById('f-match-count').textContent = `${finderHits.length} planets`;
@@ -418,7 +418,7 @@ function renderFinderResults() {
 }
 
 // canvas-space cursor coords (account for CSS scaling of the canvas)
-function mapCursor(canvas, e) {
+export function mapCursor(canvas, e) {
   const rect = canvas.getBoundingClientRect();
   return {
     x: (e.clientX - rect.left) * (canvas.width / rect.width),
@@ -427,7 +427,7 @@ function mapCursor(canvas, e) {
   };
 }
 
-let mapPan = null;   // { sx, sy, ox, oy } while dragging
+export let mapPan = null;   // { sx, sy, ox, oy } while dragging
 
 // Hover tooltip over hit systems (suppressed while panning)
 document.getElementById('f-map').addEventListener('mousemove', e => {

@@ -2,31 +2,33 @@
 
 // ── Expeditions tab ────────────────────────────────────────────────────────
 
-let chartExpeditions, chartExpComp;
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, latestBucket, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderPagedTable, store, zeroCell, zoneCell } from '../common.js';
 
-let expPage = 1;
+export let chartExpeditions, chartExpComp;
+
+export let expPage = 1;
 
 // Wormhole-class filter (expedition tab only; combines with the global view + zone).
-function getExpClass() {
+export function getExpClass() {
   const el = document.getElementById('wclass-select');
   return el ? el.value : 'all';
 }
-function filterClass(reports) {
+export function filterClass(reports) {
   const c = getExpClass();
   return c === 'all' ? reports : (reports || []).filter(r => (r.wclass || 'unknown') === c);
 }
-function expUnfiltered() {
+export function expUnfiltered() {
   return isUnfiltered() && getExpClass() === 'all';
 }
 // Records for the current view, zone and class filters.
-function expRecordsForMode(mode) {
+export function expRecordsForMode(mode) {
   const filtered = filterClass(filterZone(store.exp_recent_reports || []));
   return mode === 'all' ? filtered : latestBucket(filtered, mode);
 }
 
 // Per-report records carry the full loot map, so all resources (rares included)
 // work in every view mode + zone + class.
-function getExpTotalsForMode(mode) {
+export function getExpTotalsForMode(mode) {
   if (mode === 'all' && expUnfiltered()) {
     return store.exp_totals || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
   }
@@ -43,7 +45,7 @@ function getExpTotalsForMode(mode) {
 }
 
 // Populate the class dropdown from classes present, preserving selection.
-function populateClassOptions() {
+export function populateClassOptions() {
   const sel = document.getElementById('wclass-select');
   if (!sel) return;
   const classes = [...new Set((store.exp_recent_reports || []).map(r => r.wclass).filter(Boolean))].sort();
@@ -61,13 +63,13 @@ function populateClassOptions() {
 }
 
 // Loot-over-time series; loot lives in r.loot (full map per record).
-function getExpSeriesForMode(mode) {
+export function getExpSeriesForMode(mode) {
   const getters = { missions: () => 1 };
   for (const d of RESOURCE_SERIES) getters[d.field] = r => (r.loot && r.loot[d.field]) || 0;
   return computeSeries(filterZone(store.exp_recent_reports || []), mode, getters);
 }
 
-function renderExpeditionsTab() {
+export function renderExpeditionsTab() {
   populateClassOptions();
   const mode = getMode();
   const periodLabel = periodLabelFor(mode);
@@ -106,10 +108,10 @@ function renderExpeditionsTab() {
   renderExpTable();
 }
 
-const expSort = { key: 'created_at', dir: -1 };
+export const expSort = { key: 'created_at', dir: -1 };
 attachSortable('e-reports-head', expSort, () => { expPage = 1; renderExpTable(); });
 
-function renderExpTable() {
+export function renderExpTable() {
   const reports = applySort('e-reports-head', filterClass(filterZone(store.exp_recent_reports || [])), expSort);
   renderPagedTable(reports, expPage, 'e-page-info', 'e-btn-prev', 'e-btn-next', 'e-reports-tbody', r => {
     const tr = document.createElement('tr');
@@ -143,3 +145,5 @@ function renderExpTable() {
 document.getElementById('e-btn-prev').addEventListener('click', () => { expPage--; renderExpTable(); });
 document.getElementById('e-btn-next').addEventListener('click', () => { expPage++; renderExpTable(); });
 document.getElementById('wclass-select').addEventListener('change', () => { expPage = 1; renderExpeditionsTab(); });
+
+export function setExpPage(n) { expPage = n; }

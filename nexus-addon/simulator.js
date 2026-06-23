@@ -1,7 +1,16 @@
 // Combat simulator UI. The battle engine (tables, modifiers, Monte Carlo)
 // lives in engine.js, shared between this page and the node test suite.
 
-function fmt(n) {
+import {
+  shipDefs, setShipDefs, runSimulations, simulateOnce, computeMods,
+  NO_MODS, TECHS, TECH_MAX_LEVEL, lossesToResources,
+} from './engine.js';
+import {
+  updateDistanceFromCoords, loadIntelReports, populatePlanetPicker, _resolvedDistanceAU,
+} from './simulator-intel.js';
+import './simulator-validate.js';   // side effect: wires the Validate button
+
+export function fmt(n) {
   return Math.round(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
@@ -77,7 +86,7 @@ function statText(def, mods) {
 }
 
 // Refresh the stat line of every ship row on one side after a tech change.
-function updateFleetStats(side) {
+export function updateFleetStats(side) {
   const mods = readMods(side);
   document.querySelectorAll(`td.ship-stats[data-stats-side="${side}"]`).forEach(td => {
     const def = shipDefs[td.dataset.key];
@@ -136,7 +145,7 @@ function readMods(side) {
   return computeMods(levels);
 }
 
-function makeStatCard(label, value, valueClass) {
+export function makeStatCard(label, value, valueClass) {
   const card = document.createElement('div');
   card.className = 'stat-card';
   const labelDiv = document.createElement('div');
@@ -303,8 +312,9 @@ async function init() {
     return;
   }
 
-  shipDefs = {};
-  for (const def of defs) shipDefs[def.key] = def;
+  const map = {};
+  for (const def of defs) map[def.key] = def;
+  setShipDefs(map);
 
   buildFleetInputs('attacker-ships', 'attacker');
   buildFleetInputs('defender-ships', 'defender');

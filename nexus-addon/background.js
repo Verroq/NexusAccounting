@@ -1,10 +1,7 @@
-// Chrome's service worker exposes `chrome.*` (callback APIs) but not `browser.*`.
-// Load Mozilla's polyfill so the rest of the file uses the promise-based
-// `browser.*` namespace on both browsers. Firefox already provides `browser`
-// natively, so it skips this.
-if (typeof browser === 'undefined' && typeof importScripts === 'function') {
-  importScripts('browser-polyfill.js');
-}
+// The `browser.*` polyfill is loaded by the service-worker entry
+// (background-sw.js) via a static import before this module runs, so `browser`
+// is defined here on both Chrome (polyfilled) and Firefox (native). Tests import
+// this file directly with a stubbed `browser`, skipping the polyfill entirely.
 
 const GAME_URL = 'https://s0.nexuslegacy.space';
 const REPORTS_PATH = '/api/fleet/survey-reports';
@@ -50,7 +47,6 @@ browser.action.onClicked.addListener(() => {
 
 browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SCRAPE_NOW') return scrape().then(() => ({ ok: true }));
-  if (msg.type === 'GET_STATUS') return getStatus();
   if (msg.type === 'GET_FLEET') return getFleet(msg.planetId);
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
@@ -269,7 +265,7 @@ async function apiFetch(path, token) {
       headers: { Authorization: `Bearer ${token}` },
     });
   } catch (e) {
-    throw new Error(`API ${path} → ${e.message}`);   // network/CORS/blocked
+    throw new Error(`API ${path} → ${e.message}`, { cause: e });   // network/CORS/blocked
   }
   if (!r.ok) throw new Error(`API ${path} → ${r.status}`);
   return r.json();
@@ -1642,7 +1638,8 @@ const MIGRATIONS = {
   },
   // v7: fuel is now counted per launched mission into fuel_log. Clear the log
   // (early entries mis-tagged "investigate" survey fleets as "other") plus the
-  // now-unused per-report fuel/coords caches; it rebuilds from new launches.
+  // stale coords caches; system_coords_by_id/_by_name get re-populated by
+  // getSystemZones() on the next galaxy map refresh, the rest rebuild from new launches.
   7: async () => {
     await browser.storage.local.remove([
       'fuel_log', 'fuel_counted_ids', 'mission_origins',
@@ -1844,9 +1841,11 @@ function routeIntercepted(url, json) {
   });
 }
 
-// ── Status ─────────────────────────────────────────────────────────────────
-
-async function getStatus() {
-  const data = await browser.storage.local.get(['last_scrape', 'last_error', 'totals']);
-  return data;
-}
+// Exposed for the node test harness (tests/processors.test.js). The service
+// worker itself drives everything through the listeners registered above.
+export {
+  processSurveyReports, processPirateReports, processMiningReports,
+  processExpeditionReports, processSystemDebris, rebuildAggregates,
+  checkDrift, ensureSchema, appendToArchive, loadArchive,
+  systemFromLocation, resolveZone, backfillZones, processMissions,
+};

@@ -1,8 +1,7 @@
-'use strict';
-const { test } = require('node:test');
-const assert = require('node:assert');
-const engine = require('../nexus-addon/engine.js');
-const { SHIP_DEFS } = require('./helpers.js');
+import { test } from 'node:test';
+import assert from 'node:assert';
+import * as engine from '../nexus-addon/engine.js';
+import { SHIP_DEFS } from './helpers.js';
 
 engine.setShipDefs(SHIP_DEFS);
 
