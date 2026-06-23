@@ -268,7 +268,7 @@ async function apiFetch(path, token) {
       headers: { Authorization: `Bearer ${token}` },
     });
   } catch (e) {
-    throw new Error(`API ${path} → ${e.message}`);   // network/CORS/blocked
+    throw new Error(`API ${path} → ${e.message}`, { cause: e });   // network/CORS/blocked
   }
   if (!r.ok) throw new Error(`API ${path} → ${r.status}`);
   return r.json();

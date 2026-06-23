@@ -6,6 +6,9 @@
 /requirements.txt
 /templates/
 
+# Node
+node_modules/
+
 # Data / secrets
 data.db
 .nexus_token_cache

@@ -65,7 +65,6 @@ function loadBackground() {
     'checkDrift', 'ensureSchema', 'appendToArchive', 'loadArchive',
     'systemFromLocation', 'resolveZone', 'backfillZones', 'processMissions',
   ];
-  // eslint-disable-next-line no-eval
   return eval(`${src}\n({ ${exports.join(', ')} })`);
 }
 
@@ -79,7 +78,6 @@ function loadIntel() {
   const shipDefs = {}, fmt = String, updateFleetStats = () => {};
   const module = { exports: {} };
   void document; void browser; void shipDefs; void fmt; void updateFleetStats;
-  // eslint-disable-next-line no-eval
   eval(src);
   return module.exports;
 }

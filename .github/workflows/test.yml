@@ -2,6 +2,7 @@ name: Test
 
 on:
   push:
+    tags-ignore: ['v*']   # release.yml already tests on version tags
   pull_request:
 
 jobs:
@@ -12,4 +13,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci
+      - run: npm run lint
       - run: node --test
