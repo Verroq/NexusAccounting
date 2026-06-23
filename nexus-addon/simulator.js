@@ -346,6 +346,7 @@ document.getElementById('btn-run').addEventListener('click', async function() {
       plasma_defense:  Math.max(0, parseInt(document.getElementById('def-plasma').value, 10) || 0),
       ion_defense:     Math.max(0, parseInt(document.getElementById('def-ion').value, 10) || 0),
       ew_system:       Math.max(0, parseInt(document.getElementById('def-ew').value, 10) || 0),
+      shield_generator: Math.max(0, parseInt(document.getElementById('def-shield').value, 10) || 0), // ponytail: collected, no effect modeled yet — unknown mechanic
     },
   };
 
