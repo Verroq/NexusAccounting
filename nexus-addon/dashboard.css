@@ -95,6 +95,11 @@ th.sortable .arrow { margin-left: 4px; color: #58a6ff; }
 .finder-controls input[type="number"] {
   width: 60px; background: #21262d; border: 1px solid #30363d; color: #e6edf3;
   padding: 4px 8px; border-radius: 6px; font-size: 0.85rem;
+  -moz-appearance: textfield;
+}
+.finder-controls input[type="number"]::-webkit-outer-spin-button,
+.finder-controls input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
 }
 .finder-controls select {
   background: #21262d; border: 1px solid #30363d; color: #e6edf3;
@@ -228,6 +233,25 @@ th.sortable .arrow { margin-left: 4px; color: #58a6ff; }
   border-radius: 6px; opacity: 0.45; cursor: pointer; font-size: 0.65rem; color: #8b949e; }
 .res-icon:hover { opacity: 0.85; }
 .res-icon.sel { opacity: 1; border-color: #58a6ff; background: #1f6feb22; }
+
+/* Fleet template editor — mirrors the simulator's attacker fleet box */
+.fleet-box {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px;
+  max-width: 520px;
+}
+.fleet-title { font-size: 1rem; margin-bottom: 8px; }
+.fleet-title.attacker { color: #ff7b72; }
+.fleet-table td { padding: 4px 8px; }
+.fleet-table .ship-name { width: 40%; }
+.fleet-table .ship-stats { color: #8b949e; font-size: 0.75rem; white-space: nowrap; }
+.fleet-table input {
+  width: 80px; background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 4px 8px; border-radius: 6px; font-size: 0.85rem;
+}
+.ship-group td {
+  padding-top: 12px; font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 0.08em; color: #484f58; border-bottom: 1px solid #21262d;
+}
 
 /* Toggle switch (market source) — the checkbox itself is the sliding switch */
 .m-switch {

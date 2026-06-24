@@ -48,12 +48,17 @@ browser.action.onClicked.addListener(() => {
 browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SCRAPE_NOW') return scrape().then(() => ({ ok: true }));
   if (msg.type === 'GET_FLEET') return getFleet(msg.planetId);
+  if (msg.type === 'GET_SHIP_DEFS') return getShipDefs();
+  if (msg.type === 'GET_PLANET_SHIPS') return getPlanetShips(msg.planetId);
+  if (msg.type === 'SEND_MINE') return sendMine(msg);
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
   if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
   if (msg.type === 'GET_ARMS') return apiGet('/api/galaxy/arms');
   if (msg.type === 'GET_GALAXY_MAP') return apiGet('/api/galaxy/map');
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
+  if (msg.type === 'GET_ARM_SECTORS') return apiGet(`/api/galaxy/arms/${msg.armId}/sectors`);
+  if (msg.type === 'GET_SECTOR_SYSTEMS') return apiGet(`/api/galaxy/sectors/${msg.sectorId}/systems`);
   if (msg.type === 'GET_HOME') return getHome();
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
@@ -393,6 +398,75 @@ async function getFleet(planetId) {
     return { fleet };
   } catch (err) {
     return { error: err.message };
+  }
+}
+
+// Full ship catalog (all types, owned or not) from the shipyard, so templates
+// can include combat escorts you don't currently field. Raw shipDefId (= the
+// shipyard ship id) is what the mine endpoint needs.
+async function getShipDefs() {
+  const token = await getToken();
+  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  try {
+    const planetId = await getHomePlanetId(token);
+    const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token);
+    const ships = (data.ships || []).map(s => ({
+      shipDefId: s.id,
+      name: s.name || `#${s.id}`,
+      shipClass: s.shipClass || '',
+      miningCargo: s.miningCargoCapacity || 0,
+      sortOrder: s.sortOrder || 0,
+      attack: s.attack || 0,
+      hp: s.hp || 0,
+      shieldHp: s.shieldHp || 0,
+      weaponType: s.weaponType || null,
+      armorType: s.armorType || '',
+    }));
+    return { ships };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+// Ships actually available on one planet, as { shipDefId: undamagedQuantity }.
+async function getPlanetShips(planetId) {
+  const token = await getToken();
+  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  if (planetId == null) return { error: 'No planet selected.' };
+  try {
+    const data = await apiFetch(`/api/planets/${planetId}/fleet`, token);
+    const available = {};
+    for (const f of (data.fleet || [])) {
+      const qty = (f.quantity || 0) - (f.damagedQuantity || 0);
+      if (qty > 0) available[f.shipDefId] = qty;
+    }
+    return { available };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+// Dispatch a mining mission to an asteroid field (POST /api/fleet/mine).
+// Routed through the game tab's content script so the request is same-origin
+// with the session cookie — identical to the game's own call. A Bearer request
+// straight from the extension is rejected by the server (500).
+async function sendMine({ sourcePlanetId, targetFieldId, ships, miningDuration }) {
+  if (sourcePlanetId == null || targetFieldId == null || !(ships || []).length) {
+    return { error: 'Missing planet, field or ships.' };
+  }
+  const token = await getToken();
+  try {
+    const tabs = await browser.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
+    if (!tabs.length) return { error: 'Open the Nexus Legacy game in a tab first.' };
+    return await browser.tabs.sendMessage(tabs[0].id, {
+      type: 'GAME_FETCH',
+      method: 'POST',
+      path: '/api/fleet/mine',
+      token,
+      body: { sourcePlanetId, targetFieldId, ships, miningDuration },
+    });
+  } catch (e) {
+    return { error: e.message };
   }
 }
 
