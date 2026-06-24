@@ -4,6 +4,34 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.0] - 2026-06-25
+
+### Added
+- **Asteroids Fields tab**: scan a region (arm + sectors) for asteroid fields
+  via the galaxy sector endpoints, listing type, content, richness multiplier,
+  remaining %, security zone, distance to a chosen planet and miner presence.
+  - Resource-icon type filter, colour-coded zone toggles, mult/qty floors,
+    sortable columns and pagination.
+  - **🚀 per row** dispatches a fleet template to mine the field, capped to the
+    ships actually on the source planet.
+- **Fleet Templates tab**: named, reusable ship templates (planet-agnostic),
+  styled like the simulator's attacker fleet and built from the full shipyard
+  catalog. Shared by the mining and scouting actions.
+- **Scouting tab**: probe surveys and anomaly investigations.
+  - **Launch Scan** sends a probe template to the nearest system (in the
+    selected security zones) that isn't on cooldown or already being surveyed.
+  - **Active surveys** lists anomalies awaiting investigation, auto-refreshing
+    with a live countdown, sorted by soonest expiry, with a Fuel Cost column
+    (`/api/fleet/fuel-estimate`) for the chosen investigate template.
+  - **Launch Investigation** dispatches the fleet and greys out when an
+    investigate mission to that system is already in flight.
+
+### Fixed
+- Fleet-action POSTs (mine, survey, investigate, fuel-estimate) route through
+  the game tab's content script so they run same-origin with the session
+  cookie — a Bearer POST from the extension carries an `Origin` header the
+  server rejects with a 500.
+
 ## [1.5.7] - 2026-06-19
 
 ### Added
