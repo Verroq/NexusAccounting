@@ -18,6 +18,7 @@
     <button class="tab" data-tab="finder">Galaxy Scout</button>
     <button class="tab" data-tab="asteroids">Asteroids Fields</button>
     <button class="tab" data-tab="fleets">Fleet Templates</button>
+    <button class="tab" data-tab="scouting">Scouting</button>
     <button class="tab" data-tab="market">Market</button>
     <button class="tab" data-tab="techtree">Tech Tree</button>
   </nav>
@@ -582,6 +583,46 @@
           </tr>
         </thead>
         <tbody id="af-results-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="scouting-content" style="display:none;">
+    <div class="finder-controls">
+      <label>Survey From
+        <select id="sc-planet"></select>
+      </label>
+      <label>Zone
+        <span id="sc-zone" style="display:flex; gap:4px;"></span>
+      </label>
+      <label>Probe template
+        <select id="sc-scan-template"></select>
+      </label>
+      <button id="sc-scan">Launch Scan</button>
+      <span id="sc-progress" style="color:#8b949e; font-size:0.8rem;"></span>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Active surveys (awaiting investigation)</h2>
+        <span id="sc-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <label style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Investigate template
+          <select id="sc-inv-template"></select>
+        </label>
+        <button id="sc-refresh">Refresh</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th title="Send investigation fleet"></th>
+            <th>System</th>
+            <th>Anomaly</th>
+            <th>Zone</th>
+            <th title="Hydrogen to send the selected investigate template">Fuel Cost</th>
+            <th>Expires in</th>
+          </tr>
+        </thead>
+        <tbody id="sc-surveys-tbody"></tbody>
       </table>
     </div>
   </div>

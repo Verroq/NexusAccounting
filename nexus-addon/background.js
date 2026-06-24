@@ -50,7 +50,30 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_FLEET') return getFleet(msg.planetId);
   if (msg.type === 'GET_SHIP_DEFS') return getShipDefs();
   if (msg.type === 'GET_PLANET_SHIPS') return getPlanetShips(msg.planetId);
-  if (msg.type === 'SEND_MINE') return sendMine(msg);
+  if (msg.type === 'GET_MISSIONS') return apiGet('/api/fleet/missions');
+  if (msg.type === 'GET_FUEL_ESTIMATE') {
+    // POST: routed through the game tab (same-origin) — a Bearer POST from the
+    // extension carries an Origin header the server 500s on.
+    return gamePost('/api/fleet/fuel-estimate', msg.body).then(r => (r && r.ok) ? r.data : r);
+  }
+  if (msg.type === 'GET_SURVEY_COOLDOWNS') return apiGet('/api/fleet/survey-cooldowns');
+  if (msg.type === 'GET_SURVEY_REPORTS') return apiGet('/api/fleet/survey-reports');
+  if (msg.type === 'SEND_MINE') {
+    return gamePost('/api/fleet/mine', {
+      sourcePlanetId: msg.sourcePlanetId, targetFieldId: msg.targetFieldId,
+      ships: msg.ships, miningDuration: msg.miningDuration,
+    });
+  }
+  if (msg.type === 'SEND_SURVEY') {
+    return gamePost('/api/fleet/survey', {
+      sourcePlanetId: msg.sourcePlanetId, targetSystemId: msg.targetSystemId, ships: msg.ships,
+    });
+  }
+  if (msg.type === 'SEND_INVESTIGATE') {
+    return gamePost('/api/fleet/investigate', {
+      sourcePlanetId: msg.sourcePlanetId, reportId: msg.reportId, ships: msg.ships,
+    });
+  }
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
   if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
@@ -446,25 +469,17 @@ async function getPlanetShips(planetId) {
   }
 }
 
-// Dispatch a mining mission to an asteroid field (POST /api/fleet/mine).
-// Routed through the game tab's content script so the request is same-origin
-// with the session cookie — identical to the game's own call. A Bearer request
-// straight from the extension is rejected by the server (500).
-async function sendMine({ sourcePlanetId, targetFieldId, ships, miningDuration }) {
-  if (sourcePlanetId == null || targetFieldId == null || !(ships || []).length) {
-    return { error: 'Missing planet, field or ships.' };
-  }
+// POST a fleet action (mine / survey / investigate) through the game tab's
+// content script, so the request is same-origin with the session cookie —
+// identical to the game's own call. A Bearer request straight from the
+// extension is rejected by the server (500).
+async function gamePost(path, body) {
+  if (!(body.ships || []).length) return { error: 'No ships selected.' };
   const token = await getToken();
   try {
     const tabs = await browser.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
     if (!tabs.length) return { error: 'Open the Nexus Legacy game in a tab first.' };
-    return await browser.tabs.sendMessage(tabs[0].id, {
-      type: 'GAME_FETCH',
-      method: 'POST',
-      path: '/api/fleet/mine',
-      token,
-      body: { sourcePlanetId, targetFieldId, ships, miningDuration },
-    });
+    return await browser.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
   } catch (e) {
     return { error: e.message };
   }
