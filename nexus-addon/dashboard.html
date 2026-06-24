@@ -15,7 +15,9 @@
     <button class="tab" data-tab="mining">Mining</button>
     <button class="tab" data-tab="debris">Debris</button>
     <button class="tab" data-tab="expeditions">Expeditions</button>
-    <button class="tab" data-tab="finder">Planet Finder</button>
+    <button class="tab" data-tab="finder">Galaxy Scout</button>
+    <button class="tab" data-tab="asteroids">Asteroids Fields</button>
+    <button class="tab" data-tab="fleets">Fleet Templates</button>
     <button class="tab" data-tab="market">Market</button>
     <button class="tab" data-tab="techtree">Tech Tree</button>
   </nav>
@@ -516,6 +518,91 @@
       <canvas id="f-map" width="1100" height="640" style="width:100%; max-height:none; cursor:crosshair;"></canvas>
       <div id="f-tooltip" style="display:none; position:absolute; background:#161b22; border:1px solid #30363d;
            border-radius:6px; padding:6px 10px; font-size:0.75rem; pointer-events:none; z-index:10;"></div>
+    </div>
+  </div>
+
+  <div id="asteroids-content" style="display:none;">
+    <div class="finder-controls">
+      <label>Mining From :
+        <select id="af-planet"></select>
+      </label>
+      <label>Mult ≥
+        <input id="af-mult-min" type="number" step="0.01" min="0" placeholder="0" />
+      </label>
+      <label>Qty ≥
+        <input id="af-qty-min" type="number" min="0" placeholder="0" />
+      </label>
+      <label>Arm
+        <select id="af-arm"></select>
+      </label>
+      <label>Sector
+        <input id="af-sector" type="text" placeholder="27 or 25-30" style="width:90px;
+               background:#21262d; border:1px solid #30363d; color:#e6edf3;
+               padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
+      </label>
+      <label>Type
+        <span id="af-type" class="res-icons" style="grid-template-columns: repeat(6, auto);"></span>
+      </label>
+      <label>Zone
+        <span id="af-zone" style="display:flex; gap:4px;"></span>
+      </label>
+      <button id="af-scan">Scan</button>
+      <span id="af-progress" style="color:#8b949e; font-size:0.8rem;"></span>
+    </div>
+
+    <div class="finder-controls" id="af-template" style="margin-top:0;">
+      <label>Fleet template
+        <select id="af-template-select"></select>
+      </label>
+      <span style="color:#8b949e; font-size:0.8rem;">🚀 on a row sends this template from “Mining From”. Edit templates in the Fleets tab.</span>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Asteroid fields</h2>
+        <span id="af-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <div class="pagination">
+          <button id="af-btn-prev">← Prev</button>
+          <span id="af-page-info">Page 1</span>
+          <button id="af-btn-next">Next →</button>
+        </div>
+      </div>
+      <table>
+        <thead id="af-results-head">
+          <tr>
+            <th title="Send mining fleet"></th>
+            <th class="sortable" data-key="system">System</th>
+            <th class="sortable" data-key="type">Type</th>
+            <th class="sortable" data-key="mult" title="Richness multiplier">Mult.</th>
+            <th class="sortable" data-key="remaining" title="Remaining / total resources">Content</th>
+            <th class="sortable" data-key="leftPct" title="Percentage of resources still present">Left %</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="distance">Distance</th>
+            <th class="sortable" data-key="minerPresent">Miner Present</th>
+          </tr>
+        </thead>
+        <tbody id="af-results-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="fleets-content" style="display:none;">
+    <div class="finder-controls">
+      <label>Template
+        <select id="ft-select"></select>
+      </label>
+      <button id="ft-new">New</button>
+      <button id="ft-delete">Delete</button>
+      <label>Name
+        <input id="ft-name" type="text" style="width:160px; background:#21262d; border:1px solid #30363d;
+               color:#e6edf3; padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
+      </label>
+    </div>
+
+    <div class="fleet-box">
+      <h2 class="fleet-title attacker" id="ft-box-title">Fleet</h2>
+      <span id="ft-status" style="color:#8b949e; font-size:0.8rem;"></span>
+      <table class="fleet-table"><tbody id="ft-ships"></tbody></table>
     </div>
   </div>
 
