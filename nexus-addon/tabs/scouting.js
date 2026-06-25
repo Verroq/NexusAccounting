@@ -260,6 +260,7 @@ function renderSurveys() {
       r.eventTitle || r.eventType,
       r.securityZone || '—',
       '…',   // fuel cost, filled async
+      '…',   // travel time, filled async
       r.anomalyExpiresAt ? fmtCountdown(new Date(r.anomalyExpiresAt) - now) : '—',
     ];
     cells.forEach((v, i) => {
@@ -267,7 +268,8 @@ function renderSurveys() {
       td.textContent = v;
       if (i === 2) td.style.color = ZONE_COLOR[r.securityZone] || '#8b949e';
       if (i === 3) td.className = 'sc-fuel';
-      if (i === 4) td.className = 'sc-timer';
+      if (i === 4) td.className = 'sc-time';
+      if (i === 5) td.className = 'sc-timer';
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -282,28 +284,32 @@ let fuelGen = 0;
 async function computeFuel() {
   const gen = ++fuelGen;
   const planetId = Number(document.getElementById('sc-planet').value);
-  const cells = () => document.querySelectorAll('#sc-surveys-tbody td.sc-fuel');
+  const fuelCells = () => document.querySelectorAll('#sc-surveys-tbody td.sc-fuel');
+  const timeCells = () => document.querySelectorAll('#sc-surveys-tbody td.sc-time');
   // Estimate uses the template as designed (not capped to the planet's stock).
   const tpl = scTemplates.find(t => String(t.id) === document.getElementById('sc-inv-template').value);
   const ships = Object.entries(tpl ? tpl.ships : {})
     .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
     .filter(s => s.quantity > 0);
   if (!ships.length) {
-    cells().forEach(c => { c.textContent = '—'; c.title = tpl ? 'Template has no ships' : 'No template selected'; });
+    fuelCells().forEach(c => { c.textContent = '—'; c.title = tpl ? 'Template has no ships' : 'No template selected'; });
+    timeCells().forEach(c => { c.textContent = '—'; });
     return;
   }
 
   for (const tr of document.querySelectorAll('#sc-surveys-tbody tr')) {
     if (gen !== fuelGen) return;
     const cell = tr.querySelector('.sc-fuel');
+    const timeCell = tr.querySelector('.sc-time');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
     const est = await fuelEstimate(planetId, sysId, ships);
     if (gen !== fuelGen) return;
-    if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
+    if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
     cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
 
