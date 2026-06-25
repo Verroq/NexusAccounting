@@ -1,10 +1,8 @@
-// Asteroids Fields tab: asteroid fields in a chosen region (type, content,
-// multiplier, security zone, distance to a chosen planet, miner present).
+// Asteroids Fields tab: asteroid fields in the N nearest explored systems to a
+// chosen planet (type, content, multiplier, security zone, distance, miner).
 //
-// Enumerates systems through the galaxy sector endpoints rather than the full
-// galaxy map:
-//   /api/galaxy/arms/{armId}/sectors      → sector ids of an arm
-//   /api/galaxy/sectors/{sectorId}/systems → systems (with coords + zone)
+//   /api/galaxy/map                        → all systems with coords + sector id
+//   /api/galaxy/sectors/{sectorId}/systems → name/zone/planetCount for a sector
 //   /api/galaxy/systems/{id}/planets       → that system's asteroidFields
 // Per-system scans reuse the finder's shared cache.
 
@@ -32,7 +30,6 @@ const afTypeFilter = new Set();    // empty = any; multi-select like the market
 const afZoneFilter = new Set();    // empty = any
 
 let afInited = false;
-let afArms = [];
 let afPlanets = [];                // [{ id, name, systemId, systemName, isHomeworld }]
 let afRefMS = null;                // chosen reference planet system coords
 let afFields = [];                 // scanned asteroid fields
@@ -41,8 +38,10 @@ let afSort = { key: 'distance', dir: 1 };
 let afPage = 1;
 const AF_PER_PAGE = 25;
 const MINING_DURATION = 600;   // seconds; fixed for asteroid mining missions
+const ASTEROID_CACHE_TTL = 15 * 60 * 1000;   // fields drain fast — refetch after 15 min
 let afTemplates = [];        // fleet templates, managed in the Fleets tab
-const sectorsByArm = {};           // armId → [sector] (cached arm→sectors lookups)
+let afMap = null;            // { byId: {id→{x,y,sectorId,visibility}}, systems: [...] }, cached
+const sectorSystems = {};   // sectorId → systems[] (name/zone/planetCount), cached
 
 export async function initAsteroidsTab() {
   if (afInited) return;
@@ -50,21 +49,9 @@ export async function initAsteroidsTab() {
   const status = document.getElementById('af-progress');
   status.textContent = 'Loading…';
 
-  const [arms, planets] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'GET_ARMS' }),
-    browser.runtime.sendMessage({ type: 'GET_PLANETS' }),
-  ]);
-  if (arms.error) { status.textContent = `Error: ${arms.error}`; afInited = false; return; }
-  afArms = arms.arms || [];
+  const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS' });
+  if (planets.error) { status.textContent = `Error: ${planets.error}`; afInited = false; return; }
   afPlanets = (planets.planets || []).filter(p => p.systemId != null);
-
-  const armSel = document.getElementById('af-arm');
-  armSel.textContent = '';
-  for (const a of afArms) {
-    const o = document.createElement('option');
-    o.value = a.id; o.textContent = a.name;
-    armSel.appendChild(o);
-  }
 
   const pSel = document.getElementById('af-planet');
   pSel.textContent = '';
@@ -78,7 +65,6 @@ export async function initAsteroidsTab() {
 
   drawTypeIcons();
   drawZoneToggles();
-  syncArmToPlanet(pSel.value);
   refreshSlots();
 
   await refreshTemplates();
@@ -87,12 +73,9 @@ export async function initAsteroidsTab() {
     if (area === 'local' && changes.fleet_templates) refreshTemplates();
   });
 
-  pSel.addEventListener('change', async () => {
-    syncArmToPlanet(pSel.value);
-    await resolveRef(pSel.value);
-    renderAsteroids();
-  });
+  pSel.addEventListener('change', () => { setRefFromMap(pSel.value); renderAsteroids(); });
   document.getElementById('af-scan').addEventListener('click', scan);
+  document.getElementById('af-template-select').addEventListener('change', computeFuel);
   document.getElementById('af-results-head').addEventListener('click', e => {
     const th = e.target.closest('th.sortable');
     if (!th) return;
@@ -110,23 +93,36 @@ export async function initAsteroidsTab() {
     });
   }
 
-  status.textContent = 'Pick a region and Scan.';
+  status.textContent = 'Pick how many nearest systems to scan, then Scan.';
 }
 
-// Sectors of an arm, cached. Returns [{ id, index, systemCount, visibility }].
-async function armSectors(armId) {
-  if (sectorsByArm[armId]) return sectorsByArm[armId];
-  const res = await browser.runtime.sendMessage({ type: 'GET_ARM_SECTORS', armId });
+// Galaxy map (all systems with coords + sector id), fetched once and cached.
+async function loadMap() {
+  if (afMap) return afMap;
+  const res = await browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP' });
   if (res.error) throw new Error(res.error);
-  sectorsByArm[armId] = res.sectors || [];
-  return sectorsByArm[armId];
+  const systems = res.systems || [];
+  const byId = {};
+  for (const s of systems) byId[s.id] = s;
+  afMap = { systems, byId };
+  return afMap;
 }
 
-// System name "A12-27" → { armLetter: 'A', sector: 12 }. The arm letter is the
-// first letter of the arm's name (Alpha→A, Gamma→G, …).
-function parseSystemName(name) {
-  const m = /^([A-Z])(\d+)-\d+$/.exec(name || '');
-  return m ? { armLetter: m[1], sector: parseInt(m[2], 10) } : null;
+// Systems of a sector (with name/zone/planetCount/visibility), cached.
+async function sectorSystemsFor(sectorId) {
+  if (sectorSystems[sectorId]) return sectorSystems[sectorId];
+  const res = await browser.runtime.sendMessage({ type: 'GET_SECTOR_SYSTEMS', sectorId });
+  if (res.error) throw new Error(res.error);
+  sectorSystems[sectorId] = res.systems || [];
+  return sectorSystems[sectorId];
+}
+
+// Set the distance reference from the cached map (no fetch if map isn't loaded).
+function setRefFromMap(planetId) {
+  afRefMS = null;
+  const p = afPlanets.find(x => x.id === Number(planetId));
+  const sys = p && afMap && afMap.byId[p.systemId];
+  if (sys) afRefMS = { x: sys.x, y: sys.y };
 }
 
 // Clickable resource-icon type toggles (mirrors the market filter). Empty
@@ -173,70 +169,31 @@ function drawZoneToggles() {
   }
 }
 
-// Point the Arm dropdown at the arm of the chosen planet's system.
-function syncArmToPlanet(planetId) {
-  const p = afPlanets.find(x => x.id === Number(planetId));
-  const parsed = p && parseSystemName(p.systemName);
-  const arm = parsed && afArms.find(a => a.name[0] === parsed.armLetter);
-  if (arm) document.getElementById('af-arm').value = arm.id;
-}
-
-// Resolve the reference planet's system coords via its sector (no full map).
-async function resolveRef(planetId) {
-  afRefMS = null;
-  const p = afPlanets.find(x => x.id === Number(planetId));
-  if (!p) return;
-  const parsed = parseSystemName(p.systemName);
-  if (!parsed) return;
-  const arm = afArms.find(a => a.name[0] === parsed.armLetter);
-  if (!arm) return;
-  try {
-    const sectors = await armSectors(arm.id);
-    const sec = sectors.find(s => s.index + 1 === parsed.sector);
-    if (!sec) return;
-    const res = await browser.runtime.sendMessage({ type: 'GET_SECTOR_SYSTEMS', sectorId: sec.id });
-    const sys = (res.systems || []).find(s => s.id === p.systemId);
-    if (sys) afRefMS = { x: sys.x, y: sys.y };
-  } catch { /* leave distance blank */ }
-}
-
-// Sector range from the input: "27", "25-30", or empty (whole arm).
-function sectorRange(arm) {
-  const raw = document.getElementById('af-sector').value.trim();
-  let from = 1, to = arm.sectorCount;
-  const m = raw.match(/^(\d+)\s*[-–—]\s*(\d+)$/) || raw.match(/^(\d+)$/);
-  if (m) {
-    from = parseInt(m[1], 10);
-    to = m[2] !== undefined ? parseInt(m[2], 10) : from;
-    if (to < from) [from, to] = [to, from];
-  }
-  return {
-    from: Math.max(1, Math.min(arm.sectorCount, from)),
-    to: Math.max(1, Math.min(arm.sectorCount, to)),
-  };
-}
-
 async function scan() {
   const btn = document.getElementById('af-scan');
   if (afRunning) { afRunning = false; return; }
 
-  const armId = parseInt(document.getElementById('af-arm').value, 10) || 1;
-  const arm = afArms.find(a => a.id === armId);
-  if (!arm) return;
   const status = document.getElementById('af-progress');
+  const planetId = Number(document.getElementById('af-planet').value);
+  const p = afPlanets.find(x => x.id === planetId);
+  if (!p) return;
+  const count = Math.max(1, Math.min(500, parseInt(document.getElementById('af-near').value, 10) || 25));
 
-  status.textContent = 'Loading sectors…';
-  let sectors;
-  try {
-    const range = sectorRange(arm);
-    sectors = (await armSectors(armId)).filter(s => s.index + 1 >= range.from && s.index + 1 <= range.to);
-  } catch (e) {
-    status.textContent = `Error: ${e.message}`;
-    return;
-  }
+  status.textContent = 'Loading galaxy map…';
+  let map;
+  try { map = await loadMap(); } catch (e) { status.textContent = `Error: ${e.message}`; return; }
+  const src = map.byId[p.systemId];
+  if (!src) { status.textContent = 'Source system not on the map.'; return; }
+  afRefMS = { x: src.x, y: src.y };
 
-  // Reference coords for distance (resolve once if not done yet).
-  if (!afRefMS) await resolveRef(document.getElementById('af-planet').value);
+  // The N nearest explored systems (asteroid fields need at least partial vis).
+  const targets = map.systems
+    .filter(s => s.id !== p.systemId && (s.visibility === 'full' || s.visibility === 'partial'))
+    .map(s => ({ s, d: Math.hypot(s.x - src.x, s.y - src.y) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, count)
+    .map(o => o.s);
+  if (!targets.length) { status.textContent = 'No explored systems nearby.'; return; }
 
   const { planet_scan_cache } = await browser.storage.local.get('planet_scan_cache');
   const cache = planet_scan_cache || {};
@@ -245,46 +202,41 @@ async function scan() {
   btn.textContent = 'Stop';
   afFields = [];
   afPage = 1;
-  let scanned = 0, fogged = 0, errors = 0;
+  let scanned = 0, errors = 0;
   try {
-    for (const sec of sectors) {
+    for (const sys of targets) {
       if (!afRunning) break;
-      let sysRes;
+      // name/zone/planetCount come from the system's sector (cached per sector).
+      let meta;
       try {
-        sysRes = await browser.runtime.sendMessage({ type: 'GET_SECTOR_SYSTEMS', sectorId: sec.id });
-        if (sysRes.error) throw new Error(sysRes.error);
+        meta = (await sectorSystemsFor(sys.sectorId)).find(s => s.id === sys.id);
       } catch { errors++; continue; }
-
-      for (const s of (sysRes.systems || [])) {
-        if (!afRunning) break;
-        if (s.visibility !== 'full' && s.visibility !== 'partial') { fogged++; continue; }
-        if (!s.planetCount) { scanned++; continue; }   // no bodies → no fields
-        let data;
-        try {
-          data = await getSystemPlanets(s.id, cache);
-        } catch { errors++; scanned++; continue; }
-        for (const f of (data.asteroidFields || [])) {
-          afFields.push({
-            fieldId: f.id,
-            name: f.name || `#${f.id}`,
-            system: s.name || `#${s.id}`,
-            systemId: s.id,
-            type: f.fieldType || '—',
-            mult: f.richness ?? null,
-            remaining: f.remainingResources ?? null,
-            total: f.totalResources ?? null,
-            zone: s.securityZone || '—',
-            sx: s.x, sy: s.y,
-            minerPresent: f.controllerName || null,
-          });
-        }
-        scanned++;
-        if (scanned % 10 === 0) {
-          status.textContent = `Scanning… ${scanned} systems, ${afFields.length} fields.`;
-          renderAsteroids();
-        }
-        await new Promise(r => setTimeout(r, 80)); // be polite to the game API
+      if (!meta || !meta.planetCount) { scanned++; continue; }   // no bodies → no fields
+      let data;
+      try {
+        data = await getSystemPlanets(sys.id, cache, ASTEROID_CACHE_TTL);
+      } catch { errors++; scanned++; continue; }
+      for (const f of (data.asteroidFields || [])) {
+        afFields.push({
+          fieldId: f.id,
+          name: f.name || `#${f.id}`,
+          system: meta.name || `#${sys.id}`,
+          systemId: sys.id,
+          type: f.fieldType || '—',
+          mult: f.richness ?? null,
+          remaining: f.remainingResources ?? null,
+          total: f.totalResources ?? null,
+          zone: meta.securityZone || '—',
+          sx: sys.x, sy: sys.y,
+          minerPresent: f.controllerName || null,
+        });
       }
+      scanned++;
+      if (scanned % 10 === 0) {
+        status.textContent = `Scanning… ${scanned}/${targets.length} systems, ${afFields.length} fields.`;
+        renderAsteroids();
+      }
+      await new Promise(r => setTimeout(r, 80)); // be polite to the game API
     }
   } finally {
     afRunning = false;
@@ -301,7 +253,6 @@ async function scan() {
   await browser.storage.local.set({ planet_scan_cache: cache });
 
   status.textContent = `Done: ${afFields.length} fields in ${scanned} systems` +
-    (fogged ? ` · ${fogged} unexplored` : '') +
     (errors ? ` · ${errors} skipped (errors)` : '') + '.';
   renderAsteroids();
 }
@@ -431,6 +382,7 @@ export function renderAsteroids() {
 
   for (const f of pageRows) {
     const tr = document.createElement('tr');
+    tr.dataset.system = f.systemId;
 
     const sendTd = document.createElement('td');
     const ship = document.createElement('span');
@@ -450,6 +402,7 @@ export function renderAsteroids() {
       f.leftPct == null ? '—' : `${f.leftPct}%`,
       f.zone,
       f.distance == null ? '—' : String(f.distance),
+      '…',   // fuel cost, filled async
       f.minerPresent || '—',
     ];
     cells.forEach((v, i) => {
@@ -458,9 +411,44 @@ export function renderAsteroids() {
       if (i === 1) td.style.color = TYPE_COLOR[f.type] || '#e6edf3';
       else if (i === 2 && f.mult != null) td.style.color = '#e3b341';
       else if (i === 5) td.style.color = ZONE_COLOR[f.zone] || '#8b949e';
+      else if (i === 7) td.className = 'af-fuel';
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
   }
   document.getElementById('af-count').textContent = `${rows.length} fields`;
+  computeFuel();
+}
+
+// Fill the Fuel Cost column: one fuel-estimate per visible row for the selected
+// template's ships, from the chosen planet. A generation guard discards results
+// from a superseded render/selection.
+let afFuelGen = 0;
+async function computeFuel() {
+  const gen = ++afFuelGen;
+  const planetId = Number(document.getElementById('af-planet').value);
+  const cells = () => document.querySelectorAll('#af-results-tbody td.af-fuel');
+  const tpl = afTemplates.find(t => String(t.id) === document.getElementById('af-template-select').value);
+  const ships = Object.entries(tpl ? tpl.ships : {})
+    .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
+    .filter(s => s.quantity > 0);
+  if (!ships.length) {
+    cells().forEach(c => { c.textContent = '—'; c.title = tpl ? 'Template has no ships' : 'No template selected'; });
+    return;
+  }
+  for (const tr of document.querySelectorAll('#af-results-tbody tr')) {
+    if (gen !== afFuelGen) return;
+    const cell = tr.querySelector('.af-fuel');
+    const sysId = Number(tr.dataset.system);
+    if (!cell || !sysId) continue;
+    const est = await browser.runtime.sendMessage({
+      type: 'GET_FUEL_ESTIMATE',
+      body: { sourcePlanetId: planetId, targetSystemId: sysId, ships },
+    });
+    if (gen !== afFuelGen) return;
+    if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
+    cell.textContent = `${est.fuelCost}`;
+    cell.style.color = est.inRange === false ? '#ff7b72' : '';
+    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+  }
 }
