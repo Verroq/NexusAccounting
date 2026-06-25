@@ -323,16 +323,24 @@ async function getToken() {
 // ── API ────────────────────────────────────────────────────────────────────
 
 async function apiFetch(path, token) {
-  let r;
-  try {
-    r = await fetch(`${GAME_URL}${path}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch (e) {
-    throw new Error(`API ${path} → ${e.message}`, { cause: e });   // network/CORS/blocked
+  // Retry on 429 (rate limit), honouring Retry-After, then exponential backoff.
+  for (let attempt = 0; ; attempt++) {
+    let r;
+    try {
+      r = await fetch(`${GAME_URL}${path}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (e) {
+      throw new Error(`API ${path} → ${e.message}`, { cause: e });   // network/CORS/blocked
+    }
+    if (r.status === 429 && attempt < 4) {
+      const ra = parseFloat(r.headers.get('Retry-After'));
+      await new Promise(res => setTimeout(res, Number.isFinite(ra) ? ra * 1000 : 500 * 2 ** attempt));
+      continue;
+    }
+    if (!r.ok) throw new Error(`API ${path} → ${r.status}`);
+    return r.json();
   }
-  if (!r.ok) throw new Error(`API ${path} → ${r.status}`);
-  return r.json();
 }
 
 // Home planet id, discovered once via /api/planets and cached.

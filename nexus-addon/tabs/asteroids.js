@@ -8,7 +8,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { confirmDialog } from '../common.js';
+import { confirmDialog, fuelEstimate } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // asteroid fieldType → resource icon + label
@@ -441,10 +441,7 @@ async function computeFuel() {
     const cell = tr.querySelector('.af-fuel');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
-    const est = await browser.runtime.sendMessage({
-      type: 'GET_FUEL_ESTIMATE',
-      body: { sourcePlanetId: planetId, targetSystemId: sysId, ships },
-    });
+    const est = await fuelEstimate(planetId, sysId, ships);
     if (gen !== afFuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
     cell.textContent = `${est.fuelCost}`;

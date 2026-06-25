@@ -6,7 +6,7 @@
 // Both routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { confirmDialog } from '../common.js';
+import { confirmDialog, fuelEstimate } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -290,10 +290,7 @@ async function computeFuel() {
     const cell = tr.querySelector('.sc-fuel');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
-    const est = await browser.runtime.sendMessage({
-      type: 'GET_FUEL_ESTIMATE',
-      body: { sourcePlanetId: planetId, targetSystemId: sysId, ships },
-    });
+    const est = await fuelEstimate(planetId, sysId, ships);
     if (gen !== fuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
     cell.textContent = `${est.fuelCost}`;
