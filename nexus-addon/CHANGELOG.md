@@ -4,6 +4,25 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.3] - 2026-06-26
+
+### Added
+- **Debris collection from Scouting**: the live debris fields table moved here
+  with a one-click **Collect** button per row.
+  - Pick cargo ship types (icon toggles) and the addon auto-plans the fewest
+    ships to collect 100% of a field, shown in **Number of Ships** and **Fuel
+    Cost** columns and capped to what's on the planet.
+  - Effective cargo accounts for cargo research and the commander cargo bonus.
+  - Sortable columns, per-row hide/unhide, and a guard against double-collecting.
+- **"On this planet" ship strips**: live counts (icon + qty) above the
+  investigation table (all ship types), the debris table (cargo ships), and the
+  Asteroids fields table (all ship types) — refreshed every 10s and after each
+  launch, so you can see fleets free up without reloading.
+
+### Changed
+- Debris fields show a **Total** column (ore + silicates + alloys) instead of an
+  always-zero hydrogen column.
+
 ## [1.6.2] - 2026-06-25
 
 ### Changed
