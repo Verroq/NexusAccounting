@@ -5,8 +5,6 @@
 import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, getZone, latestBucket, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, store, zeroCell, zoneCell } from '../common.js';
 
 export let chartDebris, chartDebrisPeriod;
-export const debrisSort = { key: 'ore', dir: -1 };
-attachSortable('d-fields-head', debrisSort, () => renderDebrisTab());
 
 // Collection log mapped so the shared mode/zone helpers (which key on
 // created_at) work on it.
@@ -76,38 +74,6 @@ export function renderDebrisTab() {
   );
   appendExtraResourceCards(genEl, gen, '');
 
-  document.getElementById('d-last-check').textContent = store.debris_last_check
-    ? `Last check: ${new Date(store.debris_last_check).toLocaleString()}`
-    : 'Not checked yet.';
-
-  const tbody = document.getElementById('d-fields-tbody');
-  tbody.textContent = '';
-  const fields = applySort('d-fields-head', store.debris_fields || [], debrisSort, 'system');
-  if (!fields.length) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 8;
-    td.style.color = '#484f58';
-    td.textContent = 'No debris fields currently visible.';
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-    return;
-  }
-  for (const f of fields) {
-    const tr = document.createElement('tr');
-    const tdSys = document.createElement('td');
-    tdSys.textContent = f.system;
-    const tdOre = zeroCell(f.ore); tdOre.className = 'ore';
-    const tdSil = zeroCell(f.silicates); tdSil.className = 'silicates';
-    const tdAl = zeroCell(f.alloys); tdAl.className = 'alloys';
-    const tdHyd = zeroCell(f.hydrogen); tdHyd.className = 'hydrogen';
-    const tdFirst = document.createElement('td');
-    tdFirst.textContent = new Date(f.first_seen).toLocaleString();
-    const tdUpd = document.createElement('td');
-    tdUpd.textContent = new Date(f.updated_at).toLocaleString();
-    tr.append(tdSys, zoneCell(f.zone), tdOre, tdSil, tdAl, tdHyd, tdFirst, tdUpd);
-    tbody.appendChild(tr);
-  }
 }
 
 export function cargoText(r) {

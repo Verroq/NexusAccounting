@@ -166,6 +166,29 @@ export async function fuelEstimate(sourcePlanetId, targetSystemId, ships) {
   return est;
 }
 
+// Fill a box with "On this planet:" + a chip (icon + qty × name) per ship that
+// has a positive count. `ships` is [{ shipDefId, name, imageUrl }] to consider.
+export function renderAvailStrip(box, ships, available, emptyMsg) {
+  box.textContent = '';
+  const here = ships.filter(s => (available[s.shipDefId] || 0) > 0);
+  const label = document.createElement('span');
+  label.textContent = here.length ? 'On this planet:' : emptyMsg;
+  box.appendChild(label);
+  for (const s of here) {
+    const chip = document.createElement('span');
+    chip.style.cssText = 'display:inline-flex; align-items:center; gap:5px;';
+    chip.title = s.name;
+    if (s.imageUrl) {
+      const img = document.createElement('img');
+      img.src = s.imageUrl;
+      img.style.cssText = 'width:22px; height:22px; object-fit:contain;';
+      chip.appendChild(img);
+    }
+    chip.append(document.createTextNode(`${(available[s.shipDefId] || 0).toLocaleString()}× ${s.name}`));
+    box.appendChild(chip);
+  }
+}
+
 export function fmt(n) {
   return n == null ? '0' : Number(n).toLocaleString();
 }

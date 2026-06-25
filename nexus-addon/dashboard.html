@@ -348,27 +348,6 @@
       </table>
     </div>
 
-    <div class="reports-section">
-      <div class="reports-header">
-        <h2>Live debris fields</h2>
-        <span id="d-last-check" style="color:#8b949e; font-size:0.8rem;"></span>
-      </div>
-      <table>
-        <thead id="d-fields-head">
-          <tr>
-            <th class="sortable" data-key="system">System</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th class="sortable" data-key="ore">Ore</th>
-            <th class="sortable" data-key="silicates">Silicates</th>
-            <th class="sortable" data-key="alloys">Alloys</th>
-            <th class="sortable" data-key="hydrogen">Hydrogen</th>
-            <th class="sortable" data-key="first_seen">First seen</th>
-            <th class="sortable" data-key="updated_at">Last update</th>
-          </tr>
-        </thead>
-        <tbody id="d-fields-tbody"></tbody>
-      </table>
-    </div>
   </div>
 
   <div id="expeditions-content" style="display:none;">
@@ -566,6 +545,7 @@
           <button id="af-btn-next">Next →</button>
         </div>
       </div>
+      <div id="af-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
       <table>
         <thead id="af-results-head">
           <tr>
@@ -611,6 +591,7 @@
         </label>
         <button id="sc-refresh">Refresh</button>
       </div>
+      <div id="sc-inv-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
       <table>
         <thead>
           <tr>
@@ -623,6 +604,35 @@
           </tr>
         </thead>
         <tbody id="sc-surveys-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Live debris fields</h2>
+        <span id="sc-debris-last" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Collect with:</span>
+        <span id="sc-debris-ships" style="display:flex; gap:6px; align-items:center;"></span>
+        <button id="sc-debris-hidden" style="display:none;"></button>
+        <button id="sc-debris-refresh">Refresh</button>
+      </div>
+      <div id="sc-debris-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
+      <table>
+        <thead id="sc-debris-head">
+          <tr>
+            <th title="Send collection fleet"></th>
+            <th class="sortable" data-key="system">System</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="ore">Ore</th>
+            <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="total" title="Ore + silicates + alloys">Total</th>
+            <th title="Ships needed to collect it all with the selected types">Number of Ships</th>
+            <th title="Hydrogen to send the selected collect template">Fuel Cost</th>
+            <th title="Hide/unhide row"></th>
+          </tr>
+        </thead>
+        <tbody id="sc-debris-tbody"></tbody>
       </table>
     </div>
   </div>
