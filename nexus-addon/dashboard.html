@@ -533,11 +533,8 @@
       <label>Qty ≥
         <input id="af-qty-min" type="number" min="0" placeholder="0" />
       </label>
-      <label>Arm
-        <select id="af-arm"></select>
-      </label>
-      <label>Sector
-        <input id="af-sector" type="text" placeholder="27 or 25-30" style="width:90px;
+      <label>Nearest systems
+        <input id="af-near" type="number" min="1" max="500" value="25" style="width:70px;
                background:#21262d; border:1px solid #30363d; color:#e6edf3;
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
@@ -580,6 +577,7 @@
             <th class="sortable" data-key="leftPct" title="Percentage of resources still present">Left %</th>
             <th class="sortable" data-key="zone">Zone</th>
             <th class="sortable" data-key="distance">Distance</th>
+            <th title="Hydrogen to send the selected template here">Fuel Cost</th>
             <th class="sortable" data-key="minerPresent">Miner Present</th>
           </tr>
         </thead>

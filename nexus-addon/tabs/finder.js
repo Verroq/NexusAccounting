@@ -233,9 +233,9 @@ export function focusSystem(systemId) {
   canvas.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-export async function getSystemPlanets(systemId, cache) {
+export async function getSystemPlanets(systemId, cache, ttl = SCAN_CACHE_TTL) {
   const entry = cache[systemId];
-  if (entry && Date.now() - entry.at < SCAN_CACHE_TTL) return entry.data;
+  if (entry && Date.now() - entry.at < ttl) return entry.data;
   const data = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_PLANETS', systemId });
   if (data.error) throw new Error(data.error);
   cache[systemId] = { data, at: Date.now() };

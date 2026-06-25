@@ -4,6 +4,19 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.1] - 2026-06-25
+
+### Fixed
+- Fleet/research launches no longer silently cancel: native `confirm()` is
+  replaced by an in-page modal, so Firefox's "prevent additional dialogs"
+  checkbox can't suppress launch confirmations anymore.
+- Scouting no longer re-targets a system that was just surveyed/investigated
+  while the missions API lags; the source system is now a valid survey target.
+
+### Added
+- Launch confirmations show each ship's image + name instead of `#<id>`.
+- Used/max fleet slots shown on the Scouting and Asteroids tabs.
+
 ## [1.6.0] - 2026-06-25
 
 ### Added
