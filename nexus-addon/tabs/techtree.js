@@ -1,6 +1,6 @@
 // Tech Tree tab — research from /api/research, laid out as a dependency graph.
 
-import { fmt, store } from '../common.js';
+import { fmt, store, confirmDialog } from '../common.js';
 import { loadAll } from '../dashboard.js';
 
 export const BRANCH_ORDER = ['military', 'science', 'economy'];
@@ -153,7 +153,7 @@ export async function launchResearch(t, level) {
   if (!planet) { alert('No free research slot — every planet is already researching.'); return; }
   const eta = fmtDuration(baseTimeAt(t, level) * planet.mult);
   const cost = `${fmt(costAt(t, 'costOre', level))} ore · ${fmt(costAt(t, 'costSilicates', level))} sil · ${fmt(costAt(t, 'costHydrogen', level))} hyd`;
-  if (!confirm(`Start ${t.name} L${level} on ${planet.name}?\n\nCost: ${cost}\nTime: ${eta}`)) return;
+  if (!await confirmDialog(`Start ${t.name} L${level} on ${planet.name}?\n\nCost: ${cost}\nTime: ${eta}`)) return;
   const res = await browser.runtime.sendMessage({
     type: 'START_RESEARCH', researchId: t.id, planetId: planet.id,
   });

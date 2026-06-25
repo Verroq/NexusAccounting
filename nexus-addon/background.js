@@ -230,6 +230,15 @@ function jwtUserId(token) {
   }
 }
 
+function jwtRace(token) {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(payload)).race ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // All open orders from a paginated orders endpoint (public market or alliance
 // trade), across every page.
 async function getOrders(path) {
@@ -433,9 +442,11 @@ async function getShipDefs() {
   try {
     const planetId = await getHomePlanetId(token);
     const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token);
+    const race = jwtRace(token);
     const ships = (data.ships || []).map(s => ({
       shipDefId: s.id,
       name: s.name || `#${s.id}`,
+      imageUrl: (race && s.key) ? `https://s0.nexuslegacy.space/api/images/ships/${race}/${s.key}.webp` : null,
       shipClass: s.shipClass || '',
       miningCargo: s.miningCargoCapacity || 0,
       sortOrder: s.sortOrder || 0,

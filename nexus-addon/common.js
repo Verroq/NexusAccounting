@@ -9,6 +9,74 @@ export function setActiveTab(t) { activeTab = t; }
 
 export const PER_PAGE = 20;
 
+// shipDefId → def ({ name, imageUrl, … }), fetched once and cached.
+let _shipDefs = null;
+async function shipDefs() {
+  if (!_shipDefs) {
+    const res = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
+    _shipDefs = {};
+    for (const s of (res.ships || [])) _shipDefs[s.shipDefId] = s;
+  }
+  return _shipDefs;
+}
+export async function shipName(id) {
+  return (await shipDefs())[id]?.name || `#${id}`;
+}
+
+// In-page replacement for window.confirm(). Native confirm() is silently
+// suppressed once a user ticks Firefox's "prevent additional dialogs" box,
+// which permanently blocks fleet/research launches. This never triggers that.
+// Optional `ships` = [{ shipDefId, quantity }] renders an image+name chip row.
+export async function confirmDialog(message, ships) {
+  const defs = ships?.length ? await shipDefs() : null;
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1b2030;color:#e6e8ee;border:1px solid #39405a;border-radius:8px;max-width:420px;padding:20px;font:14px/1.5 system-ui,sans-serif;white-space:pre-line';
+    const msg = document.createElement('div');
+    msg.textContent = message;
+    const btns = document.createElement('div');
+    btns.style.cssText = 'margin-top:18px;display:flex;gap:10px;justify-content:flex-end;white-space:normal';
+    const mk = (label, primary) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = `padding:7px 16px;border-radius:6px;border:1px solid #39405a;cursor:pointer;${primary ? 'background:#3b82f6;color:#fff;border-color:#3b82f6' : 'background:#2a3146;color:#e6e8ee'}`;
+      return b;
+    };
+    const cancel = mk('Cancel', false);
+    const ok = mk('Confirm', true);
+    const done = (v) => { ov.remove(); resolve(v); };
+    cancel.onclick = () => done(false);
+    ok.onclick = () => done(true);
+    ov.onclick = (e) => { if (e.target === ov) done(false); };
+    box.append(msg);
+    if (defs) {
+      const row = document.createElement('div');
+      row.style.cssText = 'margin-top:10px;display:flex;flex-wrap:wrap;gap:12px;white-space:normal';
+      for (const s of ships) {
+        const def = defs[s.shipDefId] || {};
+        const chip = document.createElement('span');
+        chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px';
+        if (def.imageUrl) {
+          const img = document.createElement('img');
+          img.src = def.imageUrl;
+          img.style.cssText = 'width:24px;height:24px;object-fit:contain';
+          chip.append(img);
+        }
+        chip.append(document.createTextNode(`${s.quantity}× ${def.name || '#' + s.shipDefId}`));
+        row.append(chip);
+      }
+      box.append(row);
+    }
+    btns.append(cancel, ok);
+    box.append(btns);
+    ov.append(box);
+    document.body.append(ov);
+    ok.focus();
+  });
+}
+
 export function fmt(n) {
   return n == null ? '0' : Number(n).toLocaleString();
 }
