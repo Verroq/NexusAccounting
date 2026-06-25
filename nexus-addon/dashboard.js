@@ -4,7 +4,7 @@
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-import { activeTab, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderNetCards, setActiveTab, setStore, store } from './common.js';
+import { activeTab, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setStore, store } from './common.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
 import { initAsteroidsTab } from './tabs/asteroids.js';
@@ -375,7 +375,7 @@ async function maybeShowWhatsNew() {
   try {
     const md = await (await fetch(browser.runtime.getURL('CHANGELOG.md'))).text();
     const m = md.match(/## \[[^\]]+\][^\n]*\n([\s\S]*?)(?=\n## \[|$)/);
-    if (m) body = m[1].trim();
+    if (m) body = renderMarkdown(m[1].trim());
   } catch { /* keep fallback */ }
   infoDialog(`What's new in v${whatsnew_pending}`, body);
 }

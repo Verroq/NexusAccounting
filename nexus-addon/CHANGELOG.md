@@ -11,10 +11,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   planet (set the count) instead of an arm + sector region.
 - Asteroid scans refetch system data after 15 minutes (was 24h) so drained
   fields and miner presence stay current; Planet Finder keeps the 24h cache.
+- Dashboard now opens on the **Global** tab.
 
 ### Added
 - **Fuel Cost** column on the Asteroids tab: per-field hydrogen estimate for the
   selected fleet template from the Mining-From planet (out-of-range in red).
+- **What's-new modal**: after an update, the latest changelog entry is shown
+  once in the dashboard, formatted (headings, bullets, bold/italic/code).
+
+### Fixed
+- Rate-limited (429) API calls now retry with backoff instead of erroring out.
+- Fuel estimates are cached per source/destination/template, so known routes no
+  longer re-hit the API on re-render, paging or template reselection.
 
 ## [1.6.1] - 2026-06-25
 

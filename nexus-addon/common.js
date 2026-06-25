@@ -77,7 +77,55 @@ export async function confirmDialog(message, ships) {
   });
 }
 
-// One-button info modal (e.g. "What's new"). `body` is shown as plain text.
+// Minimal Markdown → DOM for the changelog: ### headings, - bullets (with
+// wrapped continuation lines), **bold**, *italic*, `code`. Returns a fragment.
+export function renderMarkdown(text) {
+  const frag = document.createDocumentFragment();
+  let ul = null, li = null;
+  const closeList = () => { ul = null; li = null; };
+  for (const raw of text.split('\n')) {
+    const line = raw.trimEnd();
+    if (!line.trim()) { closeList(); continue; }
+    const h = line.match(/^#{1,6}\s+(.*)$/);
+    if (h) {
+      closeList();
+      const el = document.createElement('h4');
+      el.style.cssText = 'margin:14px 0 6px;font-size:0.95rem';
+      inlineMd(el, h[1]);
+      frag.append(el);
+    } else if (/^[-*]\s+/.test(line)) {
+      if (!ul) { ul = document.createElement('ul'); ul.style.cssText = 'margin:0 0 4px 18px;padding:0'; frag.append(ul); }
+      li = document.createElement('li');
+      li.style.cssText = 'margin:2px 0';
+      inlineMd(li, line.replace(/^[-*]\s+/, ''));
+      ul.append(li);
+    } else if (li) {                       // wrapped continuation of a bullet
+      li.append(document.createTextNode(' '));
+      inlineMd(li, line.trim());
+    } else {
+      const p = document.createElement('div');
+      inlineMd(p, line.trim());
+      frag.append(p);
+    }
+  }
+  return frag;
+}
+
+function inlineMd(parent, text) {
+  const re = /\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) parent.append(document.createTextNode(text.slice(last, m.index)));
+    const el = document.createElement(m[1] != null ? 'strong' : m[2] != null ? 'em' : 'code');
+    el.textContent = m[1] ?? m[2] ?? m[3];
+    parent.append(el);
+    last = re.lastIndex;
+  }
+  if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
+}
+
+// One-button info modal (e.g. "What's new"). `body` may be a string (plain
+// text) or a DOM node (e.g. from renderMarkdown).
 export function infoDialog(title, body) {
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center';
@@ -87,8 +135,8 @@ export function infoDialog(title, body) {
   h.textContent = title;
   h.style.cssText = 'margin:0 0 12px';
   const msg = document.createElement('div');
-  msg.textContent = body;
-  msg.style.cssText = 'white-space:pre-wrap';
+  if (body instanceof Node) msg.append(body);
+  else { msg.textContent = body; msg.style.cssText = 'white-space:pre-wrap'; }
   const btns = document.createElement('div');
   btns.style.cssText = 'margin-top:18px;display:flex;justify-content:flex-end';
   const ok = document.createElement('button');
