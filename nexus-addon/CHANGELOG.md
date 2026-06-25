@@ -4,6 +4,18 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.2] - 2026-06-25
+
+### Changed
+- **Asteroids tab** now scans the *N nearest explored systems* to the chosen
+  planet (set the count) instead of an arm + sector region.
+- Asteroid scans refetch system data after 15 minutes (was 24h) so drained
+  fields and miner presence stay current; Planet Finder keeps the 24h cache.
+
+### Added
+- **Fuel Cost** column on the Asteroids tab: per-field hydrogen estimate for the
+  selected fleet template from the Mining-From planet (out-of-range in red).
+
 ## [1.6.1] - 2026-06-25
 
 ### Fixed

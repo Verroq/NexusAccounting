@@ -25,6 +25,7 @@ ROOT = os.path.dirname(HERE)
 FILES = [
     'manifest.json',
     'package.json',
+    'CHANGELOG.md',
     'background-sw.js', 'background.js', 'sidebar-inject.js',
     'dashboard.html', 'dashboard.css', 'dashboard.js', 'common.js',
     'tabs/global.js', 'tabs/surveys.js', 'tabs/pirates.js', 'tabs/mining.js',

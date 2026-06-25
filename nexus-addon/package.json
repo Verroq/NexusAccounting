@@ -1,6 +1,6 @@
 {
   "name": "nexus-accounting",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "type": "module",
   "description": "Tracks Nexus Legacy survey and pirate data — aggregates resources collected and ships lost, with daily and hourly breakdowns.",
   "author": "Verrok",

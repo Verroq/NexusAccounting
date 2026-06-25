@@ -4,7 +4,7 @@
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-import { activeTab, fuelForMode, getLabelKey, getMode, periodLabelFor, renderNetCards, setActiveTab, setStore, store } from './common.js';
+import { activeTab, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderNetCards, setActiveTab, setStore, store } from './common.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
 import { initAsteroidsTab } from './tabs/asteroids.js';
@@ -363,6 +363,22 @@ document.getElementById('import-file').addEventListener('change', async function
 
 positionControls();
 loadAll();
+maybeShowWhatsNew();
+
+// Show the latest changelog section once after an update (flag set by the
+// background's onInstalled handler).
+async function maybeShowWhatsNew() {
+  const { whatsnew_pending } = await browser.storage.local.get('whatsnew_pending');
+  if (!whatsnew_pending) return;
+  await browser.storage.local.remove('whatsnew_pending');
+  let body = 'See CHANGELOG.md for details.';
+  try {
+    const md = await (await fetch(browser.runtime.getURL('CHANGELOG.md'))).text();
+    const m = md.match(/## \[[^\]]+\][^\n]*\n([\s\S]*?)(?=\n## \[|$)/);
+    if (m) body = m[1].trim();
+  } catch { /* keep fallback */ }
+  infoDialog(`What's new in v${whatsnew_pending}`, body);
+}
 
 browser.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.last_scrape || changes.totals || changes.pirate_totals)) loadAll();

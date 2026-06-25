@@ -28,6 +28,7 @@ browser.runtime.onInstalled.addListener(async details => {
   browser.alarms.create(ALARM, { periodInMinutes: INTERVAL_MIN });
   // Snapshot existing data before the new version touches it.
   if (details.reason === 'update') {
+    await browser.storage.local.set({ whatsnew_pending: browser.runtime.getManifest().version });
     try {
       await backupToDownloads(`pre-update-${details.previousVersion || 'unknown'}`);
     } catch (err) {

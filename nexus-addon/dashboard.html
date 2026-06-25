@@ -9,8 +9,8 @@
   <h1>Nexus Accounting</h1>
 
   <nav class="tabs">
-    <button class="tab" data-tab="global">Global</button>
-    <button class="tab active" data-tab="surveys">Surveys</button>
+    <button class="tab active" data-tab="global">Global</button>
+    <button class="tab" data-tab="surveys">Surveys</button>
     <button class="tab" data-tab="pirates">Pirates</button>
     <button class="tab" data-tab="mining">Mining</button>
     <button class="tab" data-tab="debris">Debris</button>
@@ -73,7 +73,7 @@
     </span>
   </div>
 
-  <div id="global-content" style="display:none;">
+  <div id="global-content">
     <p style="color:#8b949e; font-size:0.85rem; margin-bottom:12px;">
       Combined across surveys, pirate raids, mining, debris (precise) and expeditions.
     </p>
@@ -99,7 +99,7 @@
     </div>
   </div>
 
-  <div id="main-content">
+  <div id="main-content" style="display:none;">
     <div class="controls" style="margin-top:0;">
       <label for="event-select">Event:</label>
       <select id="event-select" title="Filter survey stats and table by anomaly event type.">

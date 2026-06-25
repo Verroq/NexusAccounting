@@ -4,7 +4,7 @@
 export let store = {};   // full storage snapshot
 export function setStore(s) { store = s; }   // setter: other modules can't reassign an import
 
-export let activeTab = 'surveys';
+export let activeTab = 'global';
 export function setActiveTab(t) { activeTab = t; }
 
 export const PER_PAGE = 20;
@@ -75,6 +75,32 @@ export async function confirmDialog(message, ships) {
     document.body.append(ov);
     ok.focus();
   });
+}
+
+// One-button info modal (e.g. "What's new"). `body` is shown as plain text.
+export function infoDialog(title, body) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#1b2030;color:#e6e8ee;border:1px solid #39405a;border-radius:8px;max-width:480px;max-height:70vh;overflow:auto;padding:20px;font:14px/1.5 system-ui,sans-serif';
+  const h = document.createElement('h3');
+  h.textContent = title;
+  h.style.cssText = 'margin:0 0 12px';
+  const msg = document.createElement('div');
+  msg.textContent = body;
+  msg.style.cssText = 'white-space:pre-wrap';
+  const btns = document.createElement('div');
+  btns.style.cssText = 'margin-top:18px;display:flex;justify-content:flex-end';
+  const ok = document.createElement('button');
+  ok.textContent = 'Got it';
+  ok.style.cssText = 'padding:7px 16px;border-radius:6px;border:1px solid #3b82f6;background:#3b82f6;color:#fff;cursor:pointer';
+  ok.onclick = () => ov.remove();
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  btns.append(ok);
+  box.append(h, msg, btns);
+  ov.append(box);
+  document.body.append(ov);
+  ok.focus();
 }
 
 export function fmt(n) {
