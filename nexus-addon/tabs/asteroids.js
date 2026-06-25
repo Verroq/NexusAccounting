@@ -8,7 +8,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { confirmDialog } from '../common.js';
+import { confirmDialog, fuelEstimate, renderAvailStrip } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // asteroid fieldType → resource icon + label
@@ -42,6 +42,8 @@ const ASTEROID_CACHE_TTL = 15 * 60 * 1000;   // fields drain fast — refetch af
 let afTemplates = [];        // fleet templates, managed in the Fleets tab
 let afMap = null;            // { byId: {id→{x,y,sectorId,visibility}}, systems: [...] }, cached
 const sectorSystems = {};   // sectorId → systems[] (name/zone/planetCount), cached
+let afAllShips = [];        // every ship def: [{ shipDefId, name, imageUrl }]
+let afAvailTimer = null;    // periodic availability poll
 
 export async function initAsteroidsTab() {
   if (afInited) return;
@@ -73,7 +75,7 @@ export async function initAsteroidsTab() {
     if (area === 'local' && changes.fleet_templates) refreshTemplates();
   });
 
-  pSel.addEventListener('change', () => { setRefFromMap(pSel.value); renderAsteroids(); });
+  pSel.addEventListener('change', () => { setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
   document.getElementById('af-scan').addEventListener('click', scan);
   document.getElementById('af-template-select').addEventListener('change', computeFuel);
   document.getElementById('af-results-head').addEventListener('click', e => {
@@ -93,7 +95,28 @@ export async function initAsteroidsTab() {
     });
   }
 
+  // Ship catalog (names + icons) for the availability strip, then start it.
+  const defs = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
+  afAllShips = (defs.ships || []).map(s => ({ shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl }));
+  updateAfAvail();
+  if (!afAvailTimer) {
+    afAvailTimer = setInterval(() => {
+      if (document.getElementById('asteroids-content').style.display !== 'none') updateAfAvail();
+    }, 10000);   // catch returning mining fleets without a reload
+  }
+
   status.textContent = 'Pick how many nearest systems to scan, then Scan.';
+}
+
+// Ships stationed on the selected mining planet, shown above the fields table.
+async function updateAfAvail() {
+  const box = document.getElementById('af-avail');
+  box.textContent = '';
+  const planetId = Number(document.getElementById('af-planet').value);
+  if (!planetId || !afAllShips.length) return;
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  if (av.error) { box.textContent = av.error; return; }
+  renderAvailStrip(box, afAllShips, av.available, 'No ships on this planet.');
 }
 
 // Galaxy map (all systems with coords + sector id), fetched once and cached.
@@ -320,7 +343,7 @@ async function sendMineMission(f) {
     miningDuration: MINING_DURATION,
   });
   status.textContent = res.error ? `Send failed: ${res.error}` : `Fleet sent to ${f.name} ✓`;
-  if (!res.error) refreshSlots();
+  if (!res.error) { refreshSlots(); updateAfAvail(); }
 }
 
 // "used/max fleet slots" — both come from the missions endpoint.
@@ -441,10 +464,7 @@ async function computeFuel() {
     const cell = tr.querySelector('.af-fuel');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
-    const est = await browser.runtime.sendMessage({
-      type: 'GET_FUEL_ESTIMATE',
-      body: { sourcePlanetId: planetId, targetSystemId: sysId, ships },
-    });
+    const est = await fuelEstimate(planetId, sysId, ships);
     if (gen !== afFuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
     cell.textContent = `${est.fuelCost}`;

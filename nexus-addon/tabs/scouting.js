@@ -1,12 +1,13 @@
 // Scouting tab: launch probe surveys at the nearest un-surveyed system, and
 // list anomalies awaiting investigation with a one-click investigate fleet.
 //
-// Survey:      POST /api/fleet/survey      { sourcePlanetId, targetSystemId, ships }
-// Investigate: POST /api/fleet/investigate { sourcePlanetId, reportId, ships }
-// Both routed through the game tab (same-origin) like the asteroid mine call.
+// Survey:      POST /api/fleet/survey         { sourcePlanetId, targetSystemId, ships }
+// Investigate: POST /api/fleet/investigate    { sourcePlanetId, reportId, ships }
+// Collect:     POST /api/fleet/collect-debris { sourcePlanetId, debrisId, ships }
+// All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { confirmDialog } from '../common.js';
+import { applySort, attachSortable, confirmDialog, fuelEstimate, renderAvailStrip } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -56,19 +57,25 @@ export async function initScoutingTab() {
 
   document.getElementById('sc-scan').addEventListener('click', launchScan);
   document.getElementById('sc-refresh').addEventListener('click', loadActiveSurveys);
-  document.getElementById('sc-planet').addEventListener('change', renderSurveys);
+  document.getElementById('sc-planet').addEventListener('change', () => { renderSurveys(); computeDebrisFuel(); updateAvail(); });
   document.getElementById('sc-inv-template').addEventListener('change', computeFuel);
+  document.getElementById('sc-debris-refresh').addEventListener('click', loadDebris);
+  document.getElementById('sc-debris-hidden').addEventListener('click', () => { scShowHidden = !scShowHidden; renderDebris(); });
+  await loadCargoShips();
+  updateAvail();
 
   // Tick the countdowns every second; refetch the list every 30s. Both only
   // while the tab is visible.
   setInterval(() => {
     if (document.getElementById('scouting-content').style.display === 'none') return;
     tickTimers();
-    if (++scTick % 30 === 0) loadActiveSurveys();
+    if (++scTick % 10 === 0) updateAvail();       // catch returning fleets
+    if (scTick % 30 === 0) { loadActiveSurveys(); loadDebris(); }
   }, 1000);
 
   status.textContent = '';
   loadActiveSurveys();
+  loadDebris();
 }
 
 async function refreshTemplates() {
@@ -190,6 +197,7 @@ async function launchScan() {
   scJustSurveyed.add(target.id);
   status.textContent = `Probe sent to ${target.name} ✓`;
   loadActiveSurveys();
+  updateAvail();
 }
 
 function fmtCountdown(ms) {
@@ -290,10 +298,7 @@ async function computeFuel() {
     const cell = tr.querySelector('.sc-fuel');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
-    const est = await browser.runtime.sendMessage({
-      type: 'GET_FUEL_ESTIMATE',
-      body: { sourcePlanetId: planetId, targetSystemId: sysId, ships },
-    });
+    const est = await fuelEstimate(planetId, sysId, ships);
     if (gen !== fuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
     cell.textContent = `${est.fuelCost}`;
@@ -339,4 +344,272 @@ async function investigate(report) {
   scInvestigating.add(report.systemId);
   status.textContent = `Fleet sent to ${report.systemName} ✓`;
   loadActiveSurveys();
+  updateAvail();
+}
+
+// ── Live debris fields ─────────────────────────────────────────────────────
+
+let scDebris = [];   // live debris fields from the latest scrape
+const scJustCollected = new Set();   // debrisIds collected this session — keep the button disabled
+const scHiddenDebris = new Set();    // field ids the user hid from the table
+let scShowHidden = false;            // reveal hidden rows (dimmed) for unhiding
+const scDebrisSort = { key: 'total', dir: -1 };
+attachSortable('sc-debris-head', scDebrisSort, () => renderDebris());
+
+// Cargo haulers the user can pick to collect debris. Loaded from the shipyard
+// (real cargoCapacity, scales with race/tech), filtered to these keys.
+const CARGO_KEYS = ['ore_freighter', 'bulk_carrier', 'freighter', 'transport_shuttle'];
+let scCargoShips = [];               // [{ shipDefId, name, imageUrl, cap }]
+let scAllShips = [];                 // every ship def: [{ shipDefId, name, imageUrl }]
+const scCargoSel = new Set();        // selected shipDefIds
+
+async function loadCargoShips() {
+  const [res, stored, me] = await Promise.all([
+    browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
+    browser.storage.local.get('research'),
+    browser.runtime.sendMessage({ type: 'GET_AUTH_ME' }),
+  ]);
+  const bonus = cargoBonuses(stored.research || []);
+  const commander = me?.user?.activeLeaderBonuses?.cargoBonus || 0;   // leader cargo bonus
+  scAllShips = (res.ships || []).map(s => ({ shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl }));
+  scCargoShips = (res.ships || [])
+    .filter(s => CARGO_KEYS.includes(s.key) && s.cargoCapacity > 0)
+    .map(s => {
+      // cargo_bonus + commander lift every hauler; shuttle_cargo_bonus adds on top.
+      const b = bonus.general + commander + (s.key === 'transport_shuttle' ? bonus.shuttle : 0);
+      return { shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl, cap: Math.floor(s.cargoCapacity * (1 + b)) };
+    })
+    .sort((a, b) => b.cap - a.cap);
+  renderCargoToggles();
+}
+
+// Sum researched cargo bonuses (value × level) by effect type.
+function cargoBonuses(research) {
+  let general = 0, shuttle = 0;
+  for (const r of research) {
+    const lvl = r.level || 0;
+    if (!lvl) continue;
+    for (const e of (r.effects || [])) {
+      if (e.type === 'cargo_bonus') general += (e.value || 0) * lvl;
+      else if (e.type === 'shuttle_cargo_bonus') shuttle += (e.value || 0) * lvl;
+    }
+  }
+  return { general, shuttle };
+}
+
+function renderCargoToggles() {
+  const box = document.getElementById('sc-debris-ships');
+  box.textContent = '';
+  for (const s of scCargoShips) {
+    const on = scCargoSel.has(s.shipDefId);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = `${s.name} — ${s.cap.toLocaleString()} cargo`;
+    b.style.cssText = `padding:2px; border-radius:6px; cursor:pointer; line-height:0;
+      border:2px solid ${on ? '#2ea043' : '#30363d'}; background:${on ? '#193b22' : 'transparent'};`;
+    if (s.imageUrl) {
+      const img = document.createElement('img');
+      img.src = s.imageUrl;
+      img.style.cssText = 'width:28px; height:28px; object-fit:contain;';
+      b.appendChild(img);
+    } else {
+      b.textContent = s.name;
+      b.style.lineHeight = '';
+    }
+    b.addEventListener('click', () => {
+      if (on) scCargoSel.delete(s.shipDefId); else scCargoSel.add(s.shipDefId);
+      renderCargoToggles();
+      computeDebrisFuel();
+    });
+    box.appendChild(b);
+  }
+}
+
+// Selected haulers as [{ shipDefId, cap }].
+function selectedCargo() {
+  return scCargoShips.filter(s => scCargoSel.has(s.shipDefId));
+}
+
+// Ships stationed on the selected planet, shown above both tables (one fetch):
+// cargo-only above the debris table, every type above the investigation table.
+async function updateAvail() {
+  const debrisBox = document.getElementById('sc-debris-avail');
+  const invBox = document.getElementById('sc-inv-avail');
+  debrisBox.textContent = '';
+  invBox.textContent = '';
+  const planetId = Number(document.getElementById('sc-planet').value);
+  if (!planetId || !scAllShips.length) return;
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  if (av.error) { debrisBox.textContent = av.error; invBox.textContent = av.error; return; }
+  renderAvailStrip(debrisBox, scCargoShips, av.available, 'No cargo ships on this planet.');
+  renderAvailStrip(invBox, scAllShips, av.available, 'No ships on this planet.');
+}
+
+// Fewest selected haulers (largest-first, smallest fills the tail) to carry
+// `total` cargo. Returns [{ shipDefId, quantity }].
+function planFleet(total, ships) {
+  const sorted = ships.filter(s => s.cap > 0).sort((a, b) => b.cap - a.cap);
+  if (!sorted.length || total <= 0) return [];
+  let rem = total;
+  const out = [];
+  for (let i = 0; i < sorted.length && rem > 0; i++) {
+    const { shipDefId, cap } = sorted[i];
+    const n = i === sorted.length - 1 ? Math.ceil(rem / cap) : Math.floor(rem / cap);
+    if (n > 0) { out.push({ shipDefId, quantity: n }); rem -= n * cap; }
+  }
+  return out;
+}
+
+async function loadDebris() {
+  const { debris_fields, debris_last_check } = await browser.storage.local.get(['debris_fields', 'debris_last_check']);
+  scDebris = (debris_fields || []).map(f => ({ ...f, total: (f.ore || 0) + (f.silicates || 0) + (f.alloys || 0) }));
+  document.getElementById('sc-debris-last').textContent = debris_last_check
+    ? `Last check: ${new Date(debris_last_check).toLocaleString()}`
+    : 'Not checked yet.';
+  renderDebris();
+}
+
+function renderDebris() {
+  const tbody = document.getElementById('sc-debris-tbody');
+  tbody.textContent = '';
+
+  // Header "show hidden" toggle reflects how many rows are hidden.
+  const toggle = document.getElementById('sc-debris-hidden');
+  toggle.style.display = scHiddenDebris.size ? '' : 'none';
+  toggle.textContent = scShowHidden ? `Hide hidden (${scHiddenDebris.size})` : `Show hidden (${scHiddenDebris.size})`;
+
+  const sorted = applySort('sc-debris-head', scDebris, scDebrisSort, 'system');
+  const rows = scShowHidden ? sorted : sorted.filter(f => !scHiddenDebris.has(f.id));
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 10; td.style.color = '#484f58';
+    td.textContent = scDebris.length ? 'All debris fields hidden.' : 'No debris fields currently visible.';
+    tr.appendChild(td); tbody.appendChild(tr);
+    return;
+  }
+  for (const f of rows) {
+    const tr = document.createElement('tr');
+    if (f.systemId != null) tr.dataset.system = f.systemId;
+    tr.dataset.total = f.total || 0;
+    const hidden = scHiddenDebris.has(f.id);
+    if (hidden) tr.style.opacity = '0.45';
+
+    const btnTd = document.createElement('td');
+    const btn = document.createElement('button');
+    const busy = f.debrisId != null && scJustCollected.has(f.debrisId);
+    const ok = f.debrisId != null && !busy;
+    btn.textContent = busy ? 'Collecting…' : ok ? 'Collect' : '—';
+    btn.disabled = !ok;
+    btn.style.cssText = ok
+      ? 'background:#238636; border:1px solid #2ea043; color:#fff; padding:6px 16px; border-radius:6px; cursor:pointer; font-size:0.85rem;'
+      : 'background:#30363d; border:1px solid #30363d; color:#8b949e; padding:6px 16px; border-radius:6px; cursor:not-allowed; font-size:0.85rem;';
+    if (ok) btn.addEventListener('click', () => collectDebris(f));
+    btnTd.appendChild(btn);
+    tr.appendChild(btnTd);
+
+    const cells = [
+      f.system,
+      f.zone || '—',
+      (f.ore || 0).toLocaleString(),
+      (f.silicates || 0).toLocaleString(),
+      (f.alloys || 0).toLocaleString(),
+      (f.total || 0).toLocaleString(),
+      '…',   // ship count, filled by computeDebrisFuel
+      '…',   // fuel cost, filled async
+    ];
+    cells.forEach((v, i) => {
+      const td = document.createElement('td');
+      td.textContent = v;
+      if (i === 1) td.style.color = ZONE_COLOR[f.zone] || '#8b949e';
+      if (i === 6) td.className = 'sc-debris-shipn';
+      if (i === 7) td.className = 'sc-debris-fuel';
+      tr.appendChild(td);
+    });
+
+    const hideTd = document.createElement('td');
+    const hideBtn = document.createElement('button');
+    hideBtn.textContent = hidden ? '↩' : '✕';
+    hideBtn.title = hidden ? 'Unhide row' : 'Hide row';
+    hideBtn.style.cssText = 'background:transparent; border:none; color:#8b949e; cursor:pointer; font-size:0.9rem;';
+    hideBtn.addEventListener('click', () => {
+      if (hidden) scHiddenDebris.delete(f.id); else scHiddenDebris.add(f.id);
+      renderDebris();
+    });
+    hideTd.appendChild(hideBtn);
+    tr.appendChild(hideTd);
+
+    tbody.appendChild(tr);
+  }
+  computeDebrisFuel();
+}
+
+// Fill the debris Fuel Cost column for the auto-planned fleet (selected haulers
+// sized to carry the whole field) from the selected planet.
+let debrisFuelGen = 0;
+async function computeDebrisFuel() {
+  const gen = ++debrisFuelGen;
+  const planetId = Number(document.getElementById('sc-planet').value);
+  const fuelCells = () => document.querySelectorAll('#sc-debris-tbody td.sc-debris-fuel');
+  const shipCells = () => document.querySelectorAll('#sc-debris-tbody td.sc-debris-shipn');
+  const cargo = selectedCargo();
+  if (!cargo.length) {
+    fuelCells().forEach(c => { c.textContent = '—'; c.title = 'Select cargo ships above'; });
+    shipCells().forEach(c => { c.textContent = '—'; c.title = ''; });
+    return;
+  }
+  const nameOf = id => (scCargoShips.find(c => c.shipDefId === id) || {}).name || '#' + id;
+  for (const tr of document.querySelectorAll('#sc-debris-tbody tr')) {
+    if (gen !== debrisFuelGen) return;
+    const ships = planFleet(Number(tr.dataset.total) || 0, cargo);
+    const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
+    const nCell = tr.querySelector('.sc-debris-shipn');
+    if (nCell) nCell.textContent = ships.length ? named : '—';
+
+    const cell = tr.querySelector('.sc-debris-fuel');
+    const sysId = Number(tr.dataset.system);
+    if (!cell || !sysId) continue;
+    if (!ships.length) { cell.textContent = '—'; continue; }
+    const est = await fuelEstimate(planetId, sysId, ships);
+    if (gen !== debrisFuelGen) return;
+    if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
+    cell.textContent = `${est.fuelCost}`;
+    cell.style.color = est.inRange === false ? '#ff7b72' : '';
+    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+  }
+}
+
+async function collectDebris(field) {
+  const status = document.getElementById('sc-progress');
+  const planetId = Number(document.getElementById('sc-planet').value);
+  const planet = scPlanets.find(p => p.id === planetId);
+
+  const cargo = selectedCargo();
+  const plan = planFleet(field.total, cargo);
+  if (!plan.length) { status.textContent = 'Select cargo ships above first.'; return; }
+
+  // Cap to what the source planet actually has; warn if that can't carry it all.
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  if (av.error) { status.textContent = `Error: ${av.error}`; return; }
+  const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
+  const ships = plan
+    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
+    .filter(s => s.quantity > 0);
+  if (!ships.length) { status.textContent = 'None of the selected cargo ships are on this planet.'; return; }
+  const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
+  const short = carried < field.total;
+
+  if (!await confirmDialog(`Collect debris at ${field.system} (${field.total.toLocaleString()} cargo)?\n\n` +
+    `From: ${planet ? planet.name : planetId}` +
+    (short ? `\n\n⚠ Selected ships on this planet only carry ${carried.toLocaleString()} — collecting what fits.` : ''), ships)) return;
+
+  status.textContent = `Collecting at ${field.system}…`;
+  const res = await browser.runtime.sendMessage({
+    type: 'COLLECT_DEBRIS', sourcePlanetId: planetId, debrisId: field.debrisId, ships,
+  });
+  if (res.error) { status.textContent = `Collect failed: ${res.error}`; return; }
+  scJustCollected.add(field.debrisId);
+  status.textContent = `Fleet sent to ${field.system} ✓`;
+  renderDebris();
+  updateAvail();
 }

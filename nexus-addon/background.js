@@ -75,6 +75,11 @@ browser.runtime.onMessage.addListener(msg => {
       sourcePlanetId: msg.sourcePlanetId, reportId: msg.reportId, ships: msg.ships,
     });
   }
+  if (msg.type === 'COLLECT_DEBRIS') {
+    return gamePost('/api/fleet/collect-debris', {
+      sourcePlanetId: msg.sourcePlanetId, debrisId: msg.debrisId, ships: msg.ships,
+    });
+  }
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
   if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
@@ -84,6 +89,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_ARM_SECTORS') return apiGet(`/api/galaxy/arms/${msg.armId}/sectors`);
   if (msg.type === 'GET_SECTOR_SYSTEMS') return apiGet(`/api/galaxy/sectors/${msg.sectorId}/systems`);
   if (msg.type === 'GET_HOME') return getHome();
+  if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me');
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
   if (msg.type === 'GET_RESOURCES') return getResources();
@@ -323,16 +329,24 @@ async function getToken() {
 // ── API ────────────────────────────────────────────────────────────────────
 
 async function apiFetch(path, token) {
-  let r;
-  try {
-    r = await fetch(`${GAME_URL}${path}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch (e) {
-    throw new Error(`API ${path} → ${e.message}`, { cause: e });   // network/CORS/blocked
+  // Retry on 429 (rate limit), honouring Retry-After, then exponential backoff.
+  for (let attempt = 0; ; attempt++) {
+    let r;
+    try {
+      r = await fetch(`${GAME_URL}${path}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (e) {
+      throw new Error(`API ${path} → ${e.message}`, { cause: e });   // network/CORS/blocked
+    }
+    if (r.status === 429 && attempt < 4) {
+      const ra = parseFloat(r.headers.get('Retry-After'));
+      await new Promise(res => setTimeout(res, Number.isFinite(ra) ? ra * 1000 : 500 * 2 ** attempt));
+      continue;
+    }
+    if (!r.ok) throw new Error(`API ${path} → ${r.status}`);
+    return r.json();
   }
-  if (!r.ok) throw new Error(`API ${path} → ${r.status}`);
-  return r.json();
 }
 
 // Home planet id, discovered once via /api/planets and cached.
@@ -446,7 +460,9 @@ async function getShipDefs() {
     const race = jwtRace(token);
     const ships = (data.ships || []).map(s => ({
       shipDefId: s.id,
+      key: s.key || '',
       name: s.name || `#${s.id}`,
+      cargoCapacity: s.cargoCapacity || 0,
       imageUrl: (race && s.key) ? `https://s0.nexuslegacy.space/api/images/ships/${race}/${s.key}.webp` : null,
       shipClass: s.shipClass || '',
       miningCargo: s.miningCargoCapacity || 0,
@@ -1323,12 +1339,13 @@ async function processSystemDebris(debrisArr, zones = {}) {
     const id = String(d.id ?? `${d.systemId ?? '?'}-${d.position ?? ''}`);
     next[id] = {
       id,
+      debrisId: d.id ?? null,         // numeric id for collect-debris
+      systemId: d.systemId ?? null,   // for the fuel estimate
       system: d.systemName || d.locationName || (d.systemId != null ? `System #${d.systemId}` : 'unknown'),
       zone: resolveZone(d.systemName, zones),
       ore: d.ore || 0,
       silicates: d.silicates || 0,
       alloys: d.alloys || 0,
-      hydrogen: d.hydrogen || 0,
       first_seen: prev[id]?.first_seen || now,
       updated_at: now,
     };
