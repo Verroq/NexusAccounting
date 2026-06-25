@@ -483,7 +483,7 @@ function renderDebris() {
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 10; td.style.color = '#484f58';
+    td.colSpan = 11; td.style.color = '#484f58';
     td.textContent = scDebris.length ? 'All debris fields hidden.' : 'No debris fields currently visible.';
     tr.appendChild(td); tbody.appendChild(tr);
     return;
@@ -517,6 +517,7 @@ function renderDebris() {
       (f.total || 0).toLocaleString(),
       '…',   // ship count, filled by computeDebrisFuel
       '…',   // fuel cost, filled async
+      '…',   // travel time, filled async
     ];
     cells.forEach((v, i) => {
       const td = document.createElement('td');
@@ -524,6 +525,7 @@ function renderDebris() {
       if (i === 1) td.style.color = ZONE_COLOR[f.zone] || '#8b949e';
       if (i === 6) td.className = 'sc-debris-shipn';
       if (i === 7) td.className = 'sc-debris-fuel';
+      if (i === 8) td.className = 'sc-debris-time';
       tr.appendChild(td);
     });
 
@@ -550,12 +552,15 @@ let debrisFuelGen = 0;
 async function computeDebrisFuel() {
   const gen = ++debrisFuelGen;
   const planetId = Number(document.getElementById('sc-planet').value);
-  const fuelCells = () => document.querySelectorAll('#sc-debris-tbody td.sc-debris-fuel');
-  const shipCells = () => document.querySelectorAll('#sc-debris-tbody td.sc-debris-shipn');
+  const sel = q => () => document.querySelectorAll(`#sc-debris-tbody td.${q}`);
+  const fuelCells = sel('sc-debris-fuel');
+  const shipCells = sel('sc-debris-shipn');
+  const timeCells = sel('sc-debris-time');
   const cargo = selectedCargo();
   if (!cargo.length) {
     fuelCells().forEach(c => { c.textContent = '—'; c.title = 'Select cargo ships above'; });
     shipCells().forEach(c => { c.textContent = '—'; c.title = ''; });
+    timeCells().forEach(c => { c.textContent = '—'; });
     return;
   }
   const nameOf = id => (scCargoShips.find(c => c.shipDefId === id) || {}).name || '#' + id;
@@ -567,15 +572,17 @@ async function computeDebrisFuel() {
     if (nCell) nCell.textContent = ships.length ? named : '—';
 
     const cell = tr.querySelector('.sc-debris-fuel');
+    const timeCell = tr.querySelector('.sc-debris-time');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
-    if (!ships.length) { cell.textContent = '—'; continue; }
+    if (!ships.length) { cell.textContent = '—'; if (timeCell) timeCell.textContent = '—'; continue; }
     const est = await fuelEstimate(planetId, sysId, ships);
     if (gen !== debrisFuelGen) return;
-    if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
+    if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
     cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
 
