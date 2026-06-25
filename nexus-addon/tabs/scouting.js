@@ -6,6 +6,7 @@
 // Both routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
+import { confirmDialog } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -17,6 +18,8 @@ const ZONE_COLOR = { sentinel: '#56d364', open: '#f0883e', dead: '#ff7b72', rift
 const scZoneFilter = new Set();   // empty = any zone
 let scPending = [];               // anomalies awaiting investigation
 let scInvestigating = new Set();  // systemIds with an investigate mission in flight
+const scJustSurveyed = new Set(); // systemIds surveyed this session — the missions API lags, so exclude them locally
+const scJustInvestigated = new Set(); // same, for investigate missions
 let scTick = 0;
 
 export async function initScoutingTab() {
@@ -137,7 +140,7 @@ function nearestTarget(srcSystemId, onCooldown) {
   let best = null, bestD = Infinity;
   for (const [id, s] of Object.entries(scSystems)) {
     const sid = Number(id);
-    if (sid === srcSystemId || onCooldown.has(sid)) continue;
+    if (onCooldown.has(sid)) continue;
     if (scZoneFilter.size && !scZoneFilter.has(s.zone)) continue;
     const d = Math.hypot(s.x - src.x, s.y - src.y);
     if (d < bestD) { bestD = d; best = { id: sid, name: s.name, dist: Math.round(d) }; }
@@ -164,6 +167,7 @@ async function launchScan() {
   for (const m of (mi.missions || [])) {
     if (m.missionType === 'survey' && m.targetSystemId != null) onCooldown.add(m.targetSystemId);
   }
+  for (const id of scJustSurveyed) onCooldown.add(id);
 
   const target = nearestTarget(planet ? planet.systemId : null, onCooldown);
   if (!target) {
@@ -174,16 +178,18 @@ async function launchScan() {
 
   const r = await templateShips(document.getElementById('sc-scan-template').value, planetId);
   if (r.error) { status.textContent = r.error; return; }
-  const summary = r.ships.map(s => `${s.quantity}× #${s.shipDefId}`).join(', ');
-  if (!confirm(`Survey ${target.name} (${target.dist} away)?\n\n` +
-    `From: ${planet ? planet.name : planetId}\nTemplate: ${r.name}\nShips: ${summary}` +
-    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''))) return;
+  if (!await confirmDialog(`Survey ${target.name} (${target.dist} away)?\n\n` +
+    `From: ${planet ? planet.name : planetId}\nTemplate: ${r.name}` +
+    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships)) return;
 
   status.textContent = `Surveying ${target.name}…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_SURVEY', sourcePlanetId: planetId, targetSystemId: target.id, ships: r.ships,
   });
-  status.textContent = res.error ? `Survey failed: ${res.error}` : `Probe sent to ${target.name} ✓`;
+  if (res.error) { status.textContent = `Survey failed: ${res.error}`; return; }
+  scJustSurveyed.add(target.id);
+  status.textContent = `Probe sent to ${target.name} ✓`;
+  loadActiveSurveys();
 }
 
 function fmtCountdown(ms) {
@@ -202,9 +208,13 @@ async function loadActiveSurveys() {
     browser.runtime.sendMessage({ type: 'GET_MISSIONS' }),
   ]);
   if (res.error) { document.getElementById('sc-count').textContent = `Error: ${res.error}`; return; }
+  if (mi.maxFleetSlots != null) {
+    document.getElementById('sc-slots').textContent = `${(mi.missions || []).length}/${mi.maxFleetSlots} fleet slots`;
+  }
   scInvestigating = new Set((mi.missions || [])
     .filter(m => m.missionType === 'investigate' && m.targetSystemId != null)
     .map(m => m.targetSystemId));
+  for (const id of scJustInvestigated) scInvestigating.add(id);
   const now = Date.now();
   const exp = r => (r.anomalyExpiresAt ? new Date(r.anomalyExpiresAt).getTime() : Infinity);
   scPending = (res.reports || [])
@@ -316,16 +326,17 @@ async function investigate(report) {
 
   const r = await templateShips(document.getElementById('sc-inv-template').value, planetId);
   if (r.error) { status.textContent = r.error; return; }
-  const summary = r.ships.map(s => `${s.quantity}× #${s.shipDefId}`).join(', ');
-  if (!confirm(`Investigate ${report.systemName} (${report.eventTitle || report.eventType})?\n\n` +
-    `From: ${planet ? planet.name : planetId}\nTemplate: ${r.name}\nShips: ${summary}` +
-    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''))) return;
+  if (!await confirmDialog(`Investigate ${report.systemName} (${report.eventTitle || report.eventType})?\n\n` +
+    `From: ${planet ? planet.name : planetId}\nTemplate: ${r.name}` +
+    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships)) return;
 
   status.textContent = `Investigating ${report.systemName}…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships: r.ships,
   });
   if (res.error) { status.textContent = `Investigate failed: ${res.error}`; return; }
+  scJustInvestigated.add(report.systemId);
+  scInvestigating.add(report.systemId);
   status.textContent = `Fleet sent to ${report.systemName} ✓`;
   loadActiveSurveys();
 }

@@ -10,6 +10,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
+import { confirmDialog } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // asteroid fieldType → resource icon + label
@@ -78,6 +79,7 @@ export async function initAsteroidsTab() {
   drawTypeIcons();
   drawZoneToggles();
   syncArmToPlanet(pSel.value);
+  refreshSlots();
 
   await refreshTemplates();
   // Keep the selector in sync with edits made in the Fleets tab.
@@ -354,10 +356,9 @@ async function sendMineMission(f) {
     return;
   }
   const short = wanted.some(s => (av.available[s.shipDefId] || 0) < s.quantity);
-  const summary = ships.map(s => `${s.quantity}× #${s.shipDefId}`).join(', ');
-  if (!confirm(`Send fleet template "${tpl.name}"?\n\nTo: ${f.name} (${f.system})\n` +
-    `From: ${planet ? planet.name : planetId}\nShips: ${summary}` +
-    (short ? '\n\n⚠ Some template ships are short on this planet; sending what is available.' : ''))) return;
+  if (!await confirmDialog(`Send fleet template "${tpl.name}"?\n\nTo: ${f.name} (${f.system})\n` +
+    `From: ${planet ? planet.name : planetId}` +
+    (short ? '\n\n⚠ Some template ships are short on this planet; sending what is available.' : ''), ships)) return;
 
   status.textContent = `Sending to ${f.name}…`;
   const res = await browser.runtime.sendMessage({
@@ -368,6 +369,15 @@ async function sendMineMission(f) {
     miningDuration: MINING_DURATION,
   });
   status.textContent = res.error ? `Send failed: ${res.error}` : `Fleet sent to ${f.name} ✓`;
+  if (!res.error) refreshSlots();
+}
+
+// "used/max fleet slots" — both come from the missions endpoint.
+async function refreshSlots() {
+  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
+  if (mi.maxFleetSlots != null) {
+    document.getElementById('af-slots').textContent = `${(mi.missions || []).length}/${mi.maxFleetSlots} fleet slots`;
+  }
 }
 
 export function renderAsteroids() {
