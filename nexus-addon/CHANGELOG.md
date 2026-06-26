@@ -4,6 +4,27 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.4] - 2026-06-26
+
+### Added
+- **Travel Time** columns on the Scouting debris and investigation tables.
+- **Date-range "Days" picker** with **Last 3 days / Last 7 days / Last month**
+  view presets. The selected range drives the stat cards, net, doughnuts and
+  charts, and overrides "All time" when a range is set.
+- **Loot composition** doughnut on the Mining tab; Mining net now shows in every
+  view, not just All-time.
+- A labelled legend (source — %) on Global's "Share by source" chart.
+- Scouting/Asteroids remember the selected planet, fleet template, and cargo
+  ship types across tab switches and restarts.
+
+### Changed
+- Per-mission fuel uses the game's exact fuel-estimate (real fleet + route),
+  falling back to the fitted formula only when no game tab is open.
+
+### Fixed
+- Graphs bucket data by **local** day/hour instead of the raw UTC timestamp, so
+  reports near midnight no longer fall in the wrong day/hour.
+
 ## [1.6.3] - 2026-06-26
 
 ### Added
