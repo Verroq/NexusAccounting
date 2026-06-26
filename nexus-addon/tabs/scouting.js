@@ -48,6 +48,10 @@ export async function initScoutingTab() {
     if (p.isHomeworld) o.selected = true;
     pSel.appendChild(o);
   }
+  const savedSel = await rememberedSelections();
+  if (savedSel['sc-planet'] && scPlanets.some(p => String(p.id) === savedSel['sc-planet'])) {
+    pSel.value = savedSel['sc-planet'];   // remembered planet survives tabs/sessions
+  }
 
   drawZoneToggles();
   await refreshTemplates();
@@ -57,7 +61,7 @@ export async function initScoutingTab() {
 
   document.getElementById('sc-scan').addEventListener('click', launchScan);
   document.getElementById('sc-refresh').addEventListener('click', loadActiveSurveys);
-  document.getElementById('sc-planet').addEventListener('change', () => { renderSurveys(); computeDebrisFuel(); updateAvail(); });
+  document.getElementById('sc-planet').addEventListener('change', e => { rememberSelection('sc-planet', e.target.value); renderSurveys(); computeDebrisFuel(); updateAvail(); });
   document.getElementById('sc-scan-template').addEventListener('change', e => rememberSelection('sc-scan-template', e.target.value));
   document.getElementById('sc-inv-template').addEventListener('change', e => { rememberSelection('sc-inv-template', e.target.value); computeFuel(); });
   document.getElementById('sc-debris-refresh').addEventListener('click', loadDebris);
@@ -388,6 +392,12 @@ async function loadCargoShips() {
       return { shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl, cap: Math.floor(s.cargoCapacity * (1 + b)) };
     })
     .sort((a, b) => b.cap - a.cap);
+  // Restore the remembered cargo-type selection (survives tabs/sessions).
+  const saved = (await rememberedSelections())['sc-cargo-ships'];
+  if (Array.isArray(saved)) {
+    scCargoSel.clear();
+    for (const id of saved) if (scCargoShips.some(s => s.shipDefId === id)) scCargoSel.add(id);
+  }
   renderCargoToggles();
 }
 
@@ -426,6 +436,7 @@ function renderCargoToggles() {
     }
     b.addEventListener('click', () => {
       if (on) scCargoSel.delete(s.shipDefId); else scCargoSel.add(s.shipDefId);
+      rememberSelection('sc-cargo-ships', [...scCargoSel]);
       renderCargoToggles();
       computeDebrisFuel();
     });

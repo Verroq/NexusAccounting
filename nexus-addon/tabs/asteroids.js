@@ -64,6 +64,10 @@ export async function initAsteroidsTab() {
     if (p.isHomeworld) o.selected = true;
     pSel.appendChild(o);
   }
+  const savedSel = await rememberedSelections();
+  if (savedSel['af-planet'] && afPlanets.some(p => String(p.id) === savedSel['af-planet'])) {
+    pSel.value = savedSel['af-planet'];   // remembered planet survives tabs/sessions
+  }
 
   drawTypeIcons();
   drawZoneToggles();
@@ -75,7 +79,7 @@ export async function initAsteroidsTab() {
     if (area === 'local' && changes.fleet_templates) refreshTemplates();
   });
 
-  pSel.addEventListener('change', () => { setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
+  pSel.addEventListener('change', () => { rememberSelection('af-planet', pSel.value); setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
   document.getElementById('af-scan').addEventListener('click', scan);
   document.getElementById('af-template-select').addEventListener('change', e => { rememberSelection('af-template-select', e.target.value); computeFuel(); });
   document.getElementById('af-results-head').addEventListener('click', e => {
