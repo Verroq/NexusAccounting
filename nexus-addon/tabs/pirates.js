@@ -1,6 +1,6 @@
 // Pirates tab.
 
-import { EXTRA_RES_KEYS_UI, PER_PAGE, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, store, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, PER_PAGE, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, store, windowActive, zoneCell } from '../common.js';
 
 export let chartPirateLoot, chartPirateOutcomes;
 
@@ -10,7 +10,7 @@ export let pirateCurrentPage = 1;
 
 export function getPirateTotalsForMode() {
   const mode = getMode();
-  if (mode === 'all' && isUnfiltered()) return store.pirate_totals || {};
+  if (mode === 'all' && isUnfiltered() && !windowActive()) return store.pirate_totals || {};
   return recordsForMode(store.pirate_recent_reports, mode).reduce((t, r) => ({
     ore: t.ore + (r.ore || 0),
     hydrogen: t.hydrogen + (r.hydrogen || 0),
@@ -25,13 +25,13 @@ export function getPirateTotalsForMode() {
 
 export function getPirateLostForMode() {
   const mode = getMode();
-  if (mode === 'all' && isUnfiltered()) return store.pirate_resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+  if (mode === 'all' && isUnfiltered() && !windowActive()) return store.pirate_resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
   return computeResourcesLost(recordsForMode(store.pirate_recent_reports, mode), store.ships || {});
 }
 
 export function getPirateDebrisForMode() {
   const mode = getMode();
-  if (mode === 'all' && isUnfiltered()) return store.pirate_debris_total || { ore: 0, alloys: 0, silicates: 0 };
+  if (mode === 'all' && isUnfiltered() && !windowActive()) return store.pirate_debris_total || { ore: 0, alloys: 0, silicates: 0 };
   return recordsForMode(store.pirate_recent_reports, mode).reduce((t, r) => ({
     ore: t.ore + (r.debris_ore || 0),
     alloys: t.alloys + (r.debris_alloys || 0),
@@ -41,7 +41,7 @@ export function getPirateDebrisForMode() {
 
 export function getPirateOutcomesForMode() {
   const mode = getMode();
-  if (mode === 'all' && isUnfiltered()) return store.pirate_outcomes || [];
+  if (mode === 'all' && isUnfiltered() && !windowActive()) return store.pirate_outcomes || [];
   const map = {};
   for (const r of recordsForMode(store.pirate_recent_reports, mode)) {
     const o = r.outcome || 'unknown';
@@ -56,7 +56,7 @@ export function getPirateOutcomesForMode() {
 
 export function getPirateSeriesForMode() {
   const mode = getMode();
-  if (mode !== 'hourly' && isUnfiltered()) return store.pirate_daily || [];
+  if (mode !== 'hourly' && isUnfiltered() && !windowActive()) return store.pirate_daily || [];
   return computeSeries(filterZone(store.pirate_recent_reports || []), mode,
     { ...SERIES_GETTERS, raids: () => 1 });
 }

@@ -4,7 +4,7 @@
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-import { activeTab, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setStore, store } from './common.js';
+import { activeTab, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setStore, store } from './common.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
 import { initAsteroidsTab } from './tabs/asteroids.js';
@@ -207,9 +207,25 @@ export function onViewChange() {
   renderAll();
 }
 
-document.getElementById('mode-select').addEventListener('change', onViewChange);
+// Switching View fills the Days picker: All time clears it (= all history),
+// Daily/Hourly = today, Last N = a trailing range. The user can still edit it.
+document.getElementById('mode-select').addEventListener('change', () => {
+  const mode = getMode();
+  const from = document.getElementById('window-from');
+  const to = document.getElementById('window-to');
+  const span = { last3: 3, last7: 7, last30: 30 }[mode];
+  if (mode === 'all') {
+    from.value = ''; to.value = '';
+  } else {
+    const now = Date.now();
+    to.value = dayKey(now);
+    from.value = dayKey(now - ((span || 1) - 1) * 86400000);
+  }
+  onViewChange();
+});
 document.getElementById('zone-select').addEventListener('change', onViewChange);
-document.getElementById('window-select').addEventListener('change', onViewChange);
+document.getElementById('window-from').addEventListener('change', onViewChange);
+document.getElementById('window-to').addEventListener('change', onViewChange);
 document.getElementById('event-select').addEventListener('change', () => { setCurrentPage(1); renderAll(); });
 
 document.getElementById('btn-reset').addEventListener('click', async function () {

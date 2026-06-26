@@ -2,7 +2,7 @@
 
 // ── Expeditions tab ────────────────────────────────────────────────────────
 
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, latestBucket, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderPagedTable, store, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartExpeditions, chartExpComp;
 
@@ -23,13 +23,14 @@ export function expUnfiltered() {
 // Records for the current view, zone and class filters.
 export function expRecordsForMode(mode) {
   const filtered = filterClass(filterZone(store.exp_recent_reports || []));
-  return mode === 'all' ? filtered : latestBucket(filtered, mode);
+  if (mode === 'all' && !windowActive()) return filtered;
+  return inWindowRange(filtered);
 }
 
 // Per-report records carry the full loot map, so all resources (rares included)
 // work in every view mode + zone + class.
 export function getExpTotalsForMode(mode) {
-  if (mode === 'all' && expUnfiltered()) {
+  if (mode === 'all' && expUnfiltered() && !windowActive()) {
     return store.exp_totals || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
   }
   const t = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
