@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, confirmDialog, fuelEstimate, renderAvailStrip } from '../common.js';
+import { applySort, attachSortable, confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -58,7 +58,8 @@ export async function initScoutingTab() {
   document.getElementById('sc-scan').addEventListener('click', launchScan);
   document.getElementById('sc-refresh').addEventListener('click', loadActiveSurveys);
   document.getElementById('sc-planet').addEventListener('change', () => { renderSurveys(); computeDebrisFuel(); updateAvail(); });
-  document.getElementById('sc-inv-template').addEventListener('change', computeFuel);
+  document.getElementById('sc-scan-template').addEventListener('change', e => rememberSelection('sc-scan-template', e.target.value));
+  document.getElementById('sc-inv-template').addEventListener('change', e => { rememberSelection('sc-inv-template', e.target.value); computeFuel(); });
   document.getElementById('sc-debris-refresh').addEventListener('click', loadDebris);
   document.getElementById('sc-debris-hidden').addEventListener('click', () => { scShowHidden = !scShowHidden; renderDebris(); });
   await loadCargoShips();
@@ -80,9 +81,10 @@ export async function initScoutingTab() {
 
 async function refreshTemplates() {
   scTemplates = await loadFleetTemplates();
+  const saved = await rememberedSelections();
   for (const id of ['sc-scan-template', 'sc-inv-template']) {
     const sel = document.getElementById(id);
-    const cur = sel.value;
+    const want = saved[id] || sel.value;   // remembered choice survives tabs/sessions
     sel.textContent = '';
     if (!scTemplates.length) {
       const o = document.createElement('option');
@@ -95,7 +97,7 @@ async function refreshTemplates() {
       o.value = t.id; o.textContent = t.name;
       sel.appendChild(o);
     }
-    if (cur && scTemplates.some(t => String(t.id) === cur)) sel.value = cur;
+    if (want && scTemplates.some(t => String(t.id) === want)) sel.value = want;
   }
 }
 

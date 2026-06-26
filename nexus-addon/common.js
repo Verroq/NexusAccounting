@@ -189,6 +189,17 @@ export function renderAvailStrip(box, ships, available, emptyMsg) {
   }
 }
 
+// Remember template-dropdown choices (by element id) across tabs and sessions.
+export async function rememberedSelections() {
+  const { template_selections } = await browser.storage.local.get('template_selections');
+  return template_selections || {};
+}
+export async function rememberSelection(id, value) {
+  const cur = await rememberedSelections();
+  cur[id] = value;
+  await browser.storage.local.set({ template_selections: cur });
+}
+
 export function fmt(n) {
   return n == null ? '0' : Number(n).toLocaleString();
 }

@@ -8,7 +8,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { confirmDialog, fuelEstimate, renderAvailStrip } from '../common.js';
+import { confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // asteroid fieldType → resource icon + label
@@ -77,7 +77,7 @@ export async function initAsteroidsTab() {
 
   pSel.addEventListener('change', () => { setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
   document.getElementById('af-scan').addEventListener('click', scan);
-  document.getElementById('af-template-select').addEventListener('change', computeFuel);
+  document.getElementById('af-template-select').addEventListener('change', e => { rememberSelection('af-template-select', e.target.value); computeFuel(); });
   document.getElementById('af-results-head').addEventListener('click', e => {
     const th = e.target.closest('th.sortable');
     if (!th) return;
@@ -288,7 +288,8 @@ function distance(f) {
 async function refreshTemplates() {
   afTemplates = await loadFleetTemplates();
   const sel = document.getElementById('af-template-select');
-  const cur = sel.value;
+  const saved = await rememberedSelections();
+  const want = saved['af-template-select'] || sel.value;   // survives tabs/sessions
   sel.textContent = '';
   if (!afTemplates.length) {
     const o = document.createElement('option');
@@ -301,7 +302,7 @@ async function refreshTemplates() {
     o.value = t.id; o.textContent = t.name;
     sel.appendChild(o);
   }
-  if (cur && afTemplates.some(t => String(t.id) === cur)) sel.value = cur;
+  if (want && afTemplates.some(t => String(t.id) === want)) sel.value = want;
 }
 
 // Dispatch the selected template's fleet to a field, after a confirmation.
