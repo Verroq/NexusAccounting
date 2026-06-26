@@ -39,6 +39,9 @@
     <select id="mode-select">
       <option value="all">All time</option>
       <option value="daily">Daily</option>
+      <option value="last3">Last 3 days</option>
+      <option value="last7">Last 7 days</option>
+      <option value="last30">Last month</option>
       <option value="hourly">Hourly</option>
     </select>
     <label for="window-from" style="margin-left:12px;">Days:</label>
@@ -248,7 +251,11 @@
     <div class="stats" id="m-stats-net"></div>
 
     <div class="charts">
-      <div class="chart-box" style="grid-column: 1 / -1;">
+      <div class="chart-box">
+        <h2>Loot composition</h2>
+        <canvas id="chart-mining-loot"></canvas>
+      </div>
+      <div class="chart-box">
         <h2>Deliveries per period</h2>
         <canvas id="chart-mining"></canvas>
       </div>

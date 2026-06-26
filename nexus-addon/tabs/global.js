@@ -1,7 +1,7 @@
 // Global tab: totals aggregated across every source, honouring the View,
 // Zone and Window selectors.
 
-import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, bucketKey, combinedLost, computeResourcesLost, computeSeries, emptyResources, fmt, fuelForMode, getLabelKey, getMode, getZone, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderNetCards, resourceVal, store } from '../common.js';
+import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, combinedLost, computeResourcesLost, computeSeries, dayKey, emptyResources, fmt, fuelForMode, getLabelKey, getMode, getWindowRange, getZone, makeResourceDoughnut, windowActive, makeResourceLineChart, makeStatCard, periodLabelFor, renderNetCards, resourceVal, store } from '../common.js';
 
 export let chartGlobal, chartGlobalPeriod, chartGlobalSrc;
 
@@ -70,7 +70,7 @@ export function renderGlobalTab() {
   const mode = getMode();
   const periodLabel = periodLabelFor(mode);
   const ships = store.ships || {};
-  const allTime = mode === 'all' && getZone() === 'all';
+  const allTime = mode === 'all' && getZone() === 'all' && !windowActive();
 
   const fuel = fuelForMode('all', mode);
   let collected, lost, bySrc, ops;
@@ -95,12 +95,11 @@ export function renderGlobalTab() {
       + (store.exp_totals?.missions || 0);
   } else {
     let items = globalRecords().filter(w => getZone() === 'all' || w.r.zone === getZone());
-    if (mode !== 'all') {
-      const keyFn = w => bucketKey(w.r.created_at, mode === 'hourly');
-      const keys = items.map(keyFn).sort();
-      const latest = keys[keys.length - 1];
-      items = items.filter(w => keyFn(w) === latest);
-    }
+    const { from, to } = getWindowRange();
+    if (from || to) items = items.filter(w => {
+      const day = dayKey(w.r.created_at);
+      return (!from || day >= from) && (!to || day <= to);
+    });
     const recs = items.map(w => w.r);
     collected = sumResources(recs);
     lost = computeResourcesLost(recs, ships);
@@ -147,7 +146,19 @@ export function renderSourceShare(bySrc) {
     options: {
       responsive: true,
       plugins: {
-        legend: { labels: { color: '#e6edf3' } },
+        legend: {
+          position: 'right',
+          labels: {
+            color: '#e6edf3', font: { size: 11 },
+            generateLabels: () => entries.map(([src, v], i) => ({
+              text: `${src} — ${totalV ? ((v / totalV) * 100).toFixed(1) : 0}%`,
+              fillStyle: SOURCE_COLORS[src],
+              strokeStyle: SOURCE_COLORS[src],
+              fontColor: '#e6edf3',
+              index: i,
+            })),
+          },
+        },
         tooltip: {
           callbacks: {
             label: c => {

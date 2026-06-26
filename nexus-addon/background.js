@@ -1227,6 +1227,7 @@ async function processMiningReports(reports, ships, zones = {}) {
       cycles: r.cycleCount || 0,
       drill_breakdowns: r.drillBreakdowns || 0,
       ships_lost: nLost,
+      ships_lost_detail: lostDetail,   // shipDefId→qty, so losses can be valued per period
       stolen_total: Object.values(stolen).reduce((s, v) => s + v, 0),
       combat_outcome: r.combatOutcome || null,
     });

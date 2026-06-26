@@ -207,7 +207,7 @@ export function fmt(n) {
 // ── Mode-aware data helpers ────────────────────────────────────────────────
 
 export function getMode() {
-  return document.getElementById('mode-select').value; // 'all' | 'daily' | 'hourly'
+  return document.getElementById('mode-select').value; // 'all'|'daily'|'last3'|'last7'|'last30'|'hourly'
 }
 
 // Local-time bucket keys. created_at is stored as UTC/server time; bucketing on
@@ -225,11 +225,27 @@ export function bucketKey(ts, byHour) {
   return byHour ? hourKey(ts) : dayKey(ts);
 }
 
-// Day range the graph shows, as { from, to } 'YYYY-MM-DD' strings ('' = open).
+// Day range from the Days picker, as { from, to } 'YYYY-MM-DD' ('' = open).
 export function getWindowRange() {
   const f = document.getElementById('window-from');
   const t = document.getElementById('window-to');
   return { from: f ? f.value : '', to: t ? t.value : '' };
+}
+
+// True when the Days picker has a From and/or To set (a range is in effect).
+export function windowActive() {
+  const { from, to } = getWindowRange();
+  return !!(from || to);
+}
+
+// Filter records to the Days picker range (by local day). Open range = all.
+export function inWindowRange(records) {
+  const { from, to } = getWindowRange();
+  if (!from && !to) return records || [];
+  return (records || []).filter(r => {
+    const day = dayKey(r.created_at);
+    return (!from || day >= from) && (!to || day <= to);
+  });
 }
 
 // Fuel (hydrogen) spent, summed from the per-mission fuel log for a tab type
@@ -239,7 +255,7 @@ export function fuelForMode(type, mode) {
   let rows = store.fuel_log || [];
   if (type !== 'all') rows = rows.filter(e => e.type === type);
   rows = filterZone(rows);
-  if (mode !== 'all') rows = latestBucket(rows, mode);
+  if (mode !== 'all') rows = inWindowRange(rows);
   return rows.reduce((s, e) => s + (e.fuel || 0), 0);
 }
 
@@ -266,8 +282,13 @@ export function getLabelKey(mode) {
   return mode === 'hourly' ? 'hour' : 'day';
 }
 
+const shortDate = s => new Date(`${s}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 export function periodLabelFor(mode) {
-  return mode === 'all' ? '' : mode === 'daily' ? ' (latest day)' : ' (latest hour)';
+  if (mode === 'all') return '';
+  const { from, to } = getWindowRange();
+  if (!from && !to) return '';
+  if (from && to) return from === to ? ` (${shortDate(from)})` : ` (${shortDate(from)}–${shortDate(to)})`;
+  return from ? ` (from ${shortDate(from)})` : ` (to ${shortDate(to)})`;
 }
 
 // ── Shared per-tab helpers ─────────────────────────────────────────────────
@@ -275,22 +296,12 @@ export function periodLabelFor(mode) {
 // report history, optionally compute an hourly series, and draw the standard
 // three-resource line chart. The per-tab code only supplies field getters.
 
-// Latest day/hour slice of a report list for daily/hourly view modes.
-export function latestBucket(reports, mode) {
-  const byHour = mode === 'hourly';
-  if (!reports.length) return [];
-  const latestKey = reports.reduce((best, r) => {
-    const k = bucketKey(r.created_at, byHour);
-    return k > best ? k : best;
-  }, '');
-  return reports.filter(r => bucketKey(r.created_at, byHour) === latestKey);
-}
-
 // Records to aggregate for the current mode + zone: zone-filtered all-time for
-// 'all' mode, else the latest day/hour bucket of the zone-filtered records.
+// 'all' mode, else the zone-filtered records within the Days picker range.
 export function recordsForMode(allRecords, mode) {
   const filtered = filterZone(allRecords || []);
-  return mode === 'all' ? filtered : latestBucket(filtered, mode);
+  if (mode === 'all' && !windowActive()) return filtered;   // a set range overrides All time
+  return inWindowRange(filtered);
 }
 
 // Time series grouped by day (all/daily modes) or hour (hourly mode).

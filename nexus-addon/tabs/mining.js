@@ -2,14 +2,26 @@
 
 // ── Mining tab ─────────────────────────────────────────────────────────────
 
-import { EXTRA_RES_KEYS_UI, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeSeries, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, zeroCell, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
-export let chartMining;
+// Ship-cost losses for the current period. All-time + all-zones uses the
+// precomputed valuation; otherwise it's re-valued from the period's reports
+// (reports stored before ships_lost_detail was tracked value as 0).
+function getMiningLostForMode(mode) {
+  if (mode === 'all' && isUnfiltered() && !windowActive()) {
+    return store.mining_resources_lost?.destroyed
+      ? store.mining_resources_lost
+      : { destroyed: emptyResources(), repair: emptyResources() };
+  }
+  return computeResourcesLost(recordsForMode(store.mining_recent_reports, mode), store.ships || {});
+}
+
+export let chartMining, chartMiningLoot;
 
 export let miningPage = 1;
 
 export function getMiningTotalsForMode(mode) {
-  if (mode === 'all' && isUnfiltered()) {
+  if (mode === 'all' && isUnfiltered() && !windowActive()) {
     return store.mining_totals || {
       ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
       deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
@@ -30,7 +42,7 @@ export function getMiningTotalsForMode(mode) {
 }
 
 export function getMiningSeriesForMode(mode) {
-  if (mode !== 'hourly' && isUnfiltered()) return store.mining_daily || [];
+  if (mode !== 'hourly' && isUnfiltered() && !windowActive()) return store.mining_daily || [];
   return computeSeries(filterZone(store.mining_recent_reports || []), mode,
     { ...SERIES_GETTERS, deliveries: () => 1 });
 }
@@ -58,7 +70,7 @@ export function renderMiningTab() {
 
   const ops = document.getElementById('m-stats-ops');
   ops.textContent = '';
-  const stolenTotal = (mode === 'all' && isUnfiltered())
+  const stolenTotal = (mode === 'all' && isUnfiltered() && !windowActive())
     ? (t.stolen
         ? (t.stolen.ore + t.stolen.silicates + t.stolen.hydrogen + t.stolen.alloys +
            Object.values(t.stolen.rare || {}).reduce((s, v) => s + v, 0))
@@ -73,16 +85,14 @@ export function renderMiningTab() {
     makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('mining', getMode())), 'hydrogen'),
   );
 
-  const rl = store.mining_resources_lost?.destroyed
-    ? store.mining_resources_lost
-    : { destroyed: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} }, repair: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} } };
-  renderLostCards('m-stats-lost', 'm-stats-repair', rl, '');
+  const rl = getMiningLostForMode(mode);
+  renderLostCards('m-stats-lost', 'm-stats-repair', rl, periodLabel);
 
-  // Net needs the loss valuation, which only exists in unfiltered all-time.
-  const netVisible = mode === 'all' && isUnfiltered();
-  document.getElementById('m-net-label').style.display = netVisible ? '' : 'none';
-  document.getElementById('m-stats-net').style.display = netVisible ? '' : 'none';
-  if (netVisible) renderNetCards('m-stats-net', t, rl, '', fuelForMode('mining', 'all'));
+  // Net = delivered loot − ship-cost losses − fuel, for the current period.
+  renderNetCards('m-stats-net', t, rl, periodLabel, fuelForMode('mining', getMode()));
+
+  if (chartMiningLoot) chartMiningLoot.destroy();
+  chartMiningLoot = makeResourceDoughnut('chart-mining-loot', t);
 
   if (chartMining) chartMining.destroy();
   chartMining = makeResourceLineChart('chart-mining', getMiningSeriesForMode(mode), getLabelKey(mode), { field: 'deliveries', label: 'Deliveries' });

@@ -2,7 +2,7 @@
 
 // ── Debris tab ─────────────────────────────────────────────────────────────
 
-import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, getZone, latestBucket, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, store, zeroCell, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, getZone, inWindowRange, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartDebris, chartDebrisPeriod;
 
@@ -22,10 +22,10 @@ export function getDebrisSeries(mode) {
 // Collected totals for the current view + zone. All-time/unfiltered uses the
 // precise cumulative total; period/zone sums the (capped) collection log.
 export function getDebrisCollectedForMode(mode) {
-  if (mode === 'all' && getZone() === 'all') {
+  if (mode === 'all' && getZone() === 'all' && !windowActive()) {
     return store.debris_collected || { ore: 0, silicates: 0, alloys: 0, hydrogen: 0 };
   }
-  const rows = filterZone(mode === 'all' ? debrisLog() : latestBucket(debrisLog(), mode));
+  const rows = filterZone((mode === 'all' && !windowActive()) ? debrisLog() : inWindowRange(debrisLog()));
   const t = { ore: 0, silicates: 0, hydrogen: 0 };
   for (const r of rows) {
     t.ore += r.ore || 0; t.silicates += r.silicates || 0; t.hydrogen += r.hydrogen || 0;
@@ -48,7 +48,7 @@ export function renderDebrisTab() {
   );
   appendExtraResourceCards(mineEl, mine, periodLabel);
   mineEl.append(
-    makeStatCard(`Runs${periodLabel}`, fmt(filterZone(mode === 'all' ? debrisLog() : latestBucket(debrisLog(), mode)).length), 'missions'),
+    makeStatCard(`Runs${periodLabel}`, fmt(filterZone((mode === 'all' && !windowActive()) ? debrisLog() : inWindowRange(debrisLog())).length), 'missions'),
     makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('debris', mode)), 'hydrogen'),
   );
 

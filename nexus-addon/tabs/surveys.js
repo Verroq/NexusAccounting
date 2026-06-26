@@ -1,6 +1,6 @@
 // Surveys tab.
 
-import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, SCALE_OPTS, SERIES_GETTERS, appendExtraResourceCards, computeEventBreakdown, computeResourcesLost, computeSeries, filterZone, fmt, fuelForMode, getMode, isUnfiltered, latestBucket, makeResourceLineChart, makeStatCard, recordsForMode, renderLostCards, store, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, SCALE_OPTS, SERIES_GETTERS, appendExtraResourceCards, computeEventBreakdown, computeResourcesLost, computeSeries, filterZone, fmt, fuelForMode, getMode, inWindowRange, isUnfiltered, makeResourceLineChart, makeStatCard, recordsForMode, renderLostCards, store, windowActive, zoneCell } from '../common.js';
 
 export let chartResources, chartEvents, chartByEvent;
 
@@ -22,13 +22,14 @@ export function surveyUnfiltered() {
 // Records for the current view, zone and event filters.
 export function surveyRecordsForMode(mode) {
   const filtered = filterEvent(filterZone(store.recent_reports || []));
-  return mode === 'all' ? filtered : latestBucket(filtered, mode);
+  if (mode === 'all' && !windowActive()) return filtered;
+  return inWindowRange(filtered);
 }
 
 // Returns {ore, hydrogen, silicates, missions, ships_lost} for the current view.
 export function getTotalsForMode() {
   const mode = getMode();
-  if (mode === 'all' && surveyUnfiltered()) return store.totals || {};
+  if (mode === 'all' && surveyUnfiltered() && !windowActive()) return store.totals || {};
   return surveyRecordsForMode(mode).reduce((t, r) => {
     t.ore += r.ore || 0; t.hydrogen += r.hydrogen || 0; t.silicates += r.silicates || 0;
     t.missions += 1; t.ships_lost += r.ships_lost || 0;
@@ -40,7 +41,7 @@ export function getTotalsForMode() {
 // Returns resources-lost for the current view.
 export function getResourcesLostForMode() {
   const mode = getMode();
-  if (mode === 'all' && surveyUnfiltered()) return store.resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+  if (mode === 'all' && surveyUnfiltered() && !windowActive()) return store.resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
   return computeResourcesLost(surveyRecordsForMode(mode), store.ships || {});
 }
 
@@ -48,14 +49,14 @@ export function getResourcesLostForMode() {
 // context, so it always shows the full distribution).
 export function getEventBreakdownForMode() {
   const mode = getMode();
-  if (mode === 'all' && isUnfiltered()) return store.event_breakdown || [];
+  if (mode === 'all' && isUnfiltered() && !windowActive()) return store.event_breakdown || [];
   return computeEventBreakdown(recordsForMode(store.recent_reports, mode));
 }
 
 // Returns time-series data array for the resources-over-time chart.
 export function getSeriesForMode() {
   const mode = getMode();
-  if (mode !== 'hourly' && surveyUnfiltered()) return store.daily || [];
+  if (mode !== 'hourly' && surveyUnfiltered() && !windowActive()) return store.daily || [];
   return computeSeries(filterEvent(filterZone(store.recent_reports || [])), mode,
     { ...SERIES_GETTERS, missions: () => 1 });
 }
