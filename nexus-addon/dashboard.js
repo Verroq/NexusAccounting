@@ -209,7 +209,8 @@ export function onViewChange() {
 
 document.getElementById('mode-select').addEventListener('change', onViewChange);
 document.getElementById('zone-select').addEventListener('change', onViewChange);
-document.getElementById('window-select').addEventListener('change', onViewChange);
+document.getElementById('window-from').addEventListener('change', onViewChange);
+document.getElementById('window-to').addEventListener('change', onViewChange);
 document.getElementById('event-select').addEventListener('change', () => { setCurrentPage(1); renderAll(); });
 
 document.getElementById('btn-reset').addEventListener('click', async function () {

@@ -41,14 +41,12 @@
       <option value="daily">Daily</option>
       <option value="hourly">Hourly</option>
     </select>
-    <label for="window-select" style="margin-left:12px;">Window:</label>
-    <select id="window-select" title="How many days/hours of history the graph shows.">
-      <option value="5" selected>Last 5</option>
-      <option value="7">Last 7</option>
-      <option value="14">Last 14</option>
-      <option value="30">Last 30</option>
-      <option value="0">All</option>
-    </select>
+    <label for="window-from" style="margin-left:12px;">Days:</label>
+    <input type="date" id="window-from" title="Show data from this day (empty = earliest)."
+      style="background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:3px 6px; border-radius:6px; font-size:0.85rem; color-scheme:dark;" />
+    <span style="color:#8b949e;">–</span>
+    <input type="date" id="window-to" title="Show data up to this day (empty = latest)."
+      style="background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:3px 6px; border-radius:6px; font-size:0.85rem; color-scheme:dark;" />
     <label for="zone-select" style="margin-left:12px;">Zone:</label>
     <select id="zone-select" title="Filter by the security zone where data was gathered. Zone-filtered totals are computed from the stored (capped) records.">
       <option value="all">All zones</option>

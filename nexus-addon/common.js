@@ -210,10 +210,26 @@ export function getMode() {
   return document.getElementById('mode-select').value; // 'all' | 'daily' | 'hourly'
 }
 
-// Number of trailing buckets (days or hours) the graph shows; 0 = all.
-export function getWindow() {
-  const el = document.getElementById('window-select');
-  return el ? (parseInt(el.value, 10) || 0) : 5;
+// Local-time bucket keys. created_at is stored as UTC/server time; bucketing on
+// the raw ISO string mis-files reports near local midnight by the UTC offset.
+const pad2 = n => String(n).padStart(2, '0');
+export function dayKey(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+export function hourKey(ts) {
+  const d = new Date(ts);
+  return `${dayKey(d)}T${pad2(d.getHours())}:00`;
+}
+export function bucketKey(ts, byHour) {
+  return byHour ? hourKey(ts) : dayKey(ts);
+}
+
+// Day range the graph shows, as { from, to } 'YYYY-MM-DD' strings ('' = open).
+export function getWindowRange() {
+  const f = document.getElementById('window-from');
+  const t = document.getElementById('window-to');
+  return { from: f ? f.value : '', to: t ? t.value : '' };
 }
 
 // Fuel (hydrogen) spent, summed from the per-mission fuel log for a tab type
@@ -261,15 +277,13 @@ export function periodLabelFor(mode) {
 
 // Latest day/hour slice of a report list for daily/hourly view modes.
 export function latestBucket(reports, mode) {
-  const keyFn = r => mode === 'daily'
-    ? r.created_at.slice(0, 10)
-    : r.created_at.slice(0, 13) + ':00';
+  const byHour = mode === 'hourly';
   if (!reports.length) return [];
   const latestKey = reports.reduce((best, r) => {
-    const k = keyFn(r);
+    const k = bucketKey(r.created_at, byHour);
     return k > best ? k : best;
   }, '');
-  return reports.filter(r => keyFn(r) === latestKey);
+  return reports.filter(r => bucketKey(r.created_at, byHour) === latestKey);
 }
 
 // Records to aggregate for the current mode + zone: zone-filtered all-time for
@@ -287,7 +301,7 @@ export function computeSeries(reports, mode, fieldGetters) {
   const fields = Object.keys(fieldGetters);
   const map = {};
   for (const r of reports) {
-    const k = byHour ? r.created_at.slice(0, 13) + ':00' : r.created_at.slice(0, 10);
+    const k = bucketKey(r.created_at, byHour);
     if (!map[k]) {
       map[k] = { [keyName]: k };
       for (const f of fields) map[k][f] = 0;
@@ -299,27 +313,30 @@ export function computeSeries(reports, mode, fieldGetters) {
 
   // Fill empty days/hours with zero rows so the time axis stays continuous —
   // otherwise the chart's equal-spaced labels misrepresent gaps in activity.
-  const step = byHour ? 3600000 : 86400000;
-  const toDate = k => new Date(byHour ? `${k}:00Z` : `${k}T00:00:00Z`);
-  const fmt = d => byHour ? d.toISOString().slice(0, 13) + ':00' : d.toISOString().slice(0, 10);
+  // Step in LOCAL calendar units (handles the UTC offset and DST correctly).
+  const toDate = k => new Date(byHour ? `${k}:00` : `${k}T00:00:00`);   // local time
   const blank = k => { const o = { [keyName]: k }; for (const f of fields) o[f] = 0; return o; };
   const out = [];
-  const end = toDate(keys[keys.length - 1]).getTime();
-  let t = toDate(keys[0]).getTime(), guard = 0;
-  while (t <= end && guard++ < 100000) {
-    const k = fmt(new Date(t));
+  const endD = toDate(keys[keys.length - 1]);
+  let cur = toDate(keys[0]), guard = 0;
+  while (cur <= endD && guard++ < 100000) {
+    const k = bucketKey(cur, byHour);
     out.push(map[k] || blank(k));
-    t += step;
+    if (byHour) cur.setHours(cur.getHours() + 1); else cur.setDate(cur.getDate() + 1);
   }
-  const win = getWindow();
-  return win > 0 ? out.slice(-win) : out;
+  const { from, to } = getWindowRange();
+  if (!from && !to) return out;
+  return out.filter(o => {
+    const day = String(o[keyName] || '').slice(0, 10);   // 'hour' keys are YYYY-MM-DDTHH:00
+    return (!from || day >= from) && (!to || day <= to);
+  });
 }
 
 // Hourly series from report history. fieldGetters: { field: r => value }.
 export function computeHourlySeries(reports, fieldGetters) {
   const map = {};
   for (const r of reports) {
-    const hour = r.created_at.slice(0, 13) + ':00';
+    const hour = hourKey(r.created_at);
     if (!map[hour]) {
       map[hour] = { hour };
       for (const f of Object.keys(fieldGetters)) map[hour][f] = 0;

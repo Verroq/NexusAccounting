@@ -1,7 +1,7 @@
 // Global tab: totals aggregated across every source, honouring the View,
 // Zone and Window selectors.
 
-import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, combinedLost, computeResourcesLost, computeSeries, emptyResources, fmt, fuelForMode, getLabelKey, getMode, getZone, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderNetCards, resourceVal, store } from '../common.js';
+import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, bucketKey, combinedLost, computeResourcesLost, computeSeries, emptyResources, fmt, fuelForMode, getLabelKey, getMode, getZone, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderNetCards, resourceVal, store } from '../common.js';
 
 export let chartGlobal, chartGlobalPeriod, chartGlobalSrc;
 
@@ -96,7 +96,7 @@ export function renderGlobalTab() {
   } else {
     let items = globalRecords().filter(w => getZone() === 'all' || w.r.zone === getZone());
     if (mode !== 'all') {
-      const keyFn = w => (mode === 'daily' ? w.r.created_at.slice(0, 10) : w.r.created_at.slice(0, 13));
+      const keyFn = w => bucketKey(w.r.created_at, mode === 'hourly');
       const keys = items.map(keyFn).sort();
       const latest = keys[keys.length - 1];
       items = items.filter(w => keyFn(w) === latest);
