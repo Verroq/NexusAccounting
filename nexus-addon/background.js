@@ -403,6 +403,22 @@ function missionFuel(mo, ships) {
   return Math.round(rate * (FUEL_K * mo.distance + FUEL_BASE));
 }
 
+// Exact fuel from the game's own fuel-estimate, using the mission's real fleet
+// and route. Returns null if the route/fleet is incomplete or no game tab is
+// open (the POST must route through one) — caller falls back to missionFuel().
+async function apiMissionFuel(m) {
+  if (m.sourcePlanetId == null || m.targetSystemId == null) return null;
+  const ships = (m.fleetComposition || [])
+    .map(f => ({ shipDefId: f.shipDefId, quantity: f.quantity || 1 }))
+    .filter(s => s.shipDefId != null && s.quantity > 0);
+  if (!ships.length) return null;
+  const r = await gamePost('/api/fleet/fuel-estimate', {
+    sourcePlanetId: m.sourcePlanetId, targetSystemId: m.targetSystemId, ships,
+  });
+  const data = (r && r.ok) ? r.data : r;
+  return (data && data.error == null && data.fuelCost != null) ? data.fuelCost : null;
+}
+
 // Current stationed fleet as { shipKey: usableQuantity } — for the simulator.
 async function getPlanets() {
   const token = await getToken();
@@ -1373,10 +1389,12 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
     for (const m of missions) {
       if (m.id == null || counted.has(m.id)) continue;
       counted.add(m.id);
-      const fuel = missionFuel({
+      // Prefer the game's exact fuel-estimate; fall back to the fitted formula
+      // when no game tab is open or the route/fleet is incomplete.
+      const fuel = (await apiMissionFuel(m)) ?? missionFuel({
         distance: m.distance,
         fleet: (m.fleetComposition || []).map(f => ({ key: f.shipKey || f.key, quantity: f.quantity || 1 })),
-      }, ships) || 0;
+      }, ships) ?? 0;
       if (!fuel) continue;
       flog.unshift({
         created_at: m.departsAt || m.createdAt || new Date().toISOString(),
