@@ -101,6 +101,9 @@ th.sortable .arrow { margin-left: 4px; color: #58a6ff; }
 .finder-controls input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none; margin: 0;
 }
+input.no-spin { -moz-appearance: textfield; }
+input.no-spin::-webkit-outer-spin-button,
+input.no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .finder-controls select {
   background: #21262d; border: 1px solid #30363d; color: #e6edf3;
   padding: 4px 8px; border-radius: 6px; font-size: 0.85rem;

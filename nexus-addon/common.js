@@ -168,6 +168,15 @@ export async function fuelEstimate(sourcePlanetId, targetSystemId, ships) {
 
 // Fill a box with "On this planet:" + a chip (icon + qty × name) per ship that
 // has a positive count. `ships` is [{ shipDefId, name, imageUrl }] to consider.
+// Clear an availability strip (or show a message) and invalidate its signature,
+// so the next renderAvailStrip with the same data still repaints. Callers must
+// use this instead of box.textContent='' — a raw wipe leaves the cached sig and
+// the strip stays blank.
+export function clearAvailStrip(box, msg = '') {
+  box.textContent = msg;
+  delete box.dataset.availSig;
+}
+
 export function renderAvailStrip(box, ships, available, emptyMsg) {
   const here = ships.filter(s => (available[s.shipDefId] || 0) > 0);
   // Skip rebuild when nothing changed — avoids the empty-frame flash and the
