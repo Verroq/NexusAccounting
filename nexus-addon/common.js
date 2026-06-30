@@ -169,8 +169,13 @@ export async function fuelEstimate(sourcePlanetId, targetSystemId, ships) {
 // Fill a box with "On this planet:" + a chip (icon + qty × name) per ship that
 // has a positive count. `ships` is [{ shipDefId, name, imageUrl }] to consider.
 export function renderAvailStrip(box, ships, available, emptyMsg) {
-  box.textContent = '';
   const here = ships.filter(s => (available[s.shipDefId] || 0) > 0);
+  // Skip rebuild when nothing changed — avoids the empty-frame flash and the
+  // img reload that shifts layout on every poll.
+  const sig = here.map(s => `${s.shipDefId}:${available[s.shipDefId] || 0}`).join('|') || emptyMsg;
+  if (box.dataset.availSig === sig) return;
+  box.dataset.availSig = sig;
+  box.textContent = '';
   const label = document.createElement('span');
   label.textContent = here.length ? 'On this planet:' : emptyMsg;
   box.appendChild(label);
@@ -436,6 +441,8 @@ export function computeEventBreakdown(reports) {
 
 // A damaged ship costs half its build cost to repair.
 export const REPAIR_FACTOR = 0.5;
+// Flat alloy maintenance to repair one mining-drill breakdown (game cost).
+export const DRILL_MAINTENANCE_ALLOY = 75;
 
 export function emptyResources() {
   return { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };

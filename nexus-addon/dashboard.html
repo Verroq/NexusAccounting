@@ -517,6 +517,9 @@
       <label>Qty ≥
         <input id="af-qty-min" type="number" min="0" placeholder="0" />
       </label>
+      <label>Left % ≥
+        <input id="af-left-min" type="number" min="0" max="100" placeholder="0" />
+      </label>
       <label>Nearest systems
         <input id="af-near" type="number" min="1" max="500" value="25" style="width:70px;
                background:#21262d; border:1px solid #30363d; color:#e6edf3;
@@ -617,6 +620,11 @@
       <div class="reports-header">
         <h2>Live debris fields</h2>
         <span id="sc-debris-last" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span id="sc-debris-zone" style="display:flex; gap:4px; margin-left:12px;"></span>
+        <label style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:#8b949e; margin-left:12px;">
+          <input type="checkbox" id="sc-debris-invonly" class="m-switch" title="Show only debris in systems you've investigated before.">
+          Investigated only
+        </label>
         <span style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Collect with:</span>
         <span id="sc-debris-ships" style="display:flex; gap:6px; align-items:center;"></span>
         <button id="sc-debris-hidden" style="display:none;"></button>

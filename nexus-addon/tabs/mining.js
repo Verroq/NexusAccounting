@@ -2,18 +2,31 @@
 
 // ── Mining tab ─────────────────────────────────────────────────────────────
 
-import { EXTRA_RES_KEYS_UI, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { DRILL_MAINTENANCE_ALLOY, EXTRA_RES_KEYS_UI, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
+
+// Add flat drill-breakdown maintenance (alloys) to the repair bucket, without
+// mutating the source object. Net and the Repair card subtract this.
+function withDrillMaintenance(lost, breakdowns) {
+  const alloys = (breakdowns || 0) * DRILL_MAINTENANCE_ALLOY;
+  if (!alloys) return lost;
+  const repair = { ...emptyResources(), ...(lost.repair || {}) };
+  repair.alloys = (repair.alloys || 0) + alloys;
+  return { ...lost, repair };
+}
 
 // Ship-cost losses for the current period. All-time + all-zones uses the
 // precomputed valuation; otherwise it's re-valued from the period's reports
 // (reports stored before ships_lost_detail was tracked value as 0).
 function getMiningLostForMode(mode) {
   if (mode === 'all' && isUnfiltered() && !windowActive()) {
-    return store.mining_resources_lost?.destroyed
+    const base = store.mining_resources_lost?.destroyed
       ? store.mining_resources_lost
       : { destroyed: emptyResources(), repair: emptyResources() };
+    return withDrillMaintenance(base, store.mining_totals?.drill_breakdowns);
   }
-  return computeResourcesLost(recordsForMode(store.mining_recent_reports, mode), store.ships || {});
+  const records = recordsForMode(store.mining_recent_reports, mode);
+  const breakdowns = records.reduce((s, r) => s + (r.drill_breakdowns || 0), 0);
+  return withDrillMaintenance(computeResourcesLost(records, store.ships || {}), breakdowns);
 }
 
 export let chartMining, chartMiningLoot;

@@ -91,7 +91,7 @@ export async function initAsteroidsTab() {
   });
   document.getElementById('af-btn-prev').addEventListener('click', () => { afPage--; renderAsteroids(); });
   document.getElementById('af-btn-next').addEventListener('click', () => { afPage++; renderAsteroids(); });
-  for (const id of ['af-mult-min', 'af-qty-min']) {
+  for (const id of ['af-mult-min', 'af-qty-min', 'af-left-min']) {
     document.getElementById(id).addEventListener('input', e => {
       if (parseFloat(e.target.value) < 0) e.target.value = '';   // positive only
       afPage = 1;
@@ -387,8 +387,10 @@ export function renderAsteroids() {
     return isNaN(v) ? dflt : v;
   };
   const multMin = num('af-mult-min', -Infinity), qtyMin = num('af-qty-min', -Infinity);
+  const leftMin = num('af-left-min', -Infinity);
   rows = rows.filter(f =>
-    (f.mult ?? -Infinity) >= multMin && (f.remaining ?? -Infinity) >= qtyMin);
+    (f.mult ?? -Infinity) >= multMin && (f.remaining ?? -Infinity) >= qtyMin
+    && (f.leftPct ?? -Infinity) >= leftMin);
   const { key, dir } = afSort;
   rows.sort((a, b) => {
     const va = a[key], vb = b[key];

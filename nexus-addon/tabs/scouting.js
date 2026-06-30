@@ -53,7 +53,11 @@ export async function initScoutingTab() {
     pSel.value = savedSel['sc-planet'];   // remembered planet survives tabs/sessions
   }
 
+  await loadSurveyZone();
   drawZoneToggles();
+  await loadDebrisZone();
+  drawDebrisZoneToggles();
+  await loadInvHistory();
   await refreshTemplates();
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.fleet_templates) refreshTemplates();
@@ -66,6 +70,7 @@ export async function initScoutingTab() {
   document.getElementById('sc-inv-template').addEventListener('change', e => { rememberSelection('sc-inv-template', e.target.value); computeFuel(); });
   document.getElementById('sc-debris-refresh').addEventListener('click', loadDebris);
   document.getElementById('sc-debris-hidden').addEventListener('click', () => { scShowHidden = !scShowHidden; renderDebris(); });
+  document.getElementById('sc-debris-invonly').addEventListener('change', e => { scInvestigatedOnly = e.target.checked; renderDebris(); });
   await loadCargoShips();
   updateAvail();
 
@@ -125,24 +130,37 @@ async function templateShips(templateId, planetId) {
 }
 
 // Clickable zone toggles, coloured per zone (mirrors the Asteroids filter).
-// Empty selection means any zone.
-function drawZoneToggles() {
-  const box = document.getElementById('sc-zone');
+// Empty selection means any zone. `redraw` re-renders this set, `onChange` runs
+// extra side effects (e.g. re-filter the debris table).
+function drawToggles(boxId, filter, redraw, onChange) {
+  const box = document.getElementById(boxId);
   box.textContent = '';
   for (const z of ZONES) {
     const b = document.createElement('button');
-    const on = scZoneFilter.has(z);
+    const on = filter.has(z);
     b.type = 'button';
     b.textContent = z;
     b.style.cssText = `padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem;
       border:1px solid ${ZONE_COLOR[z]}; text-transform:capitalize;
       color:${on ? '#0d1117' : ZONE_COLOR[z]}; background:${on ? ZONE_COLOR[z] : 'transparent'};`;
     b.addEventListener('click', () => {
-      if (on) scZoneFilter.delete(z); else scZoneFilter.add(z);
-      drawZoneToggles();
+      if (on) filter.delete(z); else filter.add(z);
+      redraw();
+      if (onChange) onChange();
     });
     box.appendChild(b);
   }
+}
+
+// Survey-target zone filter (top of tab), persisted.
+function drawZoneToggles() {
+  drawToggles('sc-zone', scZoneFilter, drawZoneToggles, saveSurveyZone);
+}
+
+// Debris-table zone filter — independent from the survey filter above, persisted.
+function drawDebrisZoneToggles() {
+  drawToggles('sc-debris-zone', scDebrisZoneFilter, drawDebrisZoneToggles,
+    () => { saveDebrisZone(); renderDebris(); });
 }
 
 // Nearest system to the source planet that isn't on survey cooldown and, if any
@@ -234,7 +252,16 @@ async function loadActiveSurveys() {
   scPending = (res.reports || [])
     .filter(r => !r.investigated && (!r.anomalyExpiresAt || new Date(r.anomalyExpiresAt) > now))
     .sort((a, b) => exp(a) - exp(b));   // soonest expiry first
+  let histChanged = false;
+  for (const r of (res.reports || [])) {
+    if (r.investigated && r.systemId != null && !scInvHistory.has(r.systemId)) {
+      scInvHistory.set(r.systemId, Date.parse(r.createdAt) || Date.now()); histChanged = true;
+    }
+  }
+  if (pruneInvHistory()) histChanged = true;
+  if (histChanged) saveInvHistory();
   renderSurveys();
+  if (scInvestigatedOnly) renderDebris();   // filter depends on the history just updated
 }
 
 function renderSurveys() {
@@ -365,8 +392,53 @@ let scDebris = [];   // live debris fields from the latest scrape
 const scJustCollected = new Set();   // debrisIds collected this session — keep the button disabled
 const scHiddenDebris = new Set();    // field ids the user hid from the table
 let scShowHidden = false;            // reveal hidden rows (dimmed) for unhiding
+let scInvestigatedOnly = false;      // restrict debris to systems in the investigation history
+const scDebrisZoneFilter = new Set(); // debris-table zone filter (independent of survey filter)
+let scInvHistory = new Map();        // systemId → investigation report time (ms); expires after 2h
+const INV_HISTORY_TTL_MS = 2 * 60 * 60 * 1000;
 const scDebrisSort = { key: 'total', dir: -1 };
 attachSortable('sc-debris-head', scDebrisSort, () => renderDebris());
+
+// Investigation history persists across sessions: survey reports rotate out, so
+// we accumulate investigated systemIds (→ report time) here. An entry drops when
+// debris there is collected, or once it's older than INV_HISTORY_TTL_MS.
+async function loadInvHistory() {
+  const { debris_inv_history } = await browser.storage.local.get('debris_inv_history');
+  scInvHistory = new Map(Object.entries(debris_inv_history || {}).map(([k, v]) => [Number(k), v]));
+  if (pruneInvHistory()) saveInvHistory();
+}
+async function saveInvHistory() {
+  await browser.storage.local.set({ debris_inv_history: Object.fromEntries(scInvHistory) });
+}
+// Drop entries past the TTL. Returns true if anything was removed.
+function pruneInvHistory() {
+  const cutoff = Date.now() - INV_HISTORY_TTL_MS;
+  let changed = false;
+  for (const [sysId, ts] of scInvHistory) {
+    if (!(ts > cutoff)) { scInvHistory.delete(sysId); changed = true; }
+  }
+  return changed;
+}
+
+// Debris zone filter persists across sessions.
+async function loadDebrisZone() {
+  const { debris_zone_filter } = await browser.storage.local.get('debris_zone_filter');
+  scDebrisZoneFilter.clear();
+  for (const z of (debris_zone_filter || [])) scDebrisZoneFilter.add(z);
+}
+function saveDebrisZone() {
+  browser.storage.local.set({ debris_zone_filter: [...scDebrisZoneFilter] });
+}
+
+// Survey-target zone filter persists across sessions.
+async function loadSurveyZone() {
+  const { survey_zone_filter } = await browser.storage.local.get('survey_zone_filter');
+  scZoneFilter.clear();
+  for (const z of (survey_zone_filter || [])) scZoneFilter.add(z);
+}
+function saveSurveyZone() {
+  browser.storage.local.set({ survey_zone_filter: [...scZoneFilter] });
+}
 
 // Cargo haulers the user can pick to collect debris. Loaded from the shipyard
 // (real cargoCapacity, scales with race/tech), filtered to these keys.
@@ -492,18 +564,26 @@ function renderDebris() {
   const tbody = document.getElementById('sc-debris-tbody');
   tbody.textContent = '';
 
+  if (pruneInvHistory()) saveInvHistory();   // expire stale history between polls
+
   // Header "show hidden" toggle reflects how many rows are hidden.
   const toggle = document.getElementById('sc-debris-hidden');
   toggle.style.display = scHiddenDebris.size ? '' : 'none';
   toggle.textContent = scShowHidden ? `Hide hidden (${scHiddenDebris.size})` : `Show hidden (${scHiddenDebris.size})`;
 
-  const sorted = applySort('sc-debris-head', scDebris, scDebrisSort, 'system');
+  // Independent debris zone filter (empty = all zones) and the
+  // investigation-history-only switch.
+  const sorted = applySort('sc-debris-head', scDebris, scDebrisSort, 'system')
+    .filter(f => !scDebrisZoneFilter.size || scDebrisZoneFilter.has(f.zone))
+    .filter(f => !scInvestigatedOnly || (f.systemId != null && scInvHistory.has(f.systemId)));
   const rows = scShowHidden ? sorted : sorted.filter(f => !scHiddenDebris.has(f.id));
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 11; td.style.color = '#484f58';
-    td.textContent = scDebris.length ? 'All debris fields hidden.' : 'No debris fields currently visible.';
+    td.textContent = !scDebris.length ? 'No debris fields currently visible.'
+      : (scDebrisZoneFilter.size || scInvestigatedOnly) ? 'No debris matches the current filter.'
+      : 'All debris fields hidden.';
     tr.appendChild(td); tbody.appendChild(tr);
     return;
   }
@@ -635,6 +715,8 @@ async function collectDebris(field) {
   });
   if (res.error) { status.textContent = `Collect failed: ${res.error}`; return; }
   scJustCollected.add(field.debrisId);
+  // Loot claimed — drop this system from the investigation history.
+  if (field.systemId != null && scInvHistory.delete(field.systemId)) saveInvHistory();
   status.textContent = `Fleet sent to ${field.system} ✓`;
   renderDebris();
   updateAvail();
