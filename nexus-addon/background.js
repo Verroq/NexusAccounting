@@ -26,6 +26,9 @@ const SCHEMA_VERSION = 7;
 
 browser.runtime.onInstalled.addListener(async details => {
   browser.alarms.create(ALARM, { periodInMinutes: INTERVAL_MIN });
+  // Re-arm the asteroid live-search alarm if it was left enabled.
+  const { live_search } = await browser.storage.local.get('live_search');
+  if (live_search && live_search.enabled) browser.alarms.create(LS_ALARM, { periodInMinutes: LS_INTERVAL_MIN });
   // Snapshot existing data before the new version touches it.
   if (details.reason === 'update') {
     await browser.storage.local.set({ whatsnew_pending: browser.runtime.getManifest().version });
@@ -40,6 +43,156 @@ browser.runtime.onInstalled.addListener(async details => {
 
 browser.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) scrape();
+  if (alarm.name === LS_ALARM) liveSearchScan();
+});
+
+// ── Asteroid live search ───────────────────────────────────────────────────
+// Scans the N nearest explored systems every 5 minutes (background alarm, runs
+// regardless of focus) and fires a system notification when a field newly
+// matches the saved filter. Mirrors tabs/asteroids.js scan(), API-only.
+const LS_ALARM = 'nexus-livesearch';
+const LS_INTERVAL_MIN = 5;
+const LS_MAX_SYSTEMS = 150;            // cap so a background scan finishes inside the SW budget
+const LS_REQ_DELAY_MS = 40;            // polite spacing between API calls
+const LS_ABORT_AFTER_ERRORS = 6;       // bail the scan after this many consecutive API failures
+const lsSectorCache = new Map();       // sectorId → { at, systems }, reused across scans
+const LS_SECTOR_TTL = 15 * 60 * 1000;
+
+async function setLiveSearch(config) {
+  await browser.storage.local.set({ live_search: config });
+  if (config && config.enabled) {
+    browser.alarms.create(LS_ALARM, { periodInMinutes: LS_INTERVAL_MIN });
+    // Config (filter/planet) may have changed — reset seen so matches re-notify.
+    await browser.storage.local.set({ live_search_seen: [] });
+    liveSearchScan();   // run one immediately so the user isn't waiting 5 min
+  } else {
+    browser.alarms.clear(LS_ALARM);
+  }
+  return { ok: true };
+}
+
+async function stopLiveSearch() {
+  const { live_search } = await browser.storage.local.get('live_search');
+  await browser.storage.local.set({ live_search: { ...(live_search || {}), enabled: false } });
+  browser.alarms.clear(LS_ALARM);
+  return { ok: true };
+}
+
+// Sector systems with a cross-scan TTL cache (names/zones change rarely).
+async function lsSectorSystems(sectorId, token) {
+  const hit = lsSectorCache.get(sectorId);
+  if (hit && Date.now() - hit.at < LS_SECTOR_TTL) return hit.systems;
+  const systems = (await apiFetch(`/api/galaxy/sectors/${sectorId}/systems`, token)).systems || [];
+  lsSectorCache.set(sectorId, { at: Date.now(), systems });
+  return systems;
+}
+
+function fieldMatches(f, cfg) {
+  const leftPct = f.totalResources ? (f.remainingResources / f.totalResources) * 100 : null;
+  if (cfg.types?.length && !cfg.types.includes(f.fieldType)) return false;
+  if (cfg.zones?.length && !cfg.zones.includes(f.zone)) return false;
+  if (cfg.multMin != null && !((f.richness ?? -Infinity) >= cfg.multMin)) return false;
+  if (cfg.qtyMin != null && !((f.remainingResources ?? -Infinity) >= cfg.qtyMin)) return false;
+  if (cfg.leftMin != null && !((leftPct ?? -Infinity) >= cfg.leftMin)) return false;
+  return true;
+}
+
+async function liveSearchScan() {
+  const { live_search: cfg } = await browser.storage.local.get('live_search');
+  if (!cfg || !cfg.enabled || cfg.planetId == null) return;
+  const token = await getToken();
+  if (!token) return;
+
+  try {
+    const planets = (await getPlanets()).planets || [];
+    const planet = planets.find(p => p.id === cfg.planetId);
+    if (!planet || planet.systemId == null) return;
+    const map = await apiFetch('/api/galaxy/map', token);
+    const src = (map.systems || []).find(s => s.id === planet.systemId);
+    if (!src) return;
+
+    const want = Math.max(1, Math.min(LS_MAX_SYSTEMS, cfg.near || 25));
+    const targets = (map.systems || [])
+      .filter(s => s.id !== src.id && (s.visibility === 'full' || s.visibility === 'partial'))
+      .map(s => ({ s, d: Math.hypot(s.x - src.x, s.y - src.y) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, want)
+      .map(o => o.s);
+
+    const matches = [];
+    let errStreak = 0;
+    for (const sys of targets) {
+      let sector;
+      try { sector = await lsSectorSystems(sys.sectorId, token); }
+      catch { if (++errStreak >= LS_ABORT_AFTER_ERRORS) break; continue; }
+      const meta = sector.find(s => s.id === sys.id);
+      if (!meta || !meta.planetCount) { errStreak = 0; continue; }
+      let data;
+      try { data = await apiFetch(`/api/galaxy/systems/${sys.id}/planets`, token); }
+      catch { if (++errStreak >= LS_ABORT_AFTER_ERRORS) break; continue; }
+      errStreak = 0;
+      for (const f of (data.asteroidFields || [])) {
+        const zone = meta.securityZone || 'unknown';
+        if (fieldMatches({ ...f, zone }, cfg)) {
+          matches.push({
+            id: f.id,
+            name: f.name || `#${f.id}`,
+            system: meta.name || `#${sys.id}`,
+            systemId: sys.id,
+            type: f.fieldType || '—',
+            mult: f.richness ?? null,
+            remaining: f.remainingResources ?? null,
+            leftPct: f.totalResources ? Math.round((f.remainingResources / f.totalResources) * 100) : null,
+            zone,
+          });
+        }
+      }
+      await new Promise(r => setTimeout(r, LS_REQ_DELAY_MS));   // be polite to the game API
+    }
+
+    const { live_search_seen } = await browser.storage.local.get('live_search_seen');
+    const seen = new Set(live_search_seen || []);
+    const fresh = matches.filter(m => !seen.has(m.id));
+    // Keep the full current match list + timestamp for the on-click results window.
+    await browser.storage.local.set({
+      live_search_seen: matches.map(m => m.id),
+      live_search_last_matches: matches,
+      live_search_last_at: Date.now(),
+    });
+
+    if (fresh.length) {
+      const top = fresh[0];
+      browser.notifications.create(`${LS_ALARM}-${Date.now()}`, {
+        type: 'basic',
+        iconUrl: browser.runtime.getURL('icons/icon128.png'),
+        title: '🪨 Asteroid match',
+        message: fresh.length === 1
+          ? `${top.name} (${top.type}) in ${top.system} matches your live search.`
+          : `${fresh.length} new fields match your live search — incl. ${top.name} in ${top.system}.`,
+      });
+    }
+  } catch (err) {
+    console.warn('[NexusAccounting] Live search failed:', err);
+  }
+}
+
+// Clicking a live-search notification focuses (or opens) the game tab and asks
+// its content script to show the draggable matches window.
+const GAME_ORIGIN = 'https://s0.nexuslegacy.space/';
+browser.notifications?.onClicked?.addListener(async id => {
+  if (!id.startsWith(LS_ALARM)) return;
+  browser.notifications.clear(id);
+  const tabs = await browser.tabs.query({ url: '*://s0.nexuslegacy.space/*' });
+  if (tabs.length) {
+    const t = tabs[0];
+    await browser.tabs.update(t.id, { active: true });
+    if (t.windowId != null) browser.windows.update(t.windowId, { focused: true });
+    browser.tabs.sendMessage(t.id, { type: 'SHOW_LS_RESULTS' }).catch(() => {});
+  } else {
+    // No game tab open — flag it so the content script shows the panel on load.
+    await browser.storage.local.set({ live_search_open_panel: true });
+    browser.tabs.create({ url: GAME_ORIGIN });
+  }
 });
 
 browser.action.onClicked.addListener(() => {
@@ -97,6 +250,8 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_MARKET_ORDERS') return getOrders('/api/market/orders');
   if (msg.type === 'GET_ALLIANCE_ORDERS') return getOrders('/api/alliance-trade/orders');
   if (msg.type === 'START_RESEARCH') return startResearch(msg.researchId, msg.planetId, msg.useFragments);
+  if (msg.type === 'SET_LIVE_SEARCH') return setLiveSearch(msg.config);
+  if (msg.type === 'STOP_LIVE_SEARCH') return stopLiveSearch();
 });
 
 // Launch a research on a planet: POST /api/research/{id}/start { planetId }.
@@ -2011,4 +2166,5 @@ export {
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
+  fieldMatches,
 };

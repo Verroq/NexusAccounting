@@ -28,6 +28,8 @@ const ZONE_COLOR = {
 const ZONES = ['sentinel', 'open', 'dead', 'rift'];
 const afTypeFilter = new Set();    // empty = any; multi-select like the market
 const afZoneFilter = new Set();    // empty = any
+const lsTypeFilter = new Set();    // live-search type filter (independent)
+const lsZoneFilter = new Set();    // live-search zone filter (independent)
 
 let afInited = false;
 let afPlanets = [];                // [{ id, name, systemId, systemName, isHomeworld }]
@@ -56,13 +58,18 @@ export async function initAsteroidsTab() {
   afPlanets = (planets.planets || []).filter(p => p.systemId != null);
 
   const pSel = document.getElementById('af-planet');
-  pSel.textContent = '';
+  const lsSel = document.getElementById('ls-planet');
+  pSel.textContent = ''; lsSel.textContent = '';
   for (const p of afPlanets) {
+    const label = p.systemName ? `${p.name} (${p.systemName})` : p.name;
     const o = document.createElement('option');
-    o.value = p.id;
-    o.textContent = p.systemName ? `${p.name} (${p.systemName})` : p.name;
+    o.value = p.id; o.textContent = label;
     if (p.isHomeworld) o.selected = true;
     pSel.appendChild(o);
+    const o2 = document.createElement('option');
+    o2.value = p.id; o2.textContent = label;
+    if (p.isHomeworld) o2.selected = true;
+    lsSel.appendChild(o2);
   }
   const savedSel = await rememberedSelections();
   if (savedSel['af-planet'] && afPlanets.some(p => String(p.id) === savedSel['af-planet'])) {
@@ -71,12 +78,19 @@ export async function initAsteroidsTab() {
 
   drawTypeIcons();
   drawZoneToggles();
+  await loadLiveSearch();   // populate ls-* fields + button from saved config
   refreshSlots();
 
   await refreshTemplates();
   // Keep the selector in sync with edits made in the Fleets tab.
   browser.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.fleet_templates) refreshTemplates();
+    if (area !== 'local') return;
+    if (changes.fleet_templates) refreshTemplates();
+    // Live search can be stopped from the game-page results window — reflect it.
+    if (changes.live_search) {
+      const en = !!(changes.live_search.newValue && changes.live_search.newValue.enabled);
+      if (en !== lsRunning) { lsRunning = en; setLsButton(); }
+    }
   });
 
   pSel.addEventListener('change', () => { rememberSelection('af-planet', pSel.value); setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
@@ -96,6 +110,16 @@ export async function initAsteroidsTab() {
       if (parseFloat(e.target.value) < 0) e.target.value = '';   // positive only
       afPage = 1;
       renderAsteroids();
+    });
+  }
+
+  // Live-search controls.
+  document.getElementById('ls-search').addEventListener('click', toggleLiveSearch);
+  document.getElementById('ls-planet').addEventListener('change', saveLiveSearchIfOn);
+  for (const id of ['ls-mult-min', 'ls-qty-min', 'ls-left-min', 'ls-near']) {
+    document.getElementById(id).addEventListener('input', e => {
+      if (parseFloat(e.target.value) < 0) e.target.value = '';   // positive only
+      saveLiveSearchIfOn();
     });
   }
 
@@ -152,47 +176,110 @@ function setRefFromMap(planetId) {
 }
 
 // Clickable resource-icon type toggles (mirrors the market filter). Empty
-// selection means all types; the filter is applied at render time.
-function drawTypeIcons() {
-  const box = document.getElementById('af-type');
+// selection means all types. `redraw` re-renders the set; `after` runs side
+// effects (re-render table for the main filter, save config for live search).
+function drawTypeInto(boxId, filter, redraw, after) {
+  const box = document.getElementById(boxId);
   box.textContent = '';
   for (const t of FIELD_TYPES) {
     const img = document.createElement('img');
-    img.className = 'res-icon' + (afTypeFilter.has(t.type) ? ' sel' : '');
+    img.className = 'res-icon' + (filter.has(t.type) ? ' sel' : '');
     img.src = `${ICON_BASE}${t.res}.webp`;
     img.alt = t.label;
     img.title = t.label;
     img.addEventListener('click', () => {
-      if (afTypeFilter.has(t.type)) afTypeFilter.delete(t.type); else afTypeFilter.add(t.type);
-      afPage = 1;
-      drawTypeIcons();
-      renderAsteroids();
+      if (filter.has(t.type)) filter.delete(t.type); else filter.add(t.type);
+      redraw();
+      if (after) after();
     });
     box.appendChild(img);
   }
 }
 
-// Clickable zone toggles, coloured per zone. Empty selection means all zones;
-// applied at render time.
-function drawZoneToggles() {
-  const box = document.getElementById('af-zone');
+// Clickable zone toggles, coloured per zone. Empty selection means all zones.
+function drawZoneInto(boxId, filter, redraw, after) {
+  const box = document.getElementById(boxId);
   box.textContent = '';
   for (const z of ZONES) {
     const b = document.createElement('button');
-    const on = afZoneFilter.has(z);
+    const on = filter.has(z);
     b.type = 'button';
     b.textContent = z;
     b.style.cssText = `padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem;
       border:1px solid ${ZONE_COLOR[z]}; text-transform:capitalize;
       color:${on ? '#0d1117' : ZONE_COLOR[z]}; background:${on ? ZONE_COLOR[z] : 'transparent'};`;
     b.addEventListener('click', () => {
-      if (on) afZoneFilter.delete(z); else afZoneFilter.add(z);
-      afPage = 1;
-      drawZoneToggles();
-      renderAsteroids();
+      if (on) filter.delete(z); else filter.add(z);
+      redraw();
+      if (after) after();
     });
     box.appendChild(b);
   }
+}
+
+// Main fields filter: re-render the table on toggle.
+function drawTypeIcons() { drawTypeInto('af-type', afTypeFilter, drawTypeIcons, () => { afPage = 1; renderAsteroids(); }); }
+function drawZoneToggles() { drawZoneInto('af-zone', afZoneFilter, drawZoneToggles, () => { afPage = 1; renderAsteroids(); }); }
+// Live-search filter: persist config on toggle (if currently running).
+function drawLsTypeIcons() { drawTypeInto('ls-type', lsTypeFilter, drawLsTypeIcons, saveLiveSearchIfOn); }
+function drawLsZoneToggles() { drawZoneInto('ls-zone', lsZoneFilter, drawLsZoneToggles, saveLiveSearchIfOn); }
+
+// ── Live search (background, every 5 min) ──────────────────────────────────
+let lsRunning = false;
+
+function readLsConfig() {
+  const num = id => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
+  return {
+    enabled: lsRunning,
+    planetId: Number(document.getElementById('ls-planet').value) || null,
+    multMin: num('ls-mult-min'),
+    qtyMin: num('ls-qty-min'),
+    leftMin: num('ls-left-min'),
+    near: Math.max(1, Math.min(500, parseInt(document.getElementById('ls-near').value, 10) || 25)),
+    types: [...lsTypeFilter],
+    zones: [...lsZoneFilter],
+  };
+}
+function saveLiveSearch() { return browser.runtime.sendMessage({ type: 'SET_LIVE_SEARCH', config: readLsConfig() }); }
+function saveLiveSearchIfOn() { if (lsRunning) saveLiveSearch(); }
+
+function setLsButton() {
+  const btn = document.getElementById('ls-search');
+  const status = document.getElementById('ls-status');
+  btn.textContent = lsRunning ? 'Stop Live Search' : 'Live Search';
+  btn.style.cssText = lsRunning ? 'background:#da3633; border:1px solid #f85149; color:#fff;' : '';
+  if (!lsRunning) { status.textContent = ''; status.style.color = '#8b949e'; return; }
+  if (!lsTypeFilter.size) {
+    status.textContent = '⚠ No resource type selected — every field type will match.';
+    status.style.color = '#e3b341';
+  } else {
+    status.textContent = 'Scanning every 5 min in the background — notifies on new matches.';
+    status.style.color = '#8b949e';
+  }
+}
+async function toggleLiveSearch() {
+  if (!lsRunning && !document.getElementById('ls-planet').value) return;   // need a planet
+  lsRunning = !lsRunning;
+  setLsButton();
+  await saveLiveSearch();
+}
+
+// Restore the live-search controls from the persisted config.
+async function loadLiveSearch() {
+  const { live_search: cfg } = await browser.storage.local.get('live_search');
+  if (cfg) {
+    if (cfg.planetId != null) document.getElementById('ls-planet').value = cfg.planetId;
+    document.getElementById('ls-mult-min').value = cfg.multMin ?? '';
+    document.getElementById('ls-qty-min').value = cfg.qtyMin ?? '';
+    document.getElementById('ls-left-min').value = cfg.leftMin ?? '';
+    document.getElementById('ls-near').value = cfg.near ?? 25;
+    lsTypeFilter.clear(); (cfg.types || []).forEach(t => lsTypeFilter.add(t));
+    lsZoneFilter.clear(); (cfg.zones || []).forEach(z => lsZoneFilter.add(z));
+    lsRunning = !!cfg.enabled;
+  }
+  drawLsTypeIcons();
+  drawLsZoneToggles();
+  setLsButton();
 }
 
 async function scan() {
