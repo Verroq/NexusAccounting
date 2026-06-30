@@ -175,6 +175,12 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
+// Open directly on a tab when linked with a hash, e.g. dashboard.html#asteroids
+// (used by the live-search results window).
+if (location.hash) {
+  document.querySelector(`.tab[data-tab="${location.hash.slice(1)}"]`)?.click();
+}
+
 // Keep the View/Window/Zone bar directly above the active tab's graphs.
 export function positionControls() {
   const bar = document.getElementById('global-controls');

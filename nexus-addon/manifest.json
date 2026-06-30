@@ -10,7 +10,8 @@
     "storage",
     "alarms",
     "downloads",
-    "webRequest"
+    "webRequest",
+    "notifications"
   ],
   "host_permissions": [
     "*://*.nexuslegacy.space/*",

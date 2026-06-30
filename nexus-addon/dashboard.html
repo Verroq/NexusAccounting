@@ -536,6 +536,34 @@
       <span id="af-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="Fleet slots in use"></span>
     </div>
 
+    <div class="finder-controls" id="af-livesearch" style="margin-top:0; border-top:1px solid #30363d; padding-top:10px;">
+      <label title="Background scan every 5 min; notifies on a new match even when this tab or the browser isn't focused.">Live Search :
+        <select id="ls-planet"></select>
+      </label>
+      <label>Mult ≥
+        <input id="ls-mult-min" type="number" step="0.01" min="0" placeholder="0" />
+      </label>
+      <label>Qty ≥
+        <input id="ls-qty-min" type="number" min="0" placeholder="0" />
+      </label>
+      <label>Left % ≥
+        <input id="ls-left-min" type="number" min="0" max="100" placeholder="0" />
+      </label>
+      <label>Nearest systems
+        <input id="ls-near" type="number" min="1" max="500" value="25" style="width:70px;
+               background:#21262d; border:1px solid #30363d; color:#e6edf3;
+               padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
+      </label>
+      <label>Type
+        <span id="ls-type" class="res-icons" style="grid-template-columns: repeat(6, auto);"></span>
+      </label>
+      <label>Zone
+        <span id="ls-zone" style="display:flex; gap:4px;"></span>
+      </label>
+      <button id="ls-search">Live Search</button>
+      <span id="ls-status" style="color:#8b949e; font-size:0.8rem;"></span>
+    </div>
+
     <div class="finder-controls" id="af-template" style="margin-top:0;">
       <label>Fleet template
         <select id="af-template-select"></select>
