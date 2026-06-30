@@ -4,6 +4,34 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.5] - 2026-07-01
+
+### Added
+- **Asteroid belt live search**: a second filter row on the Asteroids tab scans
+  the nearest systems in the background every 5 minutes — even when the tab or
+  browser isn't focused — and fires a notification when a new field matches your
+  filter (type/zone/mult/qty/left%).
+- **In-game matches window**: clicking the notification (or the new "Live Search
+  Belts" sidebar link) opens a floating, draggable window listing the matches,
+  with per-row fuel cost, an editable fleet (one ship per line), and a one-click
+  ⛏ to send a mining mission. Start/stop the search from the window.
+- **Ratio Calculator** in the game sidebar: a floating, draggable calculator —
+  enter any two of offer / pay / ratio and it infers the third.
+- **Market** "Ratio wanted ≥" filter on the open-offers table.
+- **Asteroids** "Left % ≥" filter.
+- **Scouting**: independent, persisted debris zone filter; an "Investigated only"
+  switch backed by a 2-hour investigation history (a system drops once its debris
+  is collected). The survey zone filter is now persisted too.
+- **Mining**: drill-breakdown maintenance (75 alloy per breakdown) is now charged
+  in the Net total.
+
+### Changed
+- **Market** tab: removed the Trade Hub filter and the mini-map.
+
+### Fixed
+- Scouting/Asteroids availability strip no longer blinks each poll, and no longer
+  disappears.
+
 ## [1.6.4] - 2026-06-26
 
 ### Added
