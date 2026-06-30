@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { applySort, attachSortable, clearAvailStrip, confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -526,12 +526,10 @@ function selectedCargo() {
 async function updateAvail() {
   const debrisBox = document.getElementById('sc-debris-avail');
   const invBox = document.getElementById('sc-inv-avail');
-  debrisBox.textContent = '';
-  invBox.textContent = '';
   const planetId = Number(document.getElementById('sc-planet').value);
-  if (!planetId || !scAllShips.length) return;
+  if (!planetId || !scAllShips.length) { clearAvailStrip(debrisBox); clearAvailStrip(invBox); return; }
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-  if (av.error) { debrisBox.textContent = av.error; invBox.textContent = av.error; return; }
+  if (av.error) { clearAvailStrip(debrisBox, av.error); clearAvailStrip(invBox, av.error); return; }
   renderAvailStrip(debrisBox, scCargoShips, av.available, 'No cargo ships on this planet.');
   renderAvailStrip(invBox, scAllShips, av.available, 'No ships on this planet.');
 }

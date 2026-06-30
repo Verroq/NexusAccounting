@@ -691,17 +691,9 @@
         <span id="m-sell" class="res-icons"></span>
       </div>
       <div class="m-filter" style="margin-left:12px;">
-        <div style="display:flex; align-items:center; gap:6px;">
-          <label for="m-hub" id="m-hub-label">Trade Hub:</label>
-          <select id="m-hub"><option value="">any</option></select>
-        </div>
-        <div style="position:relative; margin-top:6px;">
-          <canvas id="m-map" width="317" height="224"
-            style="display:block; border:1px solid #30363d; border-radius:6px; background:#0d1117;"></canvas>
-          <div id="m-tooltip" style="display:none; position:absolute; background:#161b22;
-            border:1px solid #30363d; border-radius:6px; padding:3px 7px; font-size:0.75rem;
-            pointer-events:none; z-index:10; white-space:nowrap;"></div>
-        </div>
+        <label for="m-ratio-wanted">Ratio wanted ≥</label>
+        <input id="m-ratio-wanted" type="number" min="0" step="0.001" placeholder="any"
+               style="width:80px; background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </div>
       <button id="m-clear" style="margin-left:12px;">Clear filters</button>
       <button id="m-refresh" style="margin-left:12px;">Refresh</button>

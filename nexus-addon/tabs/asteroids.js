@@ -8,7 +8,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { clearAvailStrip, confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // asteroid fieldType → resource icon + label
@@ -115,11 +115,10 @@ export async function initAsteroidsTab() {
 // Ships stationed on the selected mining planet, shown above the fields table.
 async function updateAfAvail() {
   const box = document.getElementById('af-avail');
-  box.textContent = '';
   const planetId = Number(document.getElementById('af-planet').value);
-  if (!planetId || !afAllShips.length) return;
+  if (!planetId || !afAllShips.length) { clearAvailStrip(box); return; }
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-  if (av.error) { box.textContent = av.error; return; }
+  if (av.error) { clearAvailStrip(box, av.error); return; }
   renderAvailStrip(box, afAllShips, av.available, 'No ships on this planet.');
 }
 
