@@ -2166,4 +2166,5 @@ export {
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
+  fieldMatches,
 };

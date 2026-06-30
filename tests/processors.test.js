@@ -287,3 +287,49 @@ test('debris snapshot: live fields recorded with first-seen', async () => {
   assert.equal(f.zone, 'open');
   assert.ok(f.first_seen && f.updated_at);
 });
+
+test('live search fieldMatches: type/zone/mult/qty/left filters + null handling', async () => {
+  makeBrowserStub();
+  const { fieldMatches } = await loadBackground();
+
+  // total 1000 / remaining 500 → 50% left.
+  const field = (over = {}) => ({
+    fieldType: 'ore', zone: 'sentinel', richness: 2,
+    remainingResources: 500, totalResources: 1000, ...over,
+  });
+
+  // No filters → matches anything.
+  assert.equal(fieldMatches(field(), {}), true);
+
+  // Type filter.
+  assert.equal(fieldMatches(field(), { types: ['ore'] }), true);
+  assert.equal(fieldMatches(field(), { types: ['gas'] }), false);
+  assert.equal(fieldMatches(field({ fieldType: 'gas' }), { types: ['ore', 'gas'] }), true);
+
+  // Zone filter.
+  assert.equal(fieldMatches(field(), { zones: ['sentinel'] }), true);
+  assert.equal(fieldMatches(field(), { zones: ['rift'] }), false);
+
+  // Mult ≥ (inclusive boundary; missing richness fails when a min is set).
+  assert.equal(fieldMatches(field({ richness: 2 }), { multMin: 2 }), true);
+  assert.equal(fieldMatches(field({ richness: 2 }), { multMin: 2.1 }), false);
+  assert.equal(fieldMatches(field({ richness: null }), { multMin: 1 }), false);
+
+  // Qty ≥ (remaining resources).
+  assert.equal(fieldMatches(field({ remainingResources: 1000 }), { qtyMin: 1000 }), true);
+  assert.equal(fieldMatches(field({ remainingResources: 999 }), { qtyMin: 1000 }), false);
+  assert.equal(fieldMatches(field({ remainingResources: null }), { qtyMin: 1 }), false);
+
+  // Left % ≥ (remaining/total); total 0 → unknown → fails when a min is set.
+  assert.equal(fieldMatches(field(), { leftMin: 50 }), true);
+  assert.equal(fieldMatches(field(), { leftMin: 51 }), false);
+  assert.equal(fieldMatches(field({ totalResources: 0 }), { leftMin: 10 }), false);
+
+  // All filters together.
+  assert.equal(fieldMatches(field(), {
+    types: ['ore'], zones: ['sentinel'], multMin: 2, qtyMin: 500, leftMin: 50,
+  }), true);
+  assert.equal(fieldMatches(field(), {
+    types: ['ore'], zones: ['sentinel'], multMin: 2, qtyMin: 501, leftMin: 50,
+  }), false);
+});
