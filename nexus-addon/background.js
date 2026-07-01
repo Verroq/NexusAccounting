@@ -1475,6 +1475,24 @@ async function processMiningReports(reports, ships, zones = {}) {
     });
   }
 
+  // Backfill mining-raid records stored before combat detail was captured:
+  // patch debris/rounds/fleets in place from the live API, never touching
+  // totals/seen. Gated on your_fleet so partially-enriched records still get
+  // their fleets; only raids (r.combatOutcome) are considered.
+  // ponytail: runs every scrape but only mutates raids still missing fields.
+  const recentById = new Map(recent.map(rr => [rr.id, rr]));
+  for (const r of reports) {
+    if (!r.combatOutcome) continue;
+    const rec = recentById.get(r.id);
+    if (!rec || rec.your_fleet != null) continue;
+    const d = combatDebris(r);
+    rec.combat_outcome = r.combatOutcome;
+    rec.debris_ore = d.ore; rec.debris_alloys = d.alloys; rec.debris_silicates = d.silicates;
+    rec.rounds = combatRounds(r);
+    rec.your_fleet = combatFleet(r, 'defenderFleet');
+    rec.enemy_fleet = combatFleet(r, 'attackerFleet');
+  }
+
   await appendToArchive('mining', recent.slice(0, recent.length - (stored.mining_recent_reports || []).length));
 
   await browser.storage.local.set({

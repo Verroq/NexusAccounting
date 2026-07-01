@@ -178,6 +178,31 @@ test('survey backfill enriches already-seen clean-win records without double-cou
   assert.equal(store.totals.missions, 1);
 });
 
+test('mining-raid backfill enriches already-seen records without double-counting', async () => {
+  const bg = await loadBackground();
+  // A raid already stored the old way: seen, counted, no combat detail.
+  const store = makeBrowserStub({
+    ships: {},
+    mining_seen_ids: [40],
+    mining_totals: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, deliveries: 1, cycles: 0,
+      drill_breakdowns: 0, maintenance_alloys: 0, ships_lost: 0, rare: {}, stolen: {} },
+    mining_recent_reports: [{ id: 40, created_at: '2026-07-01T06:00:00Z', location: 'Y', zone: 'open',
+      ships_lost: 0, combat_outcome: 'attacker_won' }],   // prior build: outcome only
+  });
+  await bg.processMiningReports([
+    { id: 40, createdAt: '2026-07-01T06:00:00Z', resourcesDelivered: {}, locationName: 'Y', shipsLost: [],
+      combatOutcome: 'attacker_won', combatLog: { debris: { ore: 50, alloys: 8, silicates: 12 },
+        attackerFleet: [{ key: 'scout', name: 'Scout', quantity: 30 }],
+        defenderFleet: [{ key: 'miner', name: 'Mining Vessel', quantity: 80 }],
+        rounds: [{ round: 1, attackerHpPercent: 20, defenderHpPercent: 95, events: [] }] } },
+  ], {}, {});
+  const rec = store.mining_recent_reports.find(r => r.id === 40);
+  assert.equal(rec.debris_ore, 50);
+  assert.deepEqual(rec.your_fleet, [{ key: 'miner', name: 'Mining Vessel', quantity: 80 }]);
+  assert.deepEqual(rec.enemy_fleet, [{ key: 'scout', name: 'Scout', quantity: 30 }]);
+  assert.equal(store.mining_totals.deliveries, 1);   // NOT re-counted
+});
+
 test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
   const ships = {
     21: { key: 'freighter', costOre: 100, costSilicates: 50, costHydrogen: 0, costAlloys: 10, rareCosts: {} },
