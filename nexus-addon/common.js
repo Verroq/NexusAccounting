@@ -450,8 +450,6 @@ export function computeEventBreakdown(reports) {
 
 // A damaged ship costs half its build cost to repair.
 export const REPAIR_FACTOR = 0.5;
-// Flat alloy maintenance to repair one mining-drill breakdown (game cost).
-export const DRILL_MAINTENANCE_ALLOY = 75;
 
 export function emptyResources() {
   return { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };

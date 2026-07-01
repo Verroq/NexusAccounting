@@ -1313,6 +1313,18 @@ function numericResources(obj) {
   return out;
 }
 
+// Alloy cost to repair one breakdown, per drill type (game cost). The broken
+// drills show up as `damagedQuantity` on the report's fleetComposition entry.
+// ponytail: only known drills charged; add a key when a new drill ships.
+const DRILL_MAINTENANCE_ALLOY = { miner: 15, ice_drill: 25 };
+
+// Total alloy maintenance for a mining report = Σ damagedQuantity × cost[key].
+function maintenanceAlloys(fleetComposition) {
+  let a = 0;
+  for (const f of (fleetComposition || [])) a += (DRILL_MAINTENANCE_ALLOY[f.shipKey] || 0) * (f.damagedQuantity || 0);
+  return a;
+}
+
 const CORE_RESOURCES = ['ore', 'silicates', 'hydrogen', 'alloys'];
 
 function addResources(target, res) {
@@ -1332,7 +1344,7 @@ async function processMiningReports(reports, ships, zones = {}) {
   const seen = new Set(stored.mining_seen_ids || []);
   const totals = stored.mining_totals || {
     ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
-    deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
+    deliveries: 0, cycles: 0, drill_breakdowns: 0, maintenance_alloys: 0, ships_lost: 0,
     stolen: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} },
   };
   const dailyMap = {};
@@ -1355,6 +1367,8 @@ async function processMiningReports(reports, ships, zones = {}) {
     totals.deliveries += 1;
     totals.cycles += r.cycleCount || 0;
     totals.drill_breakdowns += r.drillBreakdowns || 0;
+    const maint = maintenanceAlloys(r.fleetComposition);
+    totals.maintenance_alloys = (totals.maintenance_alloys || 0) + maint;
     totals.ships_lost += nLost;
 
     const day = r.createdAt.slice(0, 10);
@@ -1381,6 +1395,7 @@ async function processMiningReports(reports, ships, zones = {}) {
       ...extrasOf(delivered),
       cycles: r.cycleCount || 0,
       drill_breakdowns: r.drillBreakdowns || 0,
+      maintenance_alloys: maint,
       ships_lost: nLost,
       ships_lost_detail: lostDetail,   // shipDefId→qty, so losses can be valued per period
       stolen_total: Object.values(stolen).reduce((s, v) => s + v, 0),
@@ -1765,7 +1780,7 @@ async function rebuildAggregates() {
   {
     const totals = {
       ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
-      deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
+      deliveries: 0, cycles: 0, drill_breakdowns: 0, maintenance_alloys: 0, ships_lost: 0,
       stolen: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} },
     };
     const daily = {};
@@ -1776,6 +1791,7 @@ async function rebuildAggregates() {
       totals.deliveries += 1;
       totals.cycles += r.cycles || 0;
       totals.drill_breakdowns += r.drill_breakdowns || 0;
+      totals.maintenance_alloys += r.maintenance_alloys || 0;
       totals.ships_lost += r.ships_lost || 0;
       addExtraRes(totals, r);
       totals.stolen.ore += r.stolen_total || 0; // breakdown unknown — lump into ore

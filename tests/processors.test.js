@@ -83,6 +83,24 @@ test('survey zone from securityZone, mining zone from locationName', async () =>
   assert.equal(store.mining_recent_reports[0].zone, 'sentinel', 'mining resolves zone from location');
 });
 
+test('mining drill maintenance valued per drill type from damagedQuantity', async () => {
+  const store = makeBrowserStub({ ships: {} });
+  const bg = await loadBackground();
+
+  await bg.processMiningReports([
+    { id: 1, createdAt: '2026-07-01T01:00:00Z', resourcesDelivered: { cryo_ice: 100 }, drillBreakdowns: 4,
+      locationName: 'X', shipsLost: [],
+      fleetComposition: [{ shipKey: 'interceptor', quantity: 30 }, { shipKey: 'ice_drill', quantity: 6, damagedQuantity: 4 }] },
+    { id: 2, createdAt: '2026-07-01T00:00:00Z', resourcesDelivered: { plasma_core: 100 }, drillBreakdowns: 8,
+      locationName: 'X', shipsLost: [],
+      fleetComposition: [{ shipKey: 'miner', quantity: 92, damagedQuantity: 8 }] },
+  ], {}, {});
+
+  assert.equal(store.mining_recent_reports.find(r => r.id === 1).maintenance_alloys, 100); // ice_drill 4 × 25
+  assert.equal(store.mining_recent_reports.find(r => r.id === 2).maintenance_alloys, 120); // miner 8 × 15
+  assert.equal(store.mining_totals.maintenance_alloys, 220);
+});
+
 test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
   const ships = {
     21: { key: 'freighter', costOre: 100, costSilicates: 50, costHydrogen: 0, costAlloys: 10, rareCosts: {} },
