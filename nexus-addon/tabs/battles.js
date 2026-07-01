@@ -90,9 +90,23 @@ function collectBattles() {
     });
   }
   for (const r of (store.exp_recent_reports || [])) {
-    if (!r.ships_lost) continue;   // only encounters that cost ships
+    const src = r.kind === 'wormhole' ? 'Wormhole' : 'Expedition';
+    // Wormhole runs carry per-encounter combat — one battle row per combat
+    // encounter (clean wins included), each with its own round log + your fleet.
+    if (r.encounters && r.encounters.length) {
+      r.encounters.forEach((e, i) => rows.push({
+        key: `${r.id}:${i}`, created_at: r.created_at, source: src,
+        location: e.title ? `${r.location} — ${e.title}` : r.location, zone: r.zone, outcome: e.outcome || '—',
+        lost: e.lost || 0, damaged: 0, killed: null, debris: null,
+        yourFleet: fleetToNames(e.your_fleet, byKey), enemyFleet: [],
+        lostDetail: [], damagedDetail: [], rounds: e.rounds || [],
+      }));
+      continue;
+    }
+    // Old records / expeditions without encounter data: keep the losses gate.
+    if (!r.ships_lost) continue;
     rows.push({
-      key: `exp:${r.id}`, created_at: r.created_at, source: r.kind === 'wormhole' ? 'Wormhole' : 'Expedition',
+      key: `exp:${r.id}`, created_at: r.created_at, source: src,
       location: r.location || '—', zone: r.zone, outcome: r.event || '—',
       lost: r.ships_lost || 0, damaged: 0, killed: null, debris: null,
       yourFleet: null, enemyFleet: null,

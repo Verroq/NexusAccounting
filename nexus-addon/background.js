@@ -1250,6 +1250,17 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
     pirateTotals.last_report = pirateTimestamps[pirateTimestamps.length - 1];
   }
 
+  // Backfill: pirate records stored before the round log was captured keep their
+  // fleets but no rounds, so the tab can't render them like survey/mining. Patch
+  // rounds in place from the live API. Gated on a non-empty rounds array.
+  // ponytail: runs every scrape but only mutates records still missing rounds.
+  const pirateById = new Map(pirateRecent.map(rr => [rr.id, rr]));
+  for (const r of pirateReports) {
+    const rec = pirateById.get(r.id);
+    if (!rec || (rec.rounds && rec.rounds.length)) continue;
+    rec.rounds = combatRounds(r);
+  }
+
   await appendToArchive('pirate', pirateRecent.slice(0, pirateRecent.length - (pstored.pirate_recent_reports || []).length));
 
   await browser.storage.local.set({
@@ -1370,6 +1381,30 @@ function normFleet(arr) {
 // top-level for pirate reports.
 function combatFleet(r, name) {
   return normFleet((r.combatLog && r.combatLog[name]) || r[name]);
+}
+
+// A fleet given by shipDefId ([{ shipDefId, quantity }] — wormhole currentFleet),
+// resolved to key/name via the ship catalog.
+function defIdFleet(arr, ships) {
+  return (arr || []).map(f => {
+    const s = (ships && ships[f.shipDefId]) || {};
+    return { key: s.key || null, name: s.name || `#${f.shipDefId}`, quantity: f.quantity || 1 };
+  }).filter(f => f.quantity > 0);
+}
+
+// Trimmed combat encounters from a wormhole run's encounterLog — each is its own
+// battle (own outcome + round log). Your fleet is the run's currentFleet.
+function wormholeEncounters(r, ships) {
+  const yourFleet = defIdFleet(r.currentFleet, ships);
+  return (r.encounterLog || [])
+    .filter(e => e && e.combat)
+    .map((e, i) => ({
+      title: e.title || e.type || `Encounter ${e.encounter ?? i + 1}`,
+      outcome: e.outcome || null,
+      lost: (e.shipsLost || []).reduce((s, x) => s + (x.quantity ?? x.lost ?? 1), 0),
+      rounds: combatRounds({ rounds: e.combatRounds }),
+      your_fleet: yourFleet,
+    }));
 }
 
 // Trimmed round-by-round combat log for the Battles tab. Pirate reports keep
@@ -1582,10 +1617,25 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
       loot,
       ships_lost: nLost,
       ships_destroyed_raw: destroyedArr,
+      ...(kind === 'wormhole' ? { encounters: wormholeEncounters(r, ships) } : {}),
     });
   }
 
-  if (added) {
+  // Backfill: wormhole runs stored before encounter combat was captured. Patch
+  // the combat encounters (outcome + rounds + your fleet) in place from the live
+  // API — no totals/seen change. Gated on a non-empty encounters array.
+  // ponytail: runs every scrape but only mutates completed runs still missing it.
+  const expById = new Map(recent.map(rr => [rr.id, rr]));
+  let patched = false;
+  for (const { r, kind, uid } of items) {
+    if (kind !== 'wormhole' || (r.status && r.status !== 'completed')) continue;
+    const rec = expById.get(uid);
+    if (!rec || (rec.encounters && rec.encounters.length)) continue;
+    rec.encounters = wormholeEncounters(r, ships);
+    patched = true;
+  }
+
+  if (added || patched) {
     await appendToArchive('exp', recent.slice(0, recent.length - (stored.exp_recent_reports || []).length));
     await browser.storage.local.set({
       exp_seen_ids: [...seen],

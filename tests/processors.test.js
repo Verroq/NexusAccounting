@@ -205,6 +205,55 @@ test('mining-raid backfill enriches already-seen records without double-counting
   assert.equal(store.mining_totals.deliveries, 1);   // NOT re-counted
 });
 
+test('pirate backfill patches rounds onto already-seen records', async () => {
+  const bg = await loadBackground();
+  const store = makeBrowserStub({
+    ships: {},
+    pirate_seen_ids: [50],
+    pirate_recent_reports: [{ id: 50, created_at: '2026-07-01T07:00:00Z', camp_id: 9, zone: 'open',
+      outcome: 'attacker_won', ore: 1, ships_lost: 0,
+      attacker_fleet: [{ key: 'cruiser', quantity: 60 }], pirate_fleet: [{ key: 'fighter', quantity: 20 }] }],
+  });
+  await bg.processPirateReports([
+    { id: 50, createdAt: '2026-07-01T07:00:00Z', outcome: 'attacker_won', loot: { ore: 1 },
+      attackerFleet: [{ key: 'cruiser', quantity: 60 }], pirateFleet: [{ key: 'fighter', quantity: 20 }],
+      attackerLosses: [], pirateLosses: [], debris: {},
+      rounds: [{ round: 1, attackerHpPercent: 96, defenderHpPercent: 0, events: [
+        { side: 'attacker', totalDamage: 800, shipsDestroyed: [{ name: 'Fighter', lost: 20 }] },
+        { side: 'defender', totalDamage: 100, shipsDestroyed: [] }] }] },
+  ], {}, {});
+  const rec = store.pirate_recent_reports.find(r => r.id === 50);
+  assert.equal(rec.rounds.length, 1);
+  assert.equal(rec.rounds[0].atk_dmg, 800);
+  assert.deepEqual(rec.rounds[0].atk_killed, [{ name: 'Fighter', qty: 20 }]);
+});
+
+test('wormhole run stores per-encounter combat (clean wins included)', async () => {
+  const bg = await loadBackground();
+  const ships = { 8: { key: 'cruiser', name: 'Cruiser' }, 21: { key: 'freighter', name: 'Freighter' } };
+  const store = makeBrowserStub({ ships });
+  await bg.processExpeditionReports([], [{
+    id: 900, createdAt: '2026-07-01T08:00:00Z', status: 'completed', wormholeId: 1,
+    totalLoot: { ore: 10 }, totalShipsLost: [],   // clean run, zero losses
+    currentFleet: [{ shipDefId: 8, quantity: 9 }, { shipDefId: 21, quantity: 12 }],
+    encounterLog: [
+      { type: 'pirate_base', title: 'Pirate Stronghold', combat: true, outcome: 'victory', encounter: 1,
+        shipsLost: [], combatRounds: [{ round: 1, attackerHpPercent: 94, defenderHpPercent: 0, events: [
+          { side: 'attacker', totalDamage: 700, shipsDestroyed: [{ key: 'wormhole_pirate_corvette', name: 'Pirate Corvette', lost: 5 }] },
+          { side: 'defender', totalDamage: 638, shipsDestroyed: [] }] }] },
+      { type: 'empty', title: 'Nothing', combat: false, outcome: null, encounter: 2 },
+    ],
+  }], ships, {}, {}, {});
+
+  const rec = store.exp_recent_reports.find(r => r.id === 'wh-900');
+  assert.equal(rec.encounters.length, 1);   // only the combat encounter
+  const e = rec.encounters[0];
+  assert.equal(e.outcome, 'victory');
+  assert.equal(e.lost, 0);                   // clean win still captured
+  assert.equal(e.rounds[0].atk_dmg, 700);
+  assert.deepEqual(e.your_fleet, [{ key: 'cruiser', name: 'Cruiser', quantity: 9 }, { key: 'freighter', name: 'Freighter', quantity: 12 }]);
+});
+
 test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
   const ships = {
     21: { key: 'freighter', costOre: 100, costSilicates: 50, costHydrogen: 0, costAlloys: 10, rareCosts: {} },
