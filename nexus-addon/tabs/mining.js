@@ -2,12 +2,13 @@
 
 // ── Mining tab ─────────────────────────────────────────────────────────────
 
-import { DRILL_MAINTENANCE_ALLOY, EXTRA_RES_KEYS_UI, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
-// Add flat drill-breakdown maintenance (alloys) to the repair bucket, without
-// mutating the source object. Net and the Repair card subtract this.
-function withDrillMaintenance(lost, breakdowns) {
-  const alloys = (breakdowns || 0) * DRILL_MAINTENANCE_ALLOY;
+// Add drill-breakdown maintenance (alloys) to the repair bucket, without
+// mutating the source object. Net and the Repair card subtract this. The
+// alloy cost is per-drill-type, computed at scrape time from the report's
+// damaged drills (see background.js maintenanceAlloys).
+function withDrillMaintenance(lost, alloys) {
   if (!alloys) return lost;
   const repair = { ...emptyResources(), ...(lost.repair || {}) };
   repair.alloys = (repair.alloys || 0) + alloys;
@@ -22,11 +23,11 @@ function getMiningLostForMode(mode) {
     const base = store.mining_resources_lost?.destroyed
       ? store.mining_resources_lost
       : { destroyed: emptyResources(), repair: emptyResources() };
-    return withDrillMaintenance(base, store.mining_totals?.drill_breakdowns);
+    return withDrillMaintenance(base, store.mining_totals?.maintenance_alloys);
   }
   const records = recordsForMode(store.mining_recent_reports, mode);
-  const breakdowns = records.reduce((s, r) => s + (r.drill_breakdowns || 0), 0);
-  return withDrillMaintenance(computeResourcesLost(records, store.ships || {}), breakdowns);
+  const alloys = records.reduce((s, r) => s + (r.maintenance_alloys || 0), 0);
+  return withDrillMaintenance(computeResourcesLost(records, store.ships || {}), alloys);
 }
 
 export let chartMining, chartMiningLoot;
