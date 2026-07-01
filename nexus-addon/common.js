@@ -35,7 +35,14 @@ export async function confirmDialog(message, ships) {
     const box = document.createElement('div');
     box.style.cssText = 'background:#1b2030;color:#e6e8ee;border:1px solid #39405a;border-radius:8px;max-width:420px;padding:20px;font:14px/1.5 system-ui,sans-serif;white-space:pre-line';
     const msg = document.createElement('div');
-    msg.textContent = message;
+    // Render per line so a ⚠ warning (e.g. not enough ships to fill the template)
+    // stands out in red.
+    for (const line of String(message).split('\n')) {
+      const l = document.createElement('div');
+      l.textContent = line;
+      if (line.trim().startsWith('⚠')) l.style.color = '#ff7b72';
+      msg.appendChild(l);
+    }
     const btns = document.createElement('div');
     btns.style.cssText = 'margin-top:18px;display:flex;gap:10px;justify-content:flex-end;white-space:normal';
     const mk = (label, primary) => {
