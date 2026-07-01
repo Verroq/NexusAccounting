@@ -1100,7 +1100,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
   for (const r of reports) {
     if (!r.combatLog) continue;
     const rec = recentById.get(r.id);
-    if (!rec || rec.your_fleet != null) continue;
+    if (!rec || (rec.your_fleet && rec.your_fleet.length)) continue;   // re-patch records left with an empty fleet
     const d = combatDebris(r);
     rec.combat_outcome = r.combatLog.outcome || r.outcome || null;
     rec.debris_ore = d.ore; rec.debris_alloys = d.alloys; rec.debris_silicates = d.silicates;
@@ -1484,7 +1484,7 @@ async function processMiningReports(reports, ships, zones = {}) {
   for (const r of reports) {
     if (!r.combatOutcome) continue;
     const rec = recentById.get(r.id);
-    if (!rec || rec.your_fleet != null) continue;
+    if (!rec || (rec.your_fleet && rec.your_fleet.length)) continue;   // re-patch records left with an empty fleet
     const d = combatDebris(r);
     rec.combat_outcome = r.combatOutcome;
     rec.debris_ore = d.ore; rec.debris_alloys = d.alloys; rec.debris_silicates = d.silicates;

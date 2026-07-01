@@ -151,9 +151,11 @@ test('survey backfill enriches already-seen clean-win records without double-cou
     ships: {},
     seen_ids: [30],
     totals: { ore: 5, silicates: 0, hydrogen: 0, missions: 1, ships_lost: 0, rare: {} },
-    // Simulates a record an earlier build partly enriched: outcome set, fleets not.
+    // Simulates a record a buggy earlier build left with an EMPTY fleet (read
+    // from the wrong top-level path). Backfill must re-patch it, not skip it.
     recent_reports: [{ id: 30, created_at: '2026-07-01T05:00:00Z', system_name: 'G1', zone: 'open',
-      event_type: 'pirate_base', ore: 5, ships_lost: 0, ships_damaged: 0, combat_outcome: 'attacker_won' }],
+      event_type: 'pirate_base', ore: 5, ships_lost: 0, ships_damaged: 0,
+      combat_outcome: 'attacker_won', your_fleet: [], enemy_fleet: [] }],
   });
   // Same report comes back from the API (already seen) with full combatLog.
   await bg.processSurveyReports([

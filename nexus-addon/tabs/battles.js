@@ -70,7 +70,7 @@ function collectBattles() {
     rows.push({
       key: `mining:${r.id}`, created_at: r.created_at, source: 'Mining raid',
       location: r.location || r.planet || '—', zone: r.zone, outcome: r.combat_outcome,
-      lost: r.ships_lost || 0, damaged: 0, killed: null,
+      lost: r.ships_lost || 0, damaged: 0, killed: null, youAttacker: false,   // a raid: you defend
       debris: (r.debris_ore || 0) + (r.debris_alloys || 0) + (r.debris_silicates || 0),
       yourFleet: fleetToNames(r.your_fleet, byKey), enemyFleet: fleetToNames(r.enemy_fleet, byKey),
       lostDetail: detailToNames(r.ships_lost_detail), damagedDetail: [],
@@ -139,9 +139,12 @@ function fleetLine(label, list) {
   return div;
 }
 const killList = ks => (ks || []).filter(k => k.qty).map(shipHtml).join(', ') || '—';
-// Round-by-round combat table (attacker = you). Null if no rounds recorded.
-function roundsBlock(rounds) {
+// Round-by-round combat table. `youAttacker` picks which combat side is you —
+// true for survey/pirate (you attack), false for a mining raid (you defend).
+function roundsBlock(rounds, youAttacker = true) {
   if (!rounds || !rounds.length) return null;
+  const you = youAttacker ? 'atk' : 'def';
+  const foe = youAttacker ? 'def' : 'atk';
   const table = document.createElement('table');
   table.style.cssText = 'width:100%;border-collapse:collapse;margin:4px 0 8px';
   table.innerHTML = `<thead><tr style="text-align:left;color:#8b949e;font-size:0.78rem">
@@ -156,9 +159,9 @@ function roundsBlock(rounds) {
     const td = (html, extra = '') => { const c = document.createElement('td'); c.style.cssText = `padding:2px 6px;${extra}`; c.innerHTML = html; return c; };
     tr.append(
       td(String(rd.round)),
-      td(`${rd.atk_dmg.toLocaleString()} <span style="color:#8b949e">·</span> <span style="color:#56d364">${killList(rd.atk_killed)}</span>`),
-      td(`${rd.def_dmg.toLocaleString()} <span style="color:#8b949e">·</span> <span style="color:#ff7b72">${killList(rd.def_killed)}</span>`),
-      td(`${rd.atk_hp ?? '?'}% / ${rd.def_hp ?? '?'}%`, 'text-align:right'),
+      td(`${(rd[you + '_dmg'] || 0).toLocaleString()} <span style="color:#8b949e">·</span> <span style="color:#56d364">${killList(rd[you + '_killed'])}</span>`),
+      td(`${(rd[foe + '_dmg'] || 0).toLocaleString()} <span style="color:#8b949e">·</span> <span style="color:#ff7b72">${killList(rd[foe + '_killed'])}</span>`),
+      td(`${rd[you + '_hp'] ?? '?'}% / ${rd[foe + '_hp'] ?? '?'}%`, 'text-align:right'),
     );
     tb.appendChild(tr);
   }
@@ -259,7 +262,7 @@ export function renderBattlesTab() {
         fleetLine('Ships damaged', r.damagedDetail),
       ].filter(Boolean);
       lines.forEach(l => dtd.appendChild(l));
-      const rb = roundsBlock(r.rounds);
+      const rb = roundsBlock(r.rounds, r.youAttacker !== false);
       if (rb) dtd.appendChild(rb);
       if (!lines.length && !rb) { const p = document.createElement('div'); p.style.color = '#484f58'; p.textContent = 'No combat detail recorded for this battle.'; dtd.appendChild(p); }
       dtr.appendChild(dtd); tbody.appendChild(dtr);
