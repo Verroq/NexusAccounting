@@ -288,6 +288,7 @@ test('debris collection: returning collect_debris cargo recorded once', async ()
   await bg.processMissions([{ id: 1, missionType: 'collect_debris', status: 'outbound', targetSystemId: 568, cargo: {} }], zoneById);
   assert.equal(store.debris_collected.ore, 0);
   assert.equal(store.debris_active_runs.length, 1);
+  assert.equal(store.debris_active_runs[0].system_id, 568);   // lets the UI mark the field already collecting
   assert.equal(store.debris_collection_log.length, 0);
 
   // returning with cargo: committed exactly

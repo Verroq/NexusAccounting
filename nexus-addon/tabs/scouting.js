@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, clearAvailStrip, confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { applySort, attachSortable, clearAvailStrip, confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -575,6 +575,9 @@ function renderDebris() {
     .filter(f => !scDebrisZoneFilter.size || scDebrisZoneFilter.has(f.zone))
     .filter(f => !scInvestigatedOnly || (f.systemId != null && scInvHistory.has(f.systemId)));
   const rows = scShowHidden ? sorted : sorted.filter(f => !scHiddenDebris.has(f.id));
+  // Systems with a collect fleet already in flight (persisted across reloads),
+  // so a field isn't offered for collection twice.
+  const collectingSystems = new Set((store.debris_active_runs || []).map(r => r.system_id).filter(v => v != null));
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
@@ -594,7 +597,7 @@ function renderDebris() {
 
     const btnTd = document.createElement('td');
     const btn = document.createElement('button');
-    const busy = f.debrisId != null && scJustCollected.has(f.debrisId);
+    const busy = f.debrisId != null && (scJustCollected.has(f.debrisId) || (f.systemId != null && collectingSystems.has(f.systemId)));
     const ok = f.debrisId != null && !busy;
     btn.textContent = busy ? 'Collecting…' : ok ? 'Collect' : '—';
     btn.disabled = !ok;

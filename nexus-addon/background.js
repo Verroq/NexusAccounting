@@ -1744,6 +1744,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
       id: m.id,
       fleet: (m.fleetComposition || []).map(f => ({ key: f.shipKey || f.key, quantity: f.quantity || 1 })),
       system: m.targetSystemName || (m.targetSystemId != null ? `System #${m.targetSystemId}` : '—'),
+      system_id: m.targetSystemId ?? null,   // so the UI can mark a field already collecting
       zone: zoneById[m.targetSystemId] || 'unknown',
       status: m.status || (returning ? 'returning' : 'outbound'),
       eta: m.returnArrivesAt || m.arrivesAt || null,
