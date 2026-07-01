@@ -1083,7 +1083,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
         combat_outcome: r.combatLog.outcome || r.outcome || null,
         debris_ore: d.ore, debris_alloys: d.alloys, debris_silicates: d.silicates,
         rounds: combatRounds(r),
-        your_fleet: normFleet(r.attackerFleet), enemy_fleet: normFleet(r.defenderFleet),   // you investigate, pirates defend
+        your_fleet: combatFleet(r, 'attackerFleet'), enemy_fleet: combatFleet(r, 'defenderFleet'),   // you investigate, pirates defend
       }))(combatDebris(r)) : {}),
     });
   }
@@ -1105,8 +1105,8 @@ async function processSurveyReports(reports, ships, zones = {}) {
     rec.combat_outcome = r.combatLog.outcome || r.outcome || null;
     rec.debris_ore = d.ore; rec.debris_alloys = d.alloys; rec.debris_silicates = d.silicates;
     rec.rounds = combatRounds(r);
-    rec.your_fleet = normFleet(r.attackerFleet);
-    rec.enemy_fleet = normFleet(r.defenderFleet);
+    rec.your_fleet = combatFleet(r, 'attackerFleet');
+    rec.enemy_fleet = combatFleet(r, 'defenderFleet');
   }
 
   const timestamps = reports.map(r => r.createdAt).sort();
@@ -1366,6 +1366,11 @@ function normFleet(arr) {
   return (arr || []).map(f => ({ key: f.key || f.shipKey, name: f.name || null, quantity: f.quantity || 1 }))
     .filter(f => f.quantity > 0 && (f.key || f.name));
 }
+// A named combat fleet — nested under combatLog for survey/mining raids,
+// top-level for pirate reports.
+function combatFleet(r, name) {
+  return normFleet((r.combatLog && r.combatLog[name]) || r[name]);
+}
 
 // Trimmed round-by-round combat log for the Battles tab. Pirate reports keep
 // rounds at the top level; survey/mining raids nest them under combatLog.
@@ -1465,7 +1470,7 @@ async function processMiningReports(reports, ships, zones = {}) {
       combat_outcome: r.combatOutcome || null,
       ...(r.combatOutcome ? (d => ({
         debris_ore: d.ore, debris_alloys: d.alloys, debris_silicates: d.silicates, rounds: combatRounds(r),
-        your_fleet: normFleet(r.defenderFleet), enemy_fleet: normFleet(r.attackerFleet),   // a raid: pirates attack, you defend
+        your_fleet: combatFleet(r, 'defenderFleet'), enemy_fleet: combatFleet(r, 'attackerFleet'),   // a raid: pirates attack, you defend
       }))(combatDebris(r)) : {}),
     });
   }
