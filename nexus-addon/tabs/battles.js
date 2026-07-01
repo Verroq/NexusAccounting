@@ -10,6 +10,25 @@ let battleFilter = 'all';
 let battlePage = 1;
 const expanded = new Set();
 
+// Ship name → image URL, lazy-loaded once from the shipyard defs so expanded
+// rows can show a ship icon next to each name. Resolved by name because stored
+// rounds keep only names, not keys.
+let shipImgByName = null;
+async function loadShipImages() {
+  if (shipImgByName !== null) return;
+  shipImgByName = {};   // set before await so we only fetch once
+  try {
+    const defs = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
+    for (const s of (defs.ships || [])) if (s.name && s.imageUrl) shipImgByName[s.name] = s.imageUrl;
+    if (document.getElementById('battles-content')) renderBattlesTab();
+  } catch { /* no login / offline — names render without icons */ }
+}
+// <img> HTML for a ship name, or '' when unknown. Trusted game CDN URL.
+function imgHtml(name) {
+  const url = shipImgByName && shipImgByName[name];
+  return url ? `<img src="${url}" alt="" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-right:3px">` : '';
+}
+
 // shipDefId→qty detail → [{ name, qty }] using the ship catalog.
 function detailToNames(detail) {
   return Object.entries(detail || {}).map(([id, qty]) => ({
@@ -110,16 +129,16 @@ function numTd(v) {
   else { const s = document.createElement('span'); s.className = 'zero'; s.textContent = '—'; td.appendChild(s); }
   return td;
 }
+function shipHtml(x) { return `${imgHtml(x.name)}${x.qty}× ${x.name}`; }
 function fleetLine(label, list) {
-  const parts = (list || []).filter(x => x.qty).map(x => `${x.qty}× ${x.name}`);
-  if (!parts.length) return null;
+  const items = (list || []).filter(x => x.qty);
+  if (!items.length) return null;
   const div = document.createElement('div');
   div.style.cssText = 'margin:2px 0';
-  const b = document.createElement('span'); b.style.color = '#8b949e'; b.textContent = `${label}: `;
-  div.append(b, document.createTextNode(parts.join(', ')));
+  div.innerHTML = `<span style="color:#8b949e">${label}: </span>` + items.map(shipHtml).join(', ');
   return div;
 }
-const killList = ks => (ks || []).filter(k => k.qty).map(k => `${k.qty}× ${k.name}`).join(', ') || '—';
+const killList = ks => (ks || []).filter(k => k.qty).map(shipHtml).join(', ') || '—';
 // Round-by-round combat table (attacker = you). Null if no rounds recorded.
 function roundsBlock(rounds) {
   if (!rounds || !rounds.length) return null;
@@ -150,6 +169,7 @@ function roundsBlock(rounds) {
 export function renderBattlesTab() {
   const root = document.getElementById('battles-content');
   root.textContent = '';
+  loadShipImages();   // lazy, re-renders once images are ready
 
   const rows = collectBattles();
 
