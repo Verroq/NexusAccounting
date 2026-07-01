@@ -37,7 +37,7 @@ function detailToNames(detail) {
 }
 // [{ key, quantity }] fleet → [{ name, qty }] via a key→def index.
 function fleetToNames(fleet, byKey) {
-  return (fleet || []).map(f => ({ name: (byKey[f.key] || {}).name || f.key, qty: f.quantity || 1 }));
+  return (fleet || []).map(f => ({ name: f.name || (byKey[f.key] || {}).name || f.key, qty: f.quantity || 1 }));
 }
 // Expedition/wormhole loss array is either { shipDefId, quantity } or { key, lost }.
 function rawLossToNames(arr, byKey) {
@@ -72,7 +72,7 @@ function collectBattles() {
       location: r.location || r.planet || '—', zone: r.zone, outcome: r.combat_outcome,
       lost: r.ships_lost || 0, damaged: 0, killed: null,
       debris: (r.debris_ore || 0) + (r.debris_alloys || 0) + (r.debris_silicates || 0),
-      yourFleet: null, enemyFleet: null,
+      yourFleet: fleetToNames(r.your_fleet, byKey), enemyFleet: fleetToNames(r.enemy_fleet, byKey),
       lostDetail: detailToNames(r.ships_lost_detail), damagedDetail: [],
       rounds: r.rounds || [],
     });
@@ -84,7 +84,7 @@ function collectBattles() {
       location: r.system_name || '—', zone: r.zone, outcome: r.combat_outcome || 'ambush',
       lost: r.ships_lost || 0, damaged: r.ships_damaged || 0, killed: null,
       debris: (r.debris_ore || 0) + (r.debris_alloys || 0) + (r.debris_silicates || 0),
-      yourFleet: null, enemyFleet: null,
+      yourFleet: fleetToNames(r.your_fleet, byKey), enemyFleet: fleetToNames(r.enemy_fleet, byKey),
       lostDetail: detailToNames(r.ships_lost_detail), damagedDetail: detailToNames(r.ships_damaged_detail),
       rounds: r.rounds || [],
     });

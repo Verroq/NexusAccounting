@@ -1083,6 +1083,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
         combat_outcome: r.combatLog.outcome || r.outcome || null,
         debris_ore: d.ore, debris_alloys: d.alloys, debris_silicates: d.silicates,
         rounds: combatRounds(r),
+        your_fleet: normFleet(r.attackerFleet), enemy_fleet: normFleet(r.defenderFleet),   // you investigate, pirates defend
       }))(combatDebris(r)) : {}),
     });
   }
@@ -1091,17 +1092,21 @@ async function processSurveyReports(reports, ships, zones = {}) {
   // combat fields (or stored a null outcome from the old top-level `r.outcome`
   // path — survey outcome is actually nested in combatLog). Patches in place,
   // never touches totals/seen, so no double-count. Idempotent + self-limiting:
-  // once a record has combat_outcome it is skipped.
-  // ponytail: runs every scrape but only mutates records still missing the field.
+  // gated on `your_fleet` (the last-added field) so records enriched by an
+  // earlier build — which set combat_outcome but not the fleets — still get
+  // patched, while fully-enriched records are skipped.
+  // ponytail: runs every scrape but only mutates records still missing fields.
   const recentById = new Map(recentReports.map(rr => [rr.id, rr]));
   for (const r of reports) {
     if (!r.combatLog) continue;
     const rec = recentById.get(r.id);
-    if (!rec || rec.combat_outcome != null) continue;
+    if (!rec || rec.your_fleet != null) continue;
     const d = combatDebris(r);
     rec.combat_outcome = r.combatLog.outcome || r.outcome || null;
     rec.debris_ore = d.ore; rec.debris_alloys = d.alloys; rec.debris_silicates = d.silicates;
     rec.rounds = combatRounds(r);
+    rec.your_fleet = normFleet(r.attackerFleet);
+    rec.enemy_fleet = normFleet(r.defenderFleet);
   }
 
   const timestamps = reports.map(r => r.createdAt).sort();
@@ -1355,6 +1360,13 @@ function combatDebris(r) {
   return { ore: d.ore || 0, alloys: d.alloys || 0, silicates: d.silicates || 0 };
 }
 
+// Normalize a combat fleet ([{ key/name, quantity }]) for the Battles tab,
+// keeping the name so enemy ships absent from your shipyard still display.
+function normFleet(arr) {
+  return (arr || []).map(f => ({ key: f.key || f.shipKey, name: f.name || null, quantity: f.quantity || 1 }))
+    .filter(f => f.quantity > 0 && (f.key || f.name));
+}
+
 // Trimmed round-by-round combat log for the Battles tab. Pirate reports keep
 // rounds at the top level; survey/mining raids nest them under combatLog.
 // Per round: damage + kills + remaining HP% for each side (attacker = you).
@@ -1451,7 +1463,10 @@ async function processMiningReports(reports, ships, zones = {}) {
       ships_lost_detail: lostDetail,   // shipDefId→qty, so losses can be valued per period
       stolen_total: Object.values(stolen).reduce((s, v) => s + v, 0),
       combat_outcome: r.combatOutcome || null,
-      ...(r.combatOutcome ? (d => ({ debris_ore: d.ore, debris_alloys: d.alloys, debris_silicates: d.silicates, rounds: combatRounds(r) }))(combatDebris(r)) : {}),
+      ...(r.combatOutcome ? (d => ({
+        debris_ore: d.ore, debris_alloys: d.alloys, debris_silicates: d.silicates, rounds: combatRounds(r),
+        your_fleet: normFleet(r.defenderFleet), enemy_fleet: normFleet(r.attackerFleet),   // a raid: pirates attack, you defend
+      }))(combatDebris(r)) : {}),
     });
   }
 

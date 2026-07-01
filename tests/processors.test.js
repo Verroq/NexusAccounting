@@ -106,7 +106,10 @@ test('combat debris stored from combatLog on raided mining/survey reports', asyn
   const mstore = makeBrowserStub({ ships: {} });
   await bg.processMiningReports([
     { id: 10, createdAt: '2026-07-01T02:00:00Z', resourcesDelivered: {}, locationName: 'X', shipsLost: [],
-      combatOutcome: 'defender_won', combatLog: { debris: { ore: 100, alloys: 20, silicates: 30 }, rounds: [
+      combatOutcome: 'defender_won',
+      attackerFleet: [{ key: 'scout', name: 'Scout', quantity: 50 }],
+      defenderFleet: [{ key: 'miner', name: 'Mining Vessel', quantity: 90 }],
+      combatLog: { debris: { ore: 100, alloys: 20, silicates: 30 }, rounds: [
         { round: 1, attackerHpPercent: 90, defenderHpPercent: 40, events: [
           { side: 'attacker', totalDamage: 500, shipsDestroyed: [{ key: 'scout', name: 'Scout', lost: 3 }] },
           { side: 'defender', totalDamage: 120, shipsDestroyed: [] },
@@ -121,6 +124,9 @@ test('combat debris stored from combatLog on raided mining/survey reports', asyn
   assert.equal(raided.rounds[0].atk_dmg, 500);
   assert.deepEqual(raided.rounds[0].atk_killed, [{ name: 'Scout', qty: 3 }]);
   assert.equal(raided.rounds[0].def_hp, 40);
+  // a raid: you defend, pirates attack
+  assert.deepEqual(raided.your_fleet, [{ key: 'miner', name: 'Mining Vessel', quantity: 90 }]);
+  assert.deepEqual(raided.enemy_fleet, [{ key: 'scout', name: 'Scout', quantity: 50 }]);
   // no combat → no debris fields
   assert.equal(mstore.mining_recent_reports.find(r => r.id === 11).debris_ore, undefined);
 
@@ -145,14 +151,17 @@ test('survey backfill enriches already-seen clean-win records without double-cou
     ships: {},
     seen_ids: [30],
     totals: { ore: 5, silicates: 0, hydrogen: 0, missions: 1, ships_lost: 0, rare: {} },
+    // Simulates a record an earlier build partly enriched: outcome set, fleets not.
     recent_reports: [{ id: 30, created_at: '2026-07-01T05:00:00Z', system_name: 'G1', zone: 'open',
-      event_type: 'pirate_base', ore: 5, ships_lost: 0, ships_damaged: 0 }],
+      event_type: 'pirate_base', ore: 5, ships_lost: 0, ships_damaged: 0, combat_outcome: 'attacker_won' }],
   });
   // Same report comes back from the API (already seen) with full combatLog.
   await bg.processSurveyReports([
     { id: 30, createdAt: '2026-07-01T05:00:00Z', investigated: true, uncollectedLoot: null,
       loot: { ore: 5 }, eventType: 'pirate_base', systemName: 'G1', securityZone: 'open',
       shipsLost: [], shipsDamaged: [],
+      attackerFleet: [{ key: 'cruiser', name: 'Cruiser', quantity: 40 }],
+      defenderFleet: [{ key: 'fighter', name: 'Fighter', quantity: 20 }],
       combatLog: { outcome: 'attacker_won', debris: { ore: 700, alloys: 100, silicates: 200 },
         rounds: [{ round: 1, attackerHpPercent: 88, defenderHpPercent: 0, events: [
           { side: 'attacker', totalDamage: 300, shipsDestroyed: [{ name: 'Fighter', lost: 2 }] },
@@ -163,6 +172,8 @@ test('survey backfill enriches already-seen clean-win records without double-cou
   assert.equal(rec.combat_outcome, 'attacker_won');   // backfilled
   assert.equal(rec.debris_ore, 700);
   assert.equal(rec.rounds[0].atk_dmg, 300);
+  assert.deepEqual(rec.your_fleet, [{ key: 'cruiser', name: 'Cruiser', quantity: 40 }]);
+  assert.deepEqual(rec.enemy_fleet, [{ key: 'fighter', name: 'Fighter', quantity: 20 }]);
   assert.equal(store.totals.ore, 5);                  // NOT double-counted
   assert.equal(store.totals.missions, 1);
 });
