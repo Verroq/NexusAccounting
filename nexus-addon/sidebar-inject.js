@@ -244,7 +244,7 @@ async function openFieldsPanel() {
   if (fieldsPanel) { fieldsPanel.remove(); fieldsPanel = null; }
   const { live_search_last_matches, live_search_last_at, live_search } =
     await ext.storage.local.get(['live_search_last_matches', 'live_search_last_at', 'live_search']);
-  const matches = live_search_last_matches || [];
+  let matches = live_search_last_matches || [];
   const running = !!(live_search && live_search.enabled);
 
   const panel = document.createElement('div');
@@ -464,6 +464,20 @@ async function openFieldsPanel() {
     renderRows();
   });
   renderRows();
+
+  // Live-refresh title/timestamp/rows when a background scan writes new results,
+  // so the window doesn't sit on a stale "as of" time. Self-removes once closed.
+  function onScan(changes, area) {
+    if (area !== 'local' || !('live_search_last_at' in changes || 'live_search_last_matches' in changes)) return;
+    if (!panel.isConnected) { ext.storage.onChanged.removeListener(onScan); return; }
+    ext.storage.local.get(['live_search_last_matches', 'live_search_last_at']).then(d => {
+      matches = d.live_search_last_matches || [];
+      title.textContent = `Asteroid matches (${matches.length})`;
+      sub.textContent = d.live_search_last_at ? `as of ${new Date(d.live_search_last_at).toLocaleTimeString()}` : 'no scan yet';
+      renderRows();
+    });
+  }
+  ext.storage.onChanged.addListener(onScan);
 
   const footer = document.createElement('div');
   footer.style.cssText = 'display:flex;justify-content:space-between;align-items:center;' +
