@@ -5,6 +5,7 @@
 // ── Storage ────────────────────────────────────────────────────────────────
 
 import { activeTab, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setStore, store } from './common.js';
+import { renderBattlesTab } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
 import { initAsteroidsTab } from './tabs/asteroids.js';
@@ -93,6 +94,10 @@ export function renderAll() {
     renderMiningTab();
     return;
   }
+  if (activeTab === 'battles') {
+    renderBattlesTab();
+    return;
+  }
   if (activeTab === 'debris') {
     renderDebrisTab();
     return;
@@ -150,6 +155,7 @@ export const TAB_CONTENT = {
   surveys: 'main-content',
   pirates: 'pirates-content',
   mining: 'mining-content',
+  battles: 'battles-content',
   debris: 'debris-content',
   expeditions: 'expeditions-content',
   finder: 'finder-content',
@@ -169,7 +175,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     }
     // View mode and records cap are meaningless on the finder and debris tabs.
     document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'battles') ? 'none' : '';
     positionControls();
     renderAll();
   });
