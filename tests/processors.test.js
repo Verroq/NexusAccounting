@@ -101,6 +101,72 @@ test('mining drill maintenance valued per drill type from damagedQuantity', asyn
   assert.equal(store.mining_totals.maintenance_alloys, 220);
 });
 
+test('combat debris stored from combatLog on raided mining/survey reports', async () => {
+  const bg = await loadBackground();
+  const mstore = makeBrowserStub({ ships: {} });
+  await bg.processMiningReports([
+    { id: 10, createdAt: '2026-07-01T02:00:00Z', resourcesDelivered: {}, locationName: 'X', shipsLost: [],
+      combatOutcome: 'defender_won', combatLog: { debris: { ore: 100, alloys: 20, silicates: 30 }, rounds: [
+        { round: 1, attackerHpPercent: 90, defenderHpPercent: 40, events: [
+          { side: 'attacker', totalDamage: 500, shipsDestroyed: [{ key: 'scout', name: 'Scout', lost: 3 }] },
+          { side: 'defender', totalDamage: 120, shipsDestroyed: [] },
+        ] },
+      ] } },
+    { id: 11, createdAt: '2026-07-01T01:00:00Z', resourcesDelivered: { ore: 5 }, locationName: 'X', shipsLost: [] },
+  ], {}, {});
+  const raided = mstore.mining_recent_reports.find(r => r.id === 10);
+  assert.equal(raided.debris_ore, 100);
+  assert.equal(raided.debris_alloys, 20);
+  assert.equal(raided.rounds.length, 1);
+  assert.equal(raided.rounds[0].atk_dmg, 500);
+  assert.deepEqual(raided.rounds[0].atk_killed, [{ name: 'Scout', qty: 3 }]);
+  assert.equal(raided.rounds[0].def_hp, 40);
+  // no combat → no debris fields
+  assert.equal(mstore.mining_recent_reports.find(r => r.id === 11).debris_ore, undefined);
+
+  const sstore = makeBrowserStub({ ships: {} });
+  await bg.processSurveyReports([
+    // Clean win: fought and won with zero losses — still a battle, must keep debris + outcome.
+    { id: 20, createdAt: '2026-07-01T02:00:00Z', investigated: true, uncollectedLoot: null,
+      loot: {}, eventType: 'pirate_base', systemName: 'A12-27', securityZone: 'open',
+      shipsLost: [], shipsDamaged: [],
+      // Survey combat outcome is nested in combatLog, not top-level.
+      combatLog: { outcome: 'attacker_won', debris: { ore: 9360, alloys: 1440, silicates: 5100 } } },
+  ], {}, {});
+  assert.equal(sstore.recent_reports[0].debris_ore, 9360);
+  assert.equal(sstore.recent_reports[0].debris_silicates, 5100);
+  assert.equal(sstore.recent_reports[0].combat_outcome, 'attacker_won');
+});
+
+test('survey backfill enriches already-seen clean-win records without double-counting', async () => {
+  const bg = await loadBackground();
+  // A clean-win survey already stored the old way: seen, counted, but no combat fields.
+  const store = makeBrowserStub({
+    ships: {},
+    seen_ids: [30],
+    totals: { ore: 5, silicates: 0, hydrogen: 0, missions: 1, ships_lost: 0, rare: {} },
+    recent_reports: [{ id: 30, created_at: '2026-07-01T05:00:00Z', system_name: 'G1', zone: 'open',
+      event_type: 'pirate_base', ore: 5, ships_lost: 0, ships_damaged: 0 }],
+  });
+  // Same report comes back from the API (already seen) with full combatLog.
+  await bg.processSurveyReports([
+    { id: 30, createdAt: '2026-07-01T05:00:00Z', investigated: true, uncollectedLoot: null,
+      loot: { ore: 5 }, eventType: 'pirate_base', systemName: 'G1', securityZone: 'open',
+      shipsLost: [], shipsDamaged: [],
+      combatLog: { outcome: 'attacker_won', debris: { ore: 700, alloys: 100, silicates: 200 },
+        rounds: [{ round: 1, attackerHpPercent: 88, defenderHpPercent: 0, events: [
+          { side: 'attacker', totalDamage: 300, shipsDestroyed: [{ name: 'Fighter', lost: 2 }] },
+          { side: 'defender', totalDamage: 40, shipsDestroyed: [] }] }] } },
+  ], {}, {});
+
+  const rec = store.recent_reports.find(r => r.id === 30);
+  assert.equal(rec.combat_outcome, 'attacker_won');   // backfilled
+  assert.equal(rec.debris_ore, 700);
+  assert.equal(rec.rounds[0].atk_dmg, 300);
+  assert.equal(store.totals.ore, 5);                  // NOT double-counted
+  assert.equal(store.totals.missions, 1);
+});
+
 test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
   const ships = {
     21: { key: 'freighter', costOre: 100, costSilicates: 50, costHydrogen: 0, costAlloys: 10, rareCosts: {} },

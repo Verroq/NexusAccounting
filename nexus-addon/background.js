@@ -1079,7 +1079,29 @@ async function processSurveyReports(reports, ships, zones = {}) {
       wormholes_detected: r.wormholesDetected || 0,
       ships_lost_detail: lostDetail,
       ships_damaged_detail: damagedDetail,
+      ...(r.combatLog ? (d => ({
+        combat_outcome: r.combatLog.outcome || r.outcome || null,
+        debris_ore: d.ore, debris_alloys: d.alloys, debris_silicates: d.silicates,
+        rounds: combatRounds(r),
+      }))(combatDebris(r)) : {}),
     });
+  }
+
+  // Backfill: enrich already-stored combat surveys whose record predates the
+  // combat fields (or stored a null outcome from the old top-level `r.outcome`
+  // path — survey outcome is actually nested in combatLog). Patches in place,
+  // never touches totals/seen, so no double-count. Idempotent + self-limiting:
+  // once a record has combat_outcome it is skipped.
+  // ponytail: runs every scrape but only mutates records still missing the field.
+  const recentById = new Map(recentReports.map(rr => [rr.id, rr]));
+  for (const r of reports) {
+    if (!r.combatLog) continue;
+    const rec = recentById.get(r.id);
+    if (!rec || rec.combat_outcome != null) continue;
+    const d = combatDebris(r);
+    rec.combat_outcome = r.combatLog.outcome || r.outcome || null;
+    rec.debris_ore = d.ore; rec.debris_alloys = d.alloys; rec.debris_silicates = d.silicates;
+    rec.rounds = combatRounds(r);
   }
 
   const timestamps = reports.map(r => r.createdAt).sort();
@@ -1213,6 +1235,7 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
       // and measure engine accuracy against the real outcome.
       attacker_fleet: (r.attackerFleet || []).map(i => ({ key: i.key, quantity: i.quantity || 1 })),
       pirate_fleet: (r.pirateFleet || []).map(i => ({ key: i.key, quantity: i.quantity || 1 })),
+      rounds: combatRounds(r),
     });
   }
 
@@ -1325,6 +1348,34 @@ function maintenanceAlloys(fleetComposition) {
   return a;
 }
 
+// Debris a combat report generated. Pirate reports carry it at the top level
+// (r.debris); survey and mining-raid reports nest it under combatLog.debris.
+function combatDebris(r) {
+  const d = (r && r.debris) || (r && r.combatLog && r.combatLog.debris) || {};
+  return { ore: d.ore || 0, alloys: d.alloys || 0, silicates: d.silicates || 0 };
+}
+
+// Trimmed round-by-round combat log for the Battles tab. Pirate reports keep
+// rounds at the top level; survey/mining raids nest them under combatLog.
+// Per round: damage + kills + remaining HP% for each side (attacker = you).
+function combatRounds(r) {
+  const raw = (r && r.rounds) || (r && r.combatLog && r.combatLog.rounds) || [];
+  const kills = e => ((e && e.shipsDestroyed) || []).map(s => ({ name: s.name || s.key, qty: s.lost || 0 }));
+  return raw.map(rd => {
+    const ev = {};
+    for (const e of (rd.events || [])) ev[e.side] = e;
+    return {
+      round: rd.round,
+      atk_dmg: (ev.attacker && ev.attacker.totalDamage) || 0,
+      def_dmg: (ev.defender && ev.defender.totalDamage) || 0,
+      atk_hp: rd.attackerHpPercent ?? null,
+      def_hp: rd.defenderHpPercent ?? null,
+      atk_killed: kills(ev.attacker),
+      def_killed: kills(ev.defender),
+    };
+  });
+}
+
 const CORE_RESOURCES = ['ore', 'silicates', 'hydrogen', 'alloys'];
 
 function addResources(target, res) {
@@ -1400,6 +1451,7 @@ async function processMiningReports(reports, ships, zones = {}) {
       ships_lost_detail: lostDetail,   // shipDefId→qty, so losses can be valued per period
       stolen_total: Object.values(stolen).reduce((s, v) => s + v, 0),
       combat_outcome: r.combatOutcome || null,
+      ...(r.combatOutcome ? (d => ({ debris_ore: d.ore, debris_alloys: d.alloys, debris_silicates: d.silicates, rounds: combatRounds(r) }))(combatDebris(r)) : {}),
     });
   }
 
