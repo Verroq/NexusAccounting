@@ -235,6 +235,7 @@ browser.runtime.onMessage.addListener(msg => {
   }
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
+  if (msg.type === 'PURGE_OLD') return enqueue(() => purgeOldData(msg.days ?? 3)).then(() => ({ ok: true }));
   if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
   if (msg.type === 'GET_ARMS') return apiGet('/api/galaxy/arms');
   if (msg.type === 'GET_GALAXY_MAP') return apiGet('/api/galaxy/map');
@@ -745,6 +746,40 @@ async function loadArchive(type) {
   return out;
 }
 
+// Drop every stored record older than `days`, keeping only the recent window,
+// then recompute aggregates from what remains. Trims the monthly archive shards
+// and the capped recents; empty shards are removed. Seen-id sets are left alone
+// so a re-scrape doesn't re-import the purged reports.
+async function purgeOldData(days = 3) {
+  const cutoff = Date.now() - days * 86400000;
+  const keep = r => new Date(r.created_at || 0).getTime() >= cutoff;
+  const index = await getArchiveIndex();
+  const patch = {};
+  const remove = [];
+  for (const type of ARCHIVE_TYPES) {
+    const months = index[type].months || [];
+    const keys = months.map(m => `${type}_archive_${m}`);
+    const got = keys.length ? await browser.storage.local.get(keys) : {};
+    const keptMonths = [];
+    let count = 0;
+    for (const m of months) {
+      const key = `${type}_archive_${m}`;
+      const kept = (got[key] || []).filter(keep);
+      if (kept.length) { patch[key] = kept; keptMonths.push(m); count += kept.length; }
+      else remove.push(key);
+    }
+    index[type] = { months: keptMonths, count };
+  }
+  patch.archive_index = index;
+  const recentKeys = ['recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports'];
+  const recents = await browser.storage.local.get(recentKeys);
+  for (const k of recentKeys) if (Array.isArray(recents[k])) patch[k] = recents[k].filter(keep);
+  await browser.storage.local.set(patch);
+  if (remove.length) await browser.storage.local.remove(remove);
+  await rebuildAggregates();
+  return { ok: true };
+}
+
 // ── Processors ─────────────────────────────────────────────────────────────
 
 function parseShipsLost(shipsLost) {
@@ -992,7 +1027,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
     'seen_ids', 'totals', 'daily', 'hourly', 'resources_lost',
     'event_breakdown', 'recent_reports', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 500;
+  const recordsCap = stored.records_cap ?? 5000;
 
   const seenIds = new Set(stored.seen_ids || []);
   const totals = stored.totals || {
@@ -1139,7 +1174,7 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
     'pirate_seen_ids', 'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports', 'records_cap',
   ]);
-  const recordsCap = pstored.records_cap ?? 500;
+  const recordsCap = pstored.records_cap ?? 5000;
 
   const pirateSeen = new Set(pstored.pirate_seen_ids || []);
   const pirateTotals = pstored.pirate_totals || {
@@ -1442,7 +1477,7 @@ async function processMiningReports(reports, ships, zones = {}) {
     'mining_seen_ids', 'mining_totals', 'mining_daily', 'mining_resources_lost',
     'mining_recent_reports', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 500;
+  const recordsCap = stored.records_cap ?? 5000;
 
   const seen = new Set(stored.mining_seen_ids || []);
   const totals = stored.mining_totals || {
@@ -1568,7 +1603,7 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
   const stored = await browser.storage.local.get([
     'exp_seen_ids', 'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 500;
+  const recordsCap = stored.records_cap ?? 5000;
 
   const seen = new Set(stored.exp_seen_ids || []);
   const totals = stored.exp_totals || {
@@ -1727,7 +1762,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
     'debris_collected', 'debris_collection_log', 'debris_collection_ids',
     'debris_resources_lost', 'debris_loss_ids', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 500;
+  const recordsCap = stored.records_cap ?? 5000;
   const total = stored.debris_collected || { ore: 0, silicates: 0, alloys: 0, hydrogen: 0 };
   const log = [...(stored.debris_collection_log || [])];
   const seen = new Set(stored.debris_collection_ids || []);
@@ -2323,5 +2358,5 @@ export {
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
-  fieldMatches,
+  fieldMatches, purgeOldData,
 };

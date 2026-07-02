@@ -4,7 +4,7 @@
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-import { activeTab, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setStore, store } from './common.js';
+import { activeTab, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setStore, store } from './common.js';
 import { renderBattlesTab } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
@@ -32,7 +32,7 @@ export async function loadAll() {
     'research', 'research_speed_mult', 'active_research', 'fuel_log',
   ]));
 
-  const cap = store.records_cap ?? 500;
+  const cap = store.records_cap ?? 5000;
   document.getElementById('records-cap').value = cap === Infinity ? 0 : cap;
   updateStatus(store.last_scrape, store.last_error);
   renderAll();
@@ -389,8 +389,27 @@ document.getElementById('import-file').addEventListener('change', async function
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
+// On launch, if the stored report count is very large, offer a one-click purge
+// down to the last 3 days. Runs once (not on every scrape-driven reload).
+const PURGE_WARN_THRESHOLD = 10000;
+async function maybeWarnStorage() {
+  const all = await browser.storage.local.get([
+    'archive_index', 'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports',
+  ]);
+  const idx = all.archive_index || {};
+  const total = (idx.survey?.count || all.recent_reports?.length || 0) +
+    (idx.pirate?.count || all.pirate_recent_reports?.length || 0) +
+    (idx.mining?.count || all.mining_recent_reports?.length || 0) +
+    (idx.exp?.count || all.exp_recent_reports?.length || 0);
+  if (total <= PURGE_WARN_THRESHOLD) return;
+  if (!await confirmDialog(`⚠ Large storage: ${total.toLocaleString()} reports kept.\n\n` +
+    'Purge old data and keep only the last 3 days?')) return;
+  await browser.runtime.sendMessage({ type: 'PURGE_OLD', days: 3 });
+  await loadAll();
+}
+
 positionControls();
-loadAll();
+loadAll().then(maybeWarnStorage);
 maybeShowWhatsNew();
 
 // Show the latest changelog section once after an update (flag set by the

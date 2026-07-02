@@ -254,6 +254,29 @@ test('wormhole run stores per-encounter combat (clean wins included)', async () 
   assert.deepEqual(e.your_fleet, [{ key: 'cruiser', name: 'Cruiser', quantity: 9 }, { key: 'freighter', name: 'Freighter', quantity: 12 }]);
 });
 
+test('purgeOldData drops records older than the window, keeps recent', async () => {
+  const bg = await loadBackground();
+  const now = Date.now();
+  const iso = ms => new Date(ms).toISOString();
+  const fresh = iso(now - 1 * 86400000);   // 1 day old — kept
+  const old = iso(now - 10 * 86400000);    // 10 days old — purged
+  const store = makeBrowserStub({
+    ships: {},
+    archive_index: { survey: { months: [old.slice(0, 7), fresh.slice(0, 7)], count: 2 },
+      pirate: { months: [], count: 0 }, mining: { months: [], count: 0 }, exp: { months: [], count: 0 } },
+    [`survey_archive_${old.slice(0, 7)}`]: [{ id: 1, created_at: old, ore: 5 }],
+    [`survey_archive_${fresh.slice(0, 7)}`]: [{ id: 2, created_at: fresh, ore: 7 }],
+    recent_reports: [{ id: 2, created_at: fresh, ore: 7 }, { id: 1, created_at: old, ore: 5 }],
+  });
+
+  await bg.purgeOldData(3);
+
+  assert.equal(store.recent_reports.length, 1);
+  assert.equal(store.recent_reports[0].id, 2);              // only the fresh record survives
+  assert.equal(store.archive_index.survey.count, 1);        // index recount
+  assert.ok(!store.archive_index.survey.months.includes(old.slice(0, 7)));   // stale month dropped
+});
+
 test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
   const ships = {
     21: { key: 'freighter', costOre: 100, costSilicates: 50, costHydrogen: 0, costAlloys: 10, rareCosts: {} },
