@@ -101,6 +101,182 @@ test('mining drill maintenance valued per drill type from damagedQuantity', asyn
   assert.equal(store.mining_totals.maintenance_alloys, 220);
 });
 
+test('combat debris stored from combatLog on raided mining/survey reports', async () => {
+  const bg = await loadBackground();
+  const mstore = makeBrowserStub({ ships: {} });
+  await bg.processMiningReports([
+    { id: 10, createdAt: '2026-07-01T02:00:00Z', resourcesDelivered: {}, locationName: 'X', shipsLost: [],
+      combatOutcome: 'defender_won',
+      attackerFleet: [{ key: 'scout', name: 'Scout', quantity: 50 }],
+      defenderFleet: [{ key: 'miner', name: 'Mining Vessel', quantity: 90 }],
+      combatLog: { debris: { ore: 100, alloys: 20, silicates: 30 }, rounds: [
+        { round: 1, attackerHpPercent: 90, defenderHpPercent: 40, events: [
+          { side: 'attacker', totalDamage: 500, shipsDestroyed: [{ key: 'scout', name: 'Scout', lost: 3 }] },
+          { side: 'defender', totalDamage: 120, shipsDestroyed: [] },
+        ] },
+      ] } },
+    { id: 11, createdAt: '2026-07-01T01:00:00Z', resourcesDelivered: { ore: 5 }, locationName: 'X', shipsLost: [] },
+  ], {}, {});
+  const raided = mstore.mining_recent_reports.find(r => r.id === 10);
+  assert.equal(raided.debris_ore, 100);
+  assert.equal(raided.debris_alloys, 20);
+  assert.equal(raided.rounds.length, 1);
+  assert.equal(raided.rounds[0].atk_dmg, 500);
+  assert.deepEqual(raided.rounds[0].atk_killed, [{ name: 'Scout', qty: 3 }]);
+  assert.equal(raided.rounds[0].def_hp, 40);
+  // a raid: you defend, pirates attack
+  assert.deepEqual(raided.your_fleet, [{ key: 'miner', name: 'Mining Vessel', quantity: 90 }]);
+  assert.deepEqual(raided.enemy_fleet, [{ key: 'scout', name: 'Scout', quantity: 50 }]);
+  // no combat → no debris fields
+  assert.equal(mstore.mining_recent_reports.find(r => r.id === 11).debris_ore, undefined);
+
+  const sstore = makeBrowserStub({ ships: {} });
+  await bg.processSurveyReports([
+    // Clean win: fought and won with zero losses — still a battle, must keep debris + outcome.
+    { id: 20, createdAt: '2026-07-01T02:00:00Z', investigated: true, uncollectedLoot: null,
+      loot: {}, eventType: 'pirate_base', systemName: 'A12-27', securityZone: 'open',
+      shipsLost: [], shipsDamaged: [],
+      // Survey combat outcome is nested in combatLog, not top-level.
+      combatLog: { outcome: 'attacker_won', debris: { ore: 9360, alloys: 1440, silicates: 5100 } } },
+  ], {}, {});
+  assert.equal(sstore.recent_reports[0].debris_ore, 9360);
+  assert.equal(sstore.recent_reports[0].debris_silicates, 5100);
+  assert.equal(sstore.recent_reports[0].combat_outcome, 'attacker_won');
+});
+
+test('survey backfill enriches already-seen clean-win records without double-counting', async () => {
+  const bg = await loadBackground();
+  // A clean-win survey already stored the old way: seen, counted, but no combat fields.
+  const store = makeBrowserStub({
+    ships: {},
+    seen_ids: [30],
+    totals: { ore: 5, silicates: 0, hydrogen: 0, missions: 1, ships_lost: 0, rare: {} },
+    // Simulates a record a buggy earlier build left with an EMPTY fleet (read
+    // from the wrong top-level path). Backfill must re-patch it, not skip it.
+    recent_reports: [{ id: 30, created_at: '2026-07-01T05:00:00Z', system_name: 'G1', zone: 'open',
+      event_type: 'pirate_base', ore: 5, ships_lost: 0, ships_damaged: 0,
+      combat_outcome: 'attacker_won', your_fleet: [], enemy_fleet: [] }],
+  });
+  // Same report comes back from the API (already seen) with full combatLog.
+  await bg.processSurveyReports([
+    { id: 30, createdAt: '2026-07-01T05:00:00Z', investigated: true, uncollectedLoot: null,
+      loot: { ore: 5 }, eventType: 'pirate_base', systemName: 'G1', securityZone: 'open',
+      shipsLost: [], shipsDamaged: [],
+      attackerFleet: [{ key: 'cruiser', name: 'Cruiser', quantity: 40 }],
+      defenderFleet: [{ key: 'fighter', name: 'Fighter', quantity: 20 }],
+      combatLog: { outcome: 'attacker_won', debris: { ore: 700, alloys: 100, silicates: 200 },
+        rounds: [{ round: 1, attackerHpPercent: 88, defenderHpPercent: 0, events: [
+          { side: 'attacker', totalDamage: 300, shipsDestroyed: [{ name: 'Fighter', lost: 2 }] },
+          { side: 'defender', totalDamage: 40, shipsDestroyed: [] }] }] } },
+  ], {}, {});
+
+  const rec = store.recent_reports.find(r => r.id === 30);
+  assert.equal(rec.combat_outcome, 'attacker_won');   // backfilled
+  assert.equal(rec.debris_ore, 700);
+  assert.equal(rec.rounds[0].atk_dmg, 300);
+  assert.deepEqual(rec.your_fleet, [{ key: 'cruiser', name: 'Cruiser', quantity: 40 }]);
+  assert.deepEqual(rec.enemy_fleet, [{ key: 'fighter', name: 'Fighter', quantity: 20 }]);
+  assert.equal(store.totals.ore, 5);                  // NOT double-counted
+  assert.equal(store.totals.missions, 1);
+});
+
+test('mining-raid backfill enriches already-seen records without double-counting', async () => {
+  const bg = await loadBackground();
+  // A raid already stored the old way: seen, counted, no combat detail.
+  const store = makeBrowserStub({
+    ships: {},
+    mining_seen_ids: [40],
+    mining_totals: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, deliveries: 1, cycles: 0,
+      drill_breakdowns: 0, maintenance_alloys: 0, ships_lost: 0, rare: {}, stolen: {} },
+    mining_recent_reports: [{ id: 40, created_at: '2026-07-01T06:00:00Z', location: 'Y', zone: 'open',
+      ships_lost: 0, combat_outcome: 'attacker_won' }],   // prior build: outcome only
+  });
+  await bg.processMiningReports([
+    { id: 40, createdAt: '2026-07-01T06:00:00Z', resourcesDelivered: {}, locationName: 'Y', shipsLost: [],
+      combatOutcome: 'attacker_won', combatLog: { debris: { ore: 50, alloys: 8, silicates: 12 },
+        attackerFleet: [{ key: 'scout', name: 'Scout', quantity: 30 }],
+        defenderFleet: [{ key: 'miner', name: 'Mining Vessel', quantity: 80 }],
+        rounds: [{ round: 1, attackerHpPercent: 20, defenderHpPercent: 95, events: [] }] } },
+  ], {}, {});
+  const rec = store.mining_recent_reports.find(r => r.id === 40);
+  assert.equal(rec.debris_ore, 50);
+  assert.deepEqual(rec.your_fleet, [{ key: 'miner', name: 'Mining Vessel', quantity: 80 }]);
+  assert.deepEqual(rec.enemy_fleet, [{ key: 'scout', name: 'Scout', quantity: 30 }]);
+  assert.equal(store.mining_totals.deliveries, 1);   // NOT re-counted
+});
+
+test('pirate backfill patches rounds onto already-seen records', async () => {
+  const bg = await loadBackground();
+  const store = makeBrowserStub({
+    ships: {},
+    pirate_seen_ids: [50],
+    pirate_recent_reports: [{ id: 50, created_at: '2026-07-01T07:00:00Z', camp_id: 9, zone: 'open',
+      outcome: 'attacker_won', ore: 1, ships_lost: 0,
+      attacker_fleet: [{ key: 'cruiser', quantity: 60 }], pirate_fleet: [{ key: 'fighter', quantity: 20 }] }],
+  });
+  await bg.processPirateReports([
+    { id: 50, createdAt: '2026-07-01T07:00:00Z', outcome: 'attacker_won', loot: { ore: 1 },
+      attackerFleet: [{ key: 'cruiser', quantity: 60 }], pirateFleet: [{ key: 'fighter', quantity: 20 }],
+      attackerLosses: [], pirateLosses: [], debris: {},
+      rounds: [{ round: 1, attackerHpPercent: 96, defenderHpPercent: 0, events: [
+        { side: 'attacker', totalDamage: 800, shipsDestroyed: [{ name: 'Fighter', lost: 20 }] },
+        { side: 'defender', totalDamage: 100, shipsDestroyed: [] }] }] },
+  ], {}, {});
+  const rec = store.pirate_recent_reports.find(r => r.id === 50);
+  assert.equal(rec.rounds.length, 1);
+  assert.equal(rec.rounds[0].atk_dmg, 800);
+  assert.deepEqual(rec.rounds[0].atk_killed, [{ name: 'Fighter', qty: 20 }]);
+});
+
+test('wormhole run stores per-encounter combat (clean wins included)', async () => {
+  const bg = await loadBackground();
+  const ships = { 8: { key: 'cruiser', name: 'Cruiser' }, 21: { key: 'freighter', name: 'Freighter' } };
+  const store = makeBrowserStub({ ships });
+  await bg.processExpeditionReports([], [{
+    id: 900, createdAt: '2026-07-01T08:00:00Z', status: 'completed', wormholeId: 1,
+    totalLoot: { ore: 10 }, totalShipsLost: [],   // clean run, zero losses
+    currentFleet: [{ shipDefId: 8, quantity: 9 }, { shipDefId: 21, quantity: 12 }],
+    encounterLog: [
+      { type: 'pirate_base', title: 'Pirate Stronghold', combat: true, outcome: 'victory', encounter: 1,
+        shipsLost: [], combatRounds: [{ round: 1, attackerHpPercent: 94, defenderHpPercent: 0, events: [
+          { side: 'attacker', totalDamage: 700, shipsDestroyed: [{ key: 'wormhole_pirate_corvette', name: 'Pirate Corvette', lost: 5 }] },
+          { side: 'defender', totalDamage: 638, shipsDestroyed: [] }] }] },
+      { type: 'empty', title: 'Nothing', combat: false, outcome: null, encounter: 2 },
+    ],
+  }], ships, {}, {}, {});
+
+  const rec = store.exp_recent_reports.find(r => r.id === 'wh-900');
+  assert.equal(rec.encounters.length, 1);   // only the combat encounter
+  const e = rec.encounters[0];
+  assert.equal(e.outcome, 'victory');
+  assert.equal(e.lost, 0);                   // clean win still captured
+  assert.equal(e.rounds[0].atk_dmg, 700);
+  assert.deepEqual(e.your_fleet, [{ key: 'cruiser', name: 'Cruiser', quantity: 9 }, { key: 'freighter', name: 'Freighter', quantity: 12 }]);
+});
+
+test('purgeOldData drops records older than the window, keeps recent', async () => {
+  const bg = await loadBackground();
+  const now = Date.now();
+  const iso = ms => new Date(ms).toISOString();
+  const fresh = iso(now - 1 * 86400000);   // 1 day old — kept
+  const old = iso(now - 10 * 86400000);    // 10 days old — purged
+  const store = makeBrowserStub({
+    ships: {},
+    archive_index: { survey: { months: [old.slice(0, 7), fresh.slice(0, 7)], count: 2 },
+      pirate: { months: [], count: 0 }, mining: { months: [], count: 0 }, exp: { months: [], count: 0 } },
+    [`survey_archive_${old.slice(0, 7)}`]: [{ id: 1, created_at: old, ore: 5 }],
+    [`survey_archive_${fresh.slice(0, 7)}`]: [{ id: 2, created_at: fresh, ore: 7 }],
+    recent_reports: [{ id: 2, created_at: fresh, ore: 7 }, { id: 1, created_at: old, ore: 5 }],
+  });
+
+  await bg.purgeOldData(3);
+
+  assert.equal(store.recent_reports.length, 1);
+  assert.equal(store.recent_reports[0].id, 2);              // only the fresh record survives
+  assert.equal(store.archive_index.survey.count, 1);        // index recount
+  assert.ok(!store.archive_index.survey.months.includes(old.slice(0, 7)));   // stale month dropped
+});
+
 test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
   const ships = {
     21: { key: 'freighter', costOre: 100, costSilicates: 50, costHydrogen: 0, costAlloys: 10, rareCosts: {} },
@@ -135,6 +311,7 @@ test('debris collection: returning collect_debris cargo recorded once', async ()
   await bg.processMissions([{ id: 1, missionType: 'collect_debris', status: 'outbound', targetSystemId: 568, cargo: {} }], zoneById);
   assert.equal(store.debris_collected.ore, 0);
   assert.equal(store.debris_active_runs.length, 1);
+  assert.equal(store.debris_active_runs[0].system_id, 568);   // lets the UI mark the field already collecting
   assert.equal(store.debris_collection_log.length, 0);
 
   // returning with cargo: committed exactly

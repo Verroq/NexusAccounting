@@ -235,6 +235,7 @@ browser.runtime.onMessage.addListener(msg => {
   }
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
+  if (msg.type === 'PURGE_OLD') return enqueue(() => purgeOldData(msg.days ?? 3)).then(() => ({ ok: true }));
   if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
   if (msg.type === 'GET_ARMS') return apiGet('/api/galaxy/arms');
   if (msg.type === 'GET_GALAXY_MAP') return apiGet('/api/galaxy/map');
@@ -745,6 +746,40 @@ async function loadArchive(type) {
   return out;
 }
 
+// Drop every stored record older than `days`, keeping only the recent window,
+// then recompute aggregates from what remains. Trims the monthly archive shards
+// and the capped recents; empty shards are removed. Seen-id sets are left alone
+// so a re-scrape doesn't re-import the purged reports.
+async function purgeOldData(days = 3) {
+  const cutoff = Date.now() - days * 86400000;
+  const keep = r => new Date(r.created_at || 0).getTime() >= cutoff;
+  const index = await getArchiveIndex();
+  const patch = {};
+  const remove = [];
+  for (const type of ARCHIVE_TYPES) {
+    const months = index[type].months || [];
+    const keys = months.map(m => `${type}_archive_${m}`);
+    const got = keys.length ? await browser.storage.local.get(keys) : {};
+    const keptMonths = [];
+    let count = 0;
+    for (const m of months) {
+      const key = `${type}_archive_${m}`;
+      const kept = (got[key] || []).filter(keep);
+      if (kept.length) { patch[key] = kept; keptMonths.push(m); count += kept.length; }
+      else remove.push(key);
+    }
+    index[type] = { months: keptMonths, count };
+  }
+  patch.archive_index = index;
+  const recentKeys = ['recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports'];
+  const recents = await browser.storage.local.get(recentKeys);
+  for (const k of recentKeys) if (Array.isArray(recents[k])) patch[k] = recents[k].filter(keep);
+  await browser.storage.local.set(patch);
+  if (remove.length) await browser.storage.local.remove(remove);
+  await rebuildAggregates();
+  return { ok: true };
+}
+
 // ── Processors ─────────────────────────────────────────────────────────────
 
 function parseShipsLost(shipsLost) {
@@ -992,7 +1027,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
     'seen_ids', 'totals', 'daily', 'hourly', 'resources_lost',
     'event_breakdown', 'recent_reports', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 500;
+  const recordsCap = stored.records_cap ?? 5000;
 
   const seenIds = new Set(stored.seen_ids || []);
   const totals = stored.totals || {
@@ -1079,7 +1114,34 @@ async function processSurveyReports(reports, ships, zones = {}) {
       wormholes_detected: r.wormholesDetected || 0,
       ships_lost_detail: lostDetail,
       ships_damaged_detail: damagedDetail,
+      ...(r.combatLog ? (d => ({
+        combat_outcome: r.combatLog.outcome || r.outcome || null,
+        debris_ore: d.ore, debris_alloys: d.alloys, debris_silicates: d.silicates,
+        rounds: combatRounds(r),
+        your_fleet: combatFleet(r, 'attackerFleet'), enemy_fleet: combatFleet(r, 'defenderFleet'),   // you investigate, pirates defend
+      }))(combatDebris(r)) : {}),
     });
+  }
+
+  // Backfill: enrich already-stored combat surveys whose record predates the
+  // combat fields (or stored a null outcome from the old top-level `r.outcome`
+  // path — survey outcome is actually nested in combatLog). Patches in place,
+  // never touches totals/seen, so no double-count. Idempotent + self-limiting:
+  // gated on `your_fleet` (the last-added field) so records enriched by an
+  // earlier build — which set combat_outcome but not the fleets — still get
+  // patched, while fully-enriched records are skipped.
+  // ponytail: runs every scrape but only mutates records still missing fields.
+  const recentById = new Map(recentReports.map(rr => [rr.id, rr]));
+  for (const r of reports) {
+    if (!r.combatLog) continue;
+    const rec = recentById.get(r.id);
+    if (!rec || (rec.your_fleet && rec.your_fleet.length)) continue;   // re-patch records left with an empty fleet
+    const d = combatDebris(r);
+    rec.combat_outcome = r.combatLog.outcome || r.outcome || null;
+    rec.debris_ore = d.ore; rec.debris_alloys = d.alloys; rec.debris_silicates = d.silicates;
+    rec.rounds = combatRounds(r);
+    rec.your_fleet = combatFleet(r, 'attackerFleet');
+    rec.enemy_fleet = combatFleet(r, 'defenderFleet');
   }
 
   const timestamps = reports.map(r => r.createdAt).sort();
@@ -1112,7 +1174,7 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
     'pirate_seen_ids', 'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports', 'records_cap',
   ]);
-  const recordsCap = pstored.records_cap ?? 500;
+  const recordsCap = pstored.records_cap ?? 5000;
 
   const pirateSeen = new Set(pstored.pirate_seen_ids || []);
   const pirateTotals = pstored.pirate_totals || {
@@ -1213,6 +1275,7 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
       // and measure engine accuracy against the real outcome.
       attacker_fleet: (r.attackerFleet || []).map(i => ({ key: i.key, quantity: i.quantity || 1 })),
       pirate_fleet: (r.pirateFleet || []).map(i => ({ key: i.key, quantity: i.quantity || 1 })),
+      rounds: combatRounds(r),
     });
   }
 
@@ -1220,6 +1283,17 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
   if (pirateTimestamps.length) {
     pirateTotals.first_report = pirateTimestamps[0];
     pirateTotals.last_report = pirateTimestamps[pirateTimestamps.length - 1];
+  }
+
+  // Backfill: pirate records stored before the round log was captured keep their
+  // fleets but no rounds, so the tab can't render them like survey/mining. Patch
+  // rounds in place from the live API. Gated on a non-empty rounds array.
+  // ponytail: runs every scrape but only mutates records still missing rounds.
+  const pirateById = new Map(pirateRecent.map(rr => [rr.id, rr]));
+  for (const r of pirateReports) {
+    const rec = pirateById.get(r.id);
+    if (!rec || (rec.rounds && rec.rounds.length)) continue;
+    rec.rounds = combatRounds(r);
   }
 
   await appendToArchive('pirate', pirateRecent.slice(0, pirateRecent.length - (pstored.pirate_recent_reports || []).length));
@@ -1325,6 +1399,71 @@ function maintenanceAlloys(fleetComposition) {
   return a;
 }
 
+// Debris a combat report generated. Pirate reports carry it at the top level
+// (r.debris); survey and mining-raid reports nest it under combatLog.debris.
+function combatDebris(r) {
+  const d = (r && r.debris) || (r && r.combatLog && r.combatLog.debris) || {};
+  return { ore: d.ore || 0, alloys: d.alloys || 0, silicates: d.silicates || 0 };
+}
+
+// Normalize a combat fleet ([{ key/name, quantity }]) for the Battles tab,
+// keeping the name so enemy ships absent from your shipyard still display.
+function normFleet(arr) {
+  return (arr || []).map(f => ({ key: f.key || f.shipKey, name: f.name || null, quantity: f.quantity || 1 }))
+    .filter(f => f.quantity > 0 && (f.key || f.name));
+}
+// A named combat fleet — nested under combatLog for survey/mining raids,
+// top-level for pirate reports.
+function combatFleet(r, name) {
+  return normFleet((r.combatLog && r.combatLog[name]) || r[name]);
+}
+
+// A fleet given by shipDefId ([{ shipDefId, quantity }] — wormhole currentFleet),
+// resolved to key/name via the ship catalog.
+function defIdFleet(arr, ships) {
+  return (arr || []).map(f => {
+    const s = (ships && ships[f.shipDefId]) || {};
+    return { key: s.key || null, name: s.name || `#${f.shipDefId}`, quantity: f.quantity || 1 };
+  }).filter(f => f.quantity > 0);
+}
+
+// Trimmed combat encounters from a wormhole run's encounterLog — each is its own
+// battle (own outcome + round log). Your fleet is the run's currentFleet.
+function wormholeEncounters(r, ships) {
+  const yourFleet = defIdFleet(r.currentFleet, ships);
+  return (r.encounterLog || [])
+    .filter(e => e && e.combat)
+    .map((e, i) => ({
+      title: e.title || e.type || `Encounter ${e.encounter ?? i + 1}`,
+      outcome: e.outcome || null,
+      lost: (e.shipsLost || []).reduce((s, x) => s + (x.quantity ?? x.lost ?? 1), 0),
+      rounds: combatRounds({ rounds: e.combatRounds }),
+      your_fleet: yourFleet,
+    }));
+}
+
+// Trimmed round-by-round combat log for the Battles tab. Pirate reports keep
+// rounds at the top level; survey/mining raids nest them under combatLog.
+// Per round: damage + kills + remaining HP% for each side (attacker = you).
+function combatRounds(r) {
+  const raw = (r && r.rounds) || (r && r.combatRounds)
+    || (r && r.combatLog && (r.combatLog.rounds || r.combatLog.combatRounds)) || [];
+  const kills = e => ((e && e.shipsDestroyed) || []).map(s => ({ name: s.name || s.key, qty: s.lost || 0 }));
+  return raw.map(rd => {
+    const ev = {};
+    for (const e of (rd.events || [])) ev[e.side] = e;
+    return {
+      round: rd.round,
+      atk_dmg: (ev.attacker && ev.attacker.totalDamage) || 0,
+      def_dmg: (ev.defender && ev.defender.totalDamage) || 0,
+      atk_hp: rd.attackerHpPercent ?? null,
+      def_hp: rd.defenderHpPercent ?? null,
+      atk_killed: kills(ev.attacker),
+      def_killed: kills(ev.defender),
+    };
+  });
+}
+
 const CORE_RESOURCES = ['ore', 'silicates', 'hydrogen', 'alloys'];
 
 function addResources(target, res) {
@@ -1339,7 +1478,7 @@ async function processMiningReports(reports, ships, zones = {}) {
     'mining_seen_ids', 'mining_totals', 'mining_daily', 'mining_resources_lost',
     'mining_recent_reports', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 500;
+  const recordsCap = stored.records_cap ?? 5000;
 
   const seen = new Set(stored.mining_seen_ids || []);
   const totals = stored.mining_totals || {
@@ -1399,8 +1538,33 @@ async function processMiningReports(reports, ships, zones = {}) {
       ships_lost: nLost,
       ships_lost_detail: lostDetail,   // shipDefId→qty, so losses can be valued per period
       stolen_total: Object.values(stolen).reduce((s, v) => s + v, 0),
+      stolen,   // granular cargo the raid stole from you, valued as a loss in the battles tab
       combat_outcome: r.combatOutcome || null,
+      ...(r.combatOutcome ? (d => ({
+        debris_ore: d.ore, debris_alloys: d.alloys, debris_silicates: d.silicates, rounds: combatRounds(r),
+        your_fleet: combatFleet(r, 'defenderFleet'), enemy_fleet: combatFleet(r, 'attackerFleet'),   // a raid: pirates attack, you defend
+      }))(combatDebris(r)) : {}),
     });
+  }
+
+  // Backfill mining-raid records stored before combat detail was captured:
+  // patch debris/rounds/fleets in place from the live API, never touching
+  // totals/seen. Gated on your_fleet so partially-enriched records still get
+  // their fleets; only raids (r.combatOutcome) are considered.
+  // ponytail: runs every scrape but only mutates raids still missing fields.
+  const recentById = new Map(recent.map(rr => [rr.id, rr]));
+  for (const r of reports) {
+    if (!r.combatOutcome) continue;
+    const rec = recentById.get(r.id);
+    if (!rec) continue;
+    if (rec.stolen === undefined) rec.stolen = numericResources(r.cargoStolen);   // backfill granular cargo loss
+    if (rec.your_fleet && rec.your_fleet.length) continue;   // combat detail already patched
+    const d = combatDebris(r);
+    rec.combat_outcome = r.combatOutcome;
+    rec.debris_ore = d.ore; rec.debris_alloys = d.alloys; rec.debris_silicates = d.silicates;
+    rec.rounds = combatRounds(r);
+    rec.your_fleet = combatFleet(r, 'defenderFleet');
+    rec.enemy_fleet = combatFleet(r, 'attackerFleet');
   }
 
   await appendToArchive('mining', recent.slice(0, recent.length - (stored.mining_recent_reports || []).length));
@@ -1443,7 +1607,7 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
   const stored = await browser.storage.local.get([
     'exp_seen_ids', 'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 500;
+  const recordsCap = stored.records_cap ?? 5000;
 
   const seen = new Set(stored.exp_seen_ids || []);
   const totals = stored.exp_totals || {
@@ -1492,10 +1656,25 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
       loot,
       ships_lost: nLost,
       ships_destroyed_raw: destroyedArr,
+      ...(kind === 'wormhole' ? { encounters: wormholeEncounters(r, ships) } : {}),
     });
   }
 
-  if (added) {
+  // Backfill: wormhole runs stored before encounter combat was captured. Patch
+  // the combat encounters (outcome + rounds + your fleet) in place from the live
+  // API — no totals/seen change. Gated on a non-empty encounters array.
+  // ponytail: runs every scrape but only mutates completed runs still missing it.
+  const expById = new Map(recent.map(rr => [rr.id, rr]));
+  let patched = false;
+  for (const { r, kind, uid } of items) {
+    if (kind !== 'wormhole' || (r.status && r.status !== 'completed')) continue;
+    const rec = expById.get(uid);
+    if (!rec || (rec.encounters && rec.encounters.length)) continue;
+    rec.encounters = wormholeEncounters(r, ships);
+    patched = true;
+  }
+
+  if (added || patched) {
     await appendToArchive('exp', recent.slice(0, recent.length - (stored.exp_recent_reports || []).length));
     await browser.storage.local.set({
       exp_seen_ids: [...seen],
@@ -1587,7 +1766,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
     'debris_collected', 'debris_collection_log', 'debris_collection_ids',
     'debris_resources_lost', 'debris_loss_ids', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 500;
+  const recordsCap = stored.records_cap ?? 5000;
   const total = stored.debris_collected || { ore: 0, silicates: 0, alloys: 0, hydrogen: 0 };
   const log = [...(stored.debris_collection_log || [])];
   const seen = new Set(stored.debris_collection_ids || []);
@@ -1604,6 +1783,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
       id: m.id,
       fleet: (m.fleetComposition || []).map(f => ({ key: f.shipKey || f.key, quantity: f.quantity || 1 })),
       system: m.targetSystemName || (m.targetSystemId != null ? `System #${m.targetSystemId}` : '—'),
+      system_id: m.targetSystemId ?? null,   // so the UI can mark a field already collecting
       zone: zoneById[m.targetSystemId] || 'unknown',
       status: m.status || (returning ? 'returning' : 'outbound'),
       eta: m.returnArrivesAt || m.arrivesAt || null,
@@ -2182,5 +2362,5 @@ export {
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
-  fieldMatches,
+  fieldMatches, purgeOldData,
 };

@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, clearAvailStrip, confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { applySort, attachSortable, clearAvailStrip, confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -390,6 +390,10 @@ async function investigate(report) {
 
 let scDebris = [];   // live debris fields from the latest scrape
 const scJustCollected = new Set();   // debrisIds collected this session — keep the button disabled
+// systemId → { field, seenRun }: a field we launched a collection on, kept
+// visible even while the game drops it from debris_fields mid-flight, so the
+// row doesn't flicker out. Dropped once its collect run finishes.
+const scCollecting = new Map();
 const scHiddenDebris = new Set();    // field ids the user hid from the table
 let scShowHidden = false;            // reveal hidden rows (dimmed) for unhiding
 let scInvestigatedOnly = false;      // restrict debris to systems in the investigation history
@@ -569,9 +573,25 @@ function renderDebris() {
   toggle.style.display = scHiddenDebris.size ? '' : 'none';
   toggle.textContent = scShowHidden ? `Hide hidden (${scHiddenDebris.size})` : `Show hidden (${scHiddenDebris.size})`;
 
+  // Systems with a collect fleet already in flight (persisted across reloads),
+  // so a field isn't offered for collection twice.
+  const collectingSystems = new Set((store.debris_active_runs || []).map(r => r.system_id).filter(v => v != null));
+
+  // Keep just-launched fields on screen through the window where the game has
+  // dropped them from debris_fields but the collect run hasn't shown up yet.
+  // Drop a kept field once its run has been seen and then finished.
+  const present = new Set(scDebris.map(f => f.systemId).filter(v => v != null));
+  const kept = [];
+  for (const [sys, ent] of scCollecting) {
+    if (collectingSystems.has(sys)) ent.seenRun = true;
+    else if (ent.seenRun) { scCollecting.delete(sys); continue; }   // run finished → field collected
+    if (!present.has(sys)) kept.push(ent.field);
+  }
+  const source = kept.length ? scDebris.concat(kept) : scDebris;
+
   // Independent debris zone filter (empty = all zones) and the
   // investigation-history-only switch.
-  const sorted = applySort('sc-debris-head', scDebris, scDebrisSort, 'system')
+  const sorted = applySort('sc-debris-head', source, scDebrisSort, 'system')
     .filter(f => !scDebrisZoneFilter.size || scDebrisZoneFilter.has(f.zone))
     .filter(f => !scInvestigatedOnly || (f.systemId != null && scInvHistory.has(f.systemId)));
   const rows = scShowHidden ? sorted : sorted.filter(f => !scHiddenDebris.has(f.id));
@@ -594,7 +614,7 @@ function renderDebris() {
 
     const btnTd = document.createElement('td');
     const btn = document.createElement('button');
-    const busy = f.debrisId != null && scJustCollected.has(f.debrisId);
+    const busy = f.debrisId != null && (scJustCollected.has(f.debrisId) || (f.systemId != null && collectingSystems.has(f.systemId)));
     const ok = f.debrisId != null && !busy;
     btn.textContent = busy ? 'Collecting…' : ok ? 'Collect' : '—';
     btn.disabled = !ok;
@@ -713,6 +733,7 @@ async function collectDebris(field) {
   });
   if (res.error) { status.textContent = `Collect failed: ${res.error}`; return; }
   scJustCollected.add(field.debrisId);
+  if (field.systemId != null) scCollecting.set(field.systemId, { field: { ...field }, seenRun: false });
   // Loot claimed — drop this system from the investigation history.
   if (field.systemId != null && scInvHistory.delete(field.systemId)) saveInvHistory();
   status.textContent = `Fleet sent to ${field.system} ✓`;

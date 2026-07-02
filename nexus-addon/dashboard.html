@@ -13,6 +13,7 @@
     <button class="tab" data-tab="surveys">Surveys</button>
     <button class="tab" data-tab="pirates">Pirates</button>
     <button class="tab" data-tab="mining">Mining</button>
+    <button class="tab" data-tab="battles">Battles</button>
     <button class="tab" data-tab="debris">Debris</button>
     <button class="tab" data-tab="expeditions">Expeditions</button>
     <button class="tab" data-tab="finder">Galaxy Scout</button>
@@ -66,7 +67,7 @@
                width:14px; height:14px; border-radius:50%; border:1px solid #8b949e;
                color:#8b949e; font-size:0.65rem; cursor:help; flex-shrink:0;">i</span>
       :
-      <input id="records-cap" type="text" value="500"
+      <input id="records-cap" type="text" value="5000"
         style="width:70px; background:#21262d; border:1px solid #30363d; color:#e6edf3;
                padding:4px 8px; border-radius:6px; font-size:0.8rem;" />
       <span id="cap-warning" style="display:none; color:#ff7b72; font-size:0.75rem;">Must be a whole number ≥ 0</span>
@@ -295,6 +296,8 @@
       </table>
     </div>
   </div>
+
+  <div id="battles-content" style="display:none;"></div>
 
   <div id="debris-content" style="display:none;">
     <div class="section-label">Collected by your fleets (precise — from returning collect-debris missions)</div>

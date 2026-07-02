@@ -4,6 +4,20 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- **Battles tab**: one place aggregating every combat across sources — pirate
+  camp raids, pirate ambushes while mining, survey ambushes and
+  expedition/wormhole encounters. Summary cards (battles, ships lost/damaged,
+  enemies destroyed), a source filter, a sortable table (date, source, location,
+  zone, outcome, losses, debris) and click-a-row to expand the attacker/enemy
+  fleets and per-ship losses. Reads the recent records already in memory.
+
+### Fixed
+- Live-search matches window now refreshes its "as of" time, match count and
+  rows live when a background scan completes, instead of freezing at open time.
+
 ## [1.6.5] - 2026-07-01
 
 ### Added
