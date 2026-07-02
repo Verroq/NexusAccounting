@@ -1446,7 +1446,8 @@ function wormholeEncounters(r, ships) {
 // rounds at the top level; survey/mining raids nest them under combatLog.
 // Per round: damage + kills + remaining HP% for each side (attacker = you).
 function combatRounds(r) {
-  const raw = (r && r.rounds) || (r && r.combatLog && r.combatLog.rounds) || [];
+  const raw = (r && r.rounds) || (r && r.combatRounds)
+    || (r && r.combatLog && (r.combatLog.rounds || r.combatLog.combatRounds)) || [];
   const kills = e => ((e && e.shipsDestroyed) || []).map(s => ({ name: s.name || s.key, qty: s.lost || 0 }));
   return raw.map(rd => {
     const ev = {};
@@ -1537,6 +1538,7 @@ async function processMiningReports(reports, ships, zones = {}) {
       ships_lost: nLost,
       ships_lost_detail: lostDetail,   // shipDefId→qty, so losses can be valued per period
       stolen_total: Object.values(stolen).reduce((s, v) => s + v, 0),
+      stolen,   // granular cargo the raid stole from you, valued as a loss in the battles tab
       combat_outcome: r.combatOutcome || null,
       ...(r.combatOutcome ? (d => ({
         debris_ore: d.ore, debris_alloys: d.alloys, debris_silicates: d.silicates, rounds: combatRounds(r),
@@ -1554,7 +1556,9 @@ async function processMiningReports(reports, ships, zones = {}) {
   for (const r of reports) {
     if (!r.combatOutcome) continue;
     const rec = recentById.get(r.id);
-    if (!rec || (rec.your_fleet && rec.your_fleet.length)) continue;   // re-patch records left with an empty fleet
+    if (!rec) continue;
+    if (rec.stolen === undefined) rec.stolen = numericResources(r.cargoStolen);   // backfill granular cargo loss
+    if (rec.your_fleet && rec.your_fleet.length) continue;   // combat detail already patched
     const d = combatDebris(r);
     rec.combat_outcome = r.combatOutcome;
     rec.debris_ore = d.ore; rec.debris_alloys = d.alloys; rec.debris_silicates = d.silicates;
