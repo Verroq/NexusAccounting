@@ -8,7 +8,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { clearAvailStrip, confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { clearAvailStrip, editFleetDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // asteroid fieldType → resource icon + label
@@ -21,6 +21,19 @@ const FIELD_TYPES = [
   { type: 'dark', res: 'dark_matter', label: 'dark (matter)', color: '#6e40c9' },
 ];
 const TYPE_COLOR = Object.fromEntries(FIELD_TYPES.map(t => [t.type, t.color]));
+// Ship recommendation per asteroid field type: specialized ship + per-cycle
+// extraction of that resource (Stats.txt "Mining extraction capacity").
+const REC_SHIP = {
+  ore: ['Mining Vessel', 50], plasma: ['Mining Vessel', 25],
+  gas: ['Gas Collector', 17], quantum: ['Gas Collector', 3],
+  ice: ['Ice Drill', 25], dark: ['Ice Drill', 3],
+};
+const REC_CYCLES = 10;   // ships to clear the field in this many mining cycles
+const EXCAVATOR_BONUS = 1.2;   // +20% fleet extraction capacity when an Excavator is present
+const afExcavator = () => document.getElementById('af-excavator').checked;
+// Mining ships the recommendation manages; other template ships (escort/combat)
+// are left untouched when seeding the launch fleet.
+const MINING_SHIPS = new Set([...Object.values(REC_SHIP).map(s => s[0]), 'Excavator']);
 // Security-zone colours: safe → hostile.
 const ZONE_COLOR = {
   sentinel: '#56d364', open: '#f0883e', dead: '#ff7b72', rift: '#bc8cff', unknown: '#8b949e',
@@ -96,6 +109,9 @@ export async function initAsteroidsTab() {
   pSel.addEventListener('change', () => { rememberSelection('af-planet', pSel.value); setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
   document.getElementById('af-scan').addEventListener('click', scan);
   document.getElementById('af-template-select').addEventListener('change', e => { rememberSelection('af-template-select', e.target.value); computeFuel(); });
+  const excChk = document.getElementById('af-excavator');
+  excChk.checked = localStorage.getItem('nx-af-excavator') === '1';
+  excChk.addEventListener('change', () => { localStorage.setItem('nx-af-excavator', excChk.checked ? '1' : '0'); renderAsteroids(); });
   document.getElementById('af-results-head').addEventListener('click', e => {
     const th = e.target.closest('th.sortable');
     if (!th) return;
@@ -375,6 +391,19 @@ function distance(f) {
   return Math.round(Math.hypot(f.sx - afRefMS.x, f.sy - afRefMS.y));
 }
 
+// Recommended fleet to clear a field in REC_CYCLES cycles:
+//   ships = ceil( remaining / (rate * cycles * richness) )
+// Returns { count, name, shipDefId } or null when it can't be computed.
+function recommend(f) {
+  const spec = REC_SHIP[f.type];
+  if (!spec || !f.remaining || !f.mult) return null;
+  const [name, rate] = spec;
+  const cap = rate * (afExcavator() ? EXCAVATOR_BONUS : 1);
+  const count = Math.ceil(f.remaining / (cap * REC_CYCLES * f.mult));
+  const def = afAllShips.find(d => d.name === name);
+  return { count, name, shipDefId: def ? def.shipDefId : null };
+}
+
 async function refreshTemplates() {
   afTemplates = await loadFleetTemplates();
   const sel = document.getElementById('af-template-select');
@@ -395,35 +424,39 @@ async function refreshTemplates() {
   if (want && afTemplates.some(t => String(t.id) === want)) sel.value = want;
 }
 
-// Dispatch the selected template's fleet to a field, after a confirmation.
+// Open the editable fleet dialog seeded from the ship recommendation (falling
+// back to the selected template), then dispatch. Sends once — the saved
+// template is left untouched.
 async function sendMineMission(f) {
-  const tpl = afTemplates.find(t => String(t.id) === document.getElementById('af-template-select').value);
-  if (!tpl) { alert('No fleet template selected — create one in the Fleets tab.'); return; }
-  const wanted = Object.entries(tpl.ships || {})
-    .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
-    .filter(s => s.quantity > 0);
-  if (!wanted.length) { alert(`Template "${tpl.name}" has no ships.`); return; }
-
   const planetId = Number(document.getElementById('af-planet').value);
   const planet = afPlanets.find(p => p.id === planetId);
   const status = document.getElementById('af-progress');
+  if (!planetId) { alert('Pick a source planet first.'); return; }
 
-  // Cap to what the source planet actually has — the mine endpoint errors on
-  // ships you don't own (templates can list any shipyard ship).
   status.textContent = 'Checking fleet…';
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
   if (av.error) { status.textContent = `Error: ${av.error}`; return; }
-  const ships = wanted
-    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
-    .filter(s => s.quantity > 0);
-  if (!ships.length) {
-    status.textContent = `None of template "${tpl.name}"'s ships are available on ${planet ? planet.name : planetId}.`;
-    return;
+  const avail = av.available || {};
+
+  // Seed the editor from the selected template, but let the recommendation drive
+  // the mining ships — keep the template's escort/combat ships as-is.
+  const rec = recommend(f);
+  const tpl = afTemplates.find(t => String(t.id) === document.getElementById('af-template-select').value);
+  const seed = {};
+  for (const [id, q] of Object.entries((tpl && tpl.ships) || {})) {
+    const def = afAllShips.find(d => d.shipDefId === Number(id));
+    if (rec && def && MINING_SHIPS.has(def.name)) continue;   // recommendation replaces mining ships
+    seed[Number(id)] = q;
   }
-  const short = wanted.some(s => (av.available[s.shipDefId] || 0) < s.quantity);
-  if (!await confirmDialog(`Send fleet template "${tpl.name}"?\n\nTo: ${f.name} (${f.system})\n` +
-    `From: ${planet ? planet.name : planetId}` +
-    (short ? '\n\n⚠ Some template ships are short on this planet; sending what is available.' : ''), ships)) return;
+  if (rec && rec.shipDefId != null) seed[rec.shipDefId] = rec.count;
+
+  const ships = await editFleetDialog({
+    title: `Mine ${f.name}`,
+    subtitle: `To: ${f.name} (${f.system})\nFrom: ${planet ? planet.name : planetId}`,
+    avail, seed,
+    nonOptimisedIds: rec && rec.shipDefId != null ? [rec.shipDefId] : [],
+  });
+  if (!ships || !ships.length) return;   // cancelled or emptied
 
   status.textContent = `Sending to ${f.name}…`;
   const res = await browser.runtime.sendMessage({
@@ -460,11 +493,15 @@ export function renderAsteroids() {
     }
   });
 
-  let rows = afFields.map(f => ({
-    ...f,
-    distance: distance(f),
-    leftPct: f.total ? Math.round((f.remaining / f.total) * 100) : null,
-  }));
+  let rows = afFields.map(f => {
+    const rec = recommend(f);
+    return {
+      ...f,
+      distance: distance(f),
+      leftPct: f.total ? Math.round((f.remaining / f.total) * 100) : null,
+      rec, recShips: rec ? rec.count : null,
+    };
+  });
   if (afTypeFilter.size) rows = rows.filter(f => afTypeFilter.has(f.type));
   if (afZoneFilter.size) rows = rows.filter(f => afZoneFilter.has(f.zone));
 
@@ -519,7 +556,7 @@ export function renderAsteroids() {
       f.zone,
       f.distance == null ? '—' : String(f.distance),
       '…',   // fuel cost, filled async
-      f.minerPresent || '—',
+      f.rec ? `${f.rec.count}× ${f.rec.name}` : '—',
     ];
     cells.forEach((v, i) => {
       const td = document.createElement('td');

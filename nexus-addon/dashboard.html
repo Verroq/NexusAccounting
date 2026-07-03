@@ -578,7 +578,10 @@
       <label>Fleet template
         <select id="af-template-select"></select>
       </label>
-      <span style="color:#8b949e; font-size:0.8rem;">🚀 on a row sends this template from “Mining From”. Edit templates in the Fleets tab.</span>
+      <label style="flex-direction:row; gap:5px;" title="Include an Excavator: +20% fleet extraction capacity in the ship recommendation">
+        <input id="af-excavator" type="checkbox" />Excavator +20%
+      </label>
+      <span style="color:#8b949e; font-size:0.8rem;">🚀 on a row opens the fleet editor seeded from the ship recommendation. Edit templates in the Fleets tab.</span>
     </div>
 
     <div class="reports-section">
@@ -604,7 +607,7 @@
             <th class="sortable" data-key="zone">Zone</th>
             <th class="sortable" data-key="distance">Distance</th>
             <th title="Hydrogen to send the selected template here">Fuel Cost</th>
-            <th class="sortable" data-key="minerPresent">Miner Present</th>
+            <th class="sortable" data-key="recShips" title="Recommended ships to clear the field in 10 mining cycles">Ships Recommendation</th>
           </tr>
         </thead>
         <tbody id="af-results-tbody"></tbody>

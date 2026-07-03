@@ -84,6 +84,114 @@ export async function confirmDialog(message, ships) {
   });
 }
 
+// Editable fleet dialog — the launch-time fleet editor (mirrors the live-search
+// panel's editor). Rows = union of seeded ships and ships available on the
+// source planet; each quantity is capped to availability. `seed` is
+// {shipDefId → wanted qty}, `avail` is {shipDefId → count on planet}. Resolves
+// to [{shipDefId, quantity}] on confirm (send once), or null on cancel.
+export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, nonOptimisedIds = [] }) {
+  const defs = await shipDefs();
+  const ids = [...new Set([
+    ...Object.keys(seed).map(Number),
+    ...Object.keys(avail).map(Number).filter(id => (avail[id] || 0) > 0),
+  ])];
+  const state = new Map();
+  for (const id of ids) {
+    const q = Math.min(seed[id] || 0, avail[id] || 0);
+    if (q > 0) state.set(id, q);
+  }
+  const effective = () => [...state.entries()]
+    .map(([id, q]) => ({ shipDefId: id, quantity: Math.min(q, avail[id] || 0) }))
+    .filter(s => s.quantity > 0);
+
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1b2030;color:#e6e8ee;border:1px solid #39405a;border-radius:8px;max-width:420px;width:90%;padding:20px;font:14px/1.5 system-ui,sans-serif';
+    const h = document.createElement('div');
+    h.textContent = title || 'Edit fleet';
+    h.style.cssText = 'font-weight:600;margin-bottom:2px';
+    box.append(h);
+    if (subtitle) {
+      const sub = document.createElement('div');
+      sub.textContent = subtitle;
+      sub.style.cssText = 'color:#8b949e;font-size:0.85rem;margin-bottom:8px;white-space:pre-line';
+      box.append(sub);
+    }
+
+    const rows = document.createElement('div');
+    rows.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto;margin-top:8px';
+    if (!ids.length) {
+      rows.textContent = 'No ships available on the source planet.';
+      rows.style.color = '#8b949e';
+    }
+    const ok = document.createElement('button');   // declared early for refresh()
+    const refresh = () => { ok.disabled = !effective().length; ok.style.opacity = ok.disabled ? '0.5' : '1'; };
+    for (const id of ids) {
+      const def = defs[id] || {};
+      const max = avail[id] || 0;
+      const line = document.createElement('div');
+      line.style.cssText = 'display:grid;grid-template-columns:24px 1fr 64px 44px;align-items:center;gap:8px';
+      const iconCell = document.createElement('span');
+      if (def.imageUrl) {
+        const img = document.createElement('img');
+        img.src = def.imageUrl; img.style.cssText = 'width:22px;height:22px;object-fit:contain;display:block';
+        iconCell.append(img);
+      }
+      const name = document.createElement('span');
+      name.textContent = def.name || `#${id}`;
+      name.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.min = '0'; inp.max = String(max); inp.value = String(state.get(id) || 0);
+      inp.style.cssText = 'width:100%;background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:3px 6px;border-radius:6px;font-size:0.85rem;box-sizing:border-box';
+      inp.addEventListener('change', () => {
+        let v = parseInt(inp.value, 10); if (isNaN(v) || v < 0) v = 0;
+        if (v > max) v = max;
+        inp.value = String(v);
+        if (v > 0) state.set(id, v); else state.delete(id);
+        refresh();
+      });
+      const avLbl = document.createElement('span');
+      avLbl.textContent = `/ ${max}`; avLbl.style.color = '#8b949e';
+      line.append(iconCell, name, inp, avLbl);
+      rows.append(line);
+    }
+    box.append(rows);
+
+    const btns = document.createElement('div');
+    btns.style.cssText = 'margin-top:18px;display:flex;gap:10px;justify-content:flex-end';
+    const mk = (b, label, primary) => {
+      b.textContent = label;
+      b.style.cssText = `padding:7px 16px;border-radius:6px;border:1px solid #39405a;cursor:pointer;${primary ? 'background:#238636;color:#fff;border-color:#2ea043' : 'background:#2a3146;color:#e6e8ee'}`;
+      return b;
+    };
+    const cancel = mk(document.createElement('button'), 'Cancel', false);
+    mk(ok, 'Send', true);
+    const done = (v) => { ov.remove(); resolve(v); };
+    cancel.onclick = () => done(null);
+    ok.onclick = () => done(effective());
+    ov.onclick = (e) => { if (e.target === ov) done(null); };
+    refresh();
+    btns.append(cancel);
+    // Escape hatch: send all available units of the recommended ship(s), above
+    // the optimal count. Shown only when there are extra units to send.
+    const maxIds = nonOptimisedIds.filter(id => (avail[id] || 0) > (state.get(id) || 0));
+    if (maxIds.length) {
+      const alt = document.createElement('button');
+      alt.textContent = 'Send non-optimised fleet';
+      alt.title = 'Send all available units of the recommended ship, more than needed';
+      alt.style.cssText = 'padding:7px 16px;border-radius:6px;border:1px solid #db6d28;background:#bd561d;color:#fff;cursor:pointer';
+      alt.onclick = () => { for (const id of maxIds) state.set(id, avail[id] || 0); done(effective()); };
+      btns.append(alt);
+    }
+    btns.append(ok);
+    box.append(btns);
+    ov.append(box);
+    document.body.append(ov);
+  });
+}
+
 // Minimal Markdown → DOM for the changelog: ### headings, - bullets (with
 // wrapped continuation lines), **bold**, *italic*, `code`. Returns a fragment.
 export function renderMarkdown(text) {
