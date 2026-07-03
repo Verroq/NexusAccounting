@@ -65,7 +65,7 @@ export async function initScoutingTab() {
 
   document.getElementById('sc-scan').addEventListener('click', launchScan);
   document.getElementById('sc-refresh').addEventListener('click', loadActiveSurveys);
-  document.getElementById('sc-planet').addEventListener('change', e => { rememberSelection('sc-planet', e.target.value); renderSurveys(); computeDebrisFuel(); updateAvail(); });
+  document.getElementById('sc-planet').addEventListener('change', e => { rememberSelection('sc-planet', e.target.value); renderSurveys(); computeDebrisFuel(); computeSalvageFuel(); updateAvail(); });
   document.getElementById('sc-scan-template').addEventListener('change', e => rememberSelection('sc-scan-template', e.target.value));
   document.getElementById('sc-inv-template').addEventListener('change', e => { rememberSelection('sc-inv-template', e.target.value); computeFuel(); });
   document.getElementById('sc-debris-refresh').addEventListener('click', loadDebris);
@@ -261,7 +261,22 @@ async function loadActiveSurveys() {
   }
   if (pruneInvHistory()) histChanged = true;
   if (histChanged) saveInvHistory();
+
+  // Investigated reports with loot still on the ground and a live salvage timer.
+  scSalvage = (res.reports || [])
+    .map(r => {
+      const loot = r.uncollectedLoot || {};
+      const res_ = {};
+      let total = 0;
+      for (const k of SALVAGE_KEYS) { const v = loot[k] || 0; if (v) { res_[k] = v; total += v; } }
+      return { reportId: r.id, systemId: r.systemId, system: r.systemName || `#${r.systemId}`,
+        zone: r.securityZone || null, res: res_, total, expires: r.salvageExpiresAt || null };
+    })
+    .filter(s => s.total > 0 && (!s.expires || new Date(s.expires) > now))
+    .sort((a, b) => b.total - a.total);
+
   renderSurveys();
+  renderSalvage();
   if (scInvestigatedOnly) renderDebris();   // filter depends on the history just updated
 }
 
@@ -362,6 +377,19 @@ function tickTimers() {
     scPending = scPending.filter(r => !r.anomalyExpiresAt || new Date(r.anomalyExpiresAt) > now);
     document.getElementById('sc-count').textContent = `${scPending.length} awaiting investigation`;
   }
+
+  let salvExpired = false;
+  document.querySelectorAll('#sc-salvage-tbody tr').forEach(tr => {
+    if (!tr.dataset.expires) return;
+    const ms = new Date(tr.dataset.expires) - now;
+    if (ms <= 0) { tr.remove(); salvExpired = true; return; }
+    const cell = tr.querySelector('.sc-salvage-timer');
+    if (cell) cell.textContent = fmtCountdown(ms);
+  });
+  if (salvExpired) {
+    scSalvage = scSalvage.filter(s => !s.expires || new Date(s.expires) > now);
+    document.getElementById('sc-salvage-count').textContent = `${scSalvage.length} awaiting collection`;
+  }
 }
 
 async function investigate(report) {
@@ -403,6 +431,15 @@ let scInvHistory = new Map();        // systemId → investigation report time (
 const INV_HISTORY_TTL_MS = 2 * 60 * 60 * 1000;
 const scDebrisSort = { key: 'total', dir: -1 };
 attachSortable('sc-debris-head', scDebrisSort, () => renderDebris());
+
+// Uncollected survey salvage: after a partial-recovery investigation, loot sits
+// in-system (survey report `uncollectedLoot`) until `salvageExpiresAt`. Collected
+// with the same cargo haulers as debris, via POST /api/fleet/collect-salvage.
+const SALVAGE_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys', 'ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter'];
+let scSalvage = [];                  // [{ reportId, systemId, system, zone, res, total, expires }]
+const scJustSalvaged = new Set();    // reportIds launched this session — keep the button disabled
+const scSalvageSort = { key: 'total', dir: -1 };
+attachSortable('sc-salvage-head', scSalvageSort, () => renderSalvage());
 
 // Investigation history persists across sessions: survey reports rotate out, so
 // we accumulate investigated systemIds (→ report time) here. An entry drops when
@@ -516,6 +553,7 @@ function renderCargoToggles() {
       rememberSelection('sc-cargo-ships', [...scCargoSel]);
       renderCargoToggles();
       computeDebrisFuel();
+      computeSalvageFuel();
     });
     box.appendChild(b);
   }
@@ -739,5 +777,146 @@ async function collectDebris(field) {
   if (field.systemId != null && scInvHistory.delete(field.systemId)) saveInvHistory();
   status.textContent = `Fleet sent to ${field.system} ✓`;
   renderDebris();
+  updateAvail();
+}
+
+// ── Uncollected salvage ─────────────────────────────────────────────────────
+
+const RES_LABEL = { ore: 'Ore', silicates: 'Sil', hydrogen: 'Hyd', alloys: 'Alloy',
+  ice: 'Ice', quantum_dust: 'Q.Dust', plasma_core: 'Plasma', dark_matter: 'D.Matter', antimatter: 'Antim' };
+
+function renderSalvage() {
+  const tbody = document.getElementById('sc-salvage-tbody');
+  tbody.textContent = '';
+  document.getElementById('sc-salvage-count').textContent = `${scSalvage.length} awaiting collection`;
+  const now = Date.now();
+
+  const sorted = applySort('sc-salvage-head', scSalvage, scSalvageSort, 'system');
+  if (!sorted.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 9; td.style.color = '#484f58';
+    td.textContent = 'No uncollected salvage.';
+    tr.appendChild(td); tbody.appendChild(tr);
+    return;
+  }
+
+  for (const s of sorted) {
+    const tr = document.createElement('tr');
+    if (s.systemId != null) tr.dataset.system = s.systemId;
+    tr.dataset.total = s.total || 0;
+    if (s.expires) tr.dataset.expires = s.expires;
+
+    const btnTd = document.createElement('td');
+    const btn = document.createElement('button');
+    const busy = scJustSalvaged.has(s.reportId);
+    btn.textContent = busy ? 'Collecting…' : 'Collect';
+    btn.disabled = busy;
+    btn.style.cssText = busy
+      ? 'background:#30363d; border:1px solid #30363d; color:#8b949e; padding:6px 16px; border-radius:6px; cursor:not-allowed; font-size:0.85rem;'
+      : 'background:#238636; border:1px solid #2ea043; color:#fff; padding:6px 16px; border-radius:6px; cursor:pointer; font-size:0.85rem;';
+    if (!busy) btn.addEventListener('click', () => collectSalvage(s));
+    btnTd.appendChild(btn);
+    tr.appendChild(btnTd);
+
+    const breakdown = Object.entries(s.res)
+      .map(([k, v]) => `${RES_LABEL[k] || k} ${v.toLocaleString()}`).join(', ');
+    const cells = [
+      s.system,
+      s.zone || '—',
+      breakdown,
+      (s.total || 0).toLocaleString(),
+      '…',   // ship count, filled by computeSalvageFuel
+      '…',   // fuel cost, filled async
+      '…',   // travel time, filled async
+      s.expires ? fmtCountdown(new Date(s.expires) - now) : '—',
+    ];
+    cells.forEach((v, i) => {
+      const td = document.createElement('td');
+      td.textContent = v;
+      if (i === 1) td.style.color = ZONE_COLOR[s.zone] || '#8b949e';
+      if (i === 4) td.className = 'sc-salvage-shipn';
+      if (i === 5) td.className = 'sc-salvage-fuel';
+      if (i === 6) td.className = 'sc-salvage-time';
+      if (i === 7) td.className = 'sc-salvage-timer';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  computeSalvageFuel();
+}
+
+// Mirror computeDebrisFuel: plan the selected haulers to carry the whole salvage
+// and estimate fuel/time from the source planet.
+let salvageFuelGen = 0;
+async function computeSalvageFuel() {
+  const gen = ++salvageFuelGen;
+  const planetId = Number(document.getElementById('sc-planet').value);
+  const sel = q => () => document.querySelectorAll(`#sc-salvage-tbody td.${q}`);
+  const fuelCells = sel('sc-salvage-fuel');
+  const shipCells = sel('sc-salvage-shipn');
+  const timeCells = sel('sc-salvage-time');
+  const cargo = selectedCargo();
+  if (!cargo.length) {
+    fuelCells().forEach(c => { c.textContent = '—'; c.title = 'Select cargo ships above'; });
+    shipCells().forEach(c => { c.textContent = '—'; c.title = ''; });
+    timeCells().forEach(c => { c.textContent = '—'; });
+    return;
+  }
+  const nameOf = id => (scCargoShips.find(c => c.shipDefId === id) || {}).name || '#' + id;
+  for (const tr of document.querySelectorAll('#sc-salvage-tbody tr')) {
+    if (gen !== salvageFuelGen) return;
+    const ships = planFleet(Number(tr.dataset.total) || 0, cargo);
+    const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
+    const nCell = tr.querySelector('.sc-salvage-shipn');
+    if (nCell) nCell.textContent = ships.length ? named : '—';
+
+    const cell = tr.querySelector('.sc-salvage-fuel');
+    const timeCell = tr.querySelector('.sc-salvage-time');
+    const sysId = Number(tr.dataset.system);
+    if (!cell || !sysId) continue;
+    if (!ships.length) { cell.textContent = '—'; if (timeCell) timeCell.textContent = '—'; continue; }
+    const est = await fuelEstimate(planetId, sysId, ships);
+    if (gen !== salvageFuelGen) return;
+    if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
+    cell.textContent = `${est.fuelCost}`;
+    cell.style.color = est.inRange === false ? '#ff7b72' : '';
+    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
+  }
+}
+
+async function collectSalvage(salvage) {
+  const status = document.getElementById('sc-progress');
+  const planetId = Number(document.getElementById('sc-planet').value);
+  const planet = scPlanets.find(p => p.id === planetId);
+
+  const cargo = selectedCargo();
+  const plan = planFleet(salvage.total, cargo);
+  if (!plan.length) { status.textContent = 'Select cargo ships above first.'; return; }
+
+  // Cap to what the source planet has; warn if that can't carry it all.
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  if (av.error) { status.textContent = `Error: ${av.error}`; return; }
+  const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
+  const ships = plan
+    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
+    .filter(s => s.quantity > 0);
+  if (!ships.length) { status.textContent = 'None of the selected cargo ships are on this planet.'; return; }
+  const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
+  const short = carried < salvage.total;
+
+  if (!await confirmDialog(`Collect salvage at ${salvage.system} (${salvage.total.toLocaleString()} cargo)?\n\n` +
+    `From: ${planet ? planet.name : planetId}` +
+    (short ? `\n\n⚠ Selected ships on this planet only carry ${carried.toLocaleString()} — collecting what fits.` : ''), ships)) return;
+
+  status.textContent = `Collecting salvage at ${salvage.system}…`;
+  const res = await browser.runtime.sendMessage({
+    type: 'COLLECT_SALVAGE', sourcePlanetId: planetId, reportId: salvage.reportId, ships,
+  });
+  if (res.error) { status.textContent = `Collect failed: ${res.error}`; return; }
+  scJustSalvaged.add(salvage.reportId);
+  status.textContent = `Fleet sent to ${salvage.system} ✓`;
+  renderSalvage();
   updateAvail();
 }

@@ -691,6 +691,30 @@
         <tbody id="sc-debris-tbody"></tbody>
       </table>
     </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Uncollected salvage</h2>
+        <span id="sc-salvage-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Uses the cargo ships selected above.</span>
+      </div>
+      <table>
+        <thead id="sc-salvage-head">
+          <tr>
+            <th title="Send collection fleet"></th>
+            <th class="sortable" data-key="system">System</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th>Resources left</th>
+            <th class="sortable" data-key="total" title="All uncollected resources">Total</th>
+            <th title="Ships needed to collect it all with the selected types">Number of Ships</th>
+            <th title="Hydrogen to send the planned fleet">Fuel Cost</th>
+            <th title="One-way travel time for the planned fleet">Travel Time</th>
+            <th title="Salvage expiry">Expires in</th>
+          </tr>
+        </thead>
+        <tbody id="sc-salvage-tbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <div id="fleets-content" style="display:none;">

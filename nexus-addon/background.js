@@ -233,6 +233,11 @@ browser.runtime.onMessage.addListener(msg => {
       sourcePlanetId: msg.sourcePlanetId, debrisId: msg.debrisId, ships: msg.ships,
     });
   }
+  if (msg.type === 'COLLECT_SALVAGE') {
+    return gamePost('/api/fleet/collect-salvage', {
+      sourcePlanetId: msg.sourcePlanetId, reportId: msg.reportId, ships: msg.ships,
+    });
+  }
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
   if (msg.type === 'PURGE_OLD') return enqueue(() => purgeOldData(msg.days ?? 3)).then(() => ({ ok: true }));

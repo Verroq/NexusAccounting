@@ -8,6 +8,12 @@
 (function () {
   const PLANETS = /\/api\/galaxy\/systems\/\d+\/planets/;
 
+  // Buffer every field we relay, keyed by id. The content script (galaxy-fields.js)
+  // attaches its `message` listener at document_idle, which can be *after* the game
+  // has already fetched the focused system's planets on initial mount — that live
+  // message would be lost. On init it asks for a replay and we flush the buffer.
+  const buffer = new Map();
+
   function relay(text) {
     let data;
     try { data = JSON.parse(text); }                       // only the parse can throw
@@ -16,8 +22,18 @@
       id: f.id, remaining: f.remainingResources,
       richness: f.richness, type: f.fieldType,
     }));
-    if (fields.length) window.postMessage({ __nxFields: fields }, window.location.origin);
+    if (!fields.length) return;
+    for (const f of fields) buffer.set(f.id, f);
+    window.postMessage({ __nxFields: fields }, window.location.origin);
   }
+
+  // Replay the whole buffer when the content script (re)initializes.
+  window.addEventListener('message', e => {
+    if (e.origin !== window.location.origin) return;
+    if (e.data && e.data.__nxRequestFields && buffer.size) {
+      window.postMessage({ __nxFields: [...buffer.values()] }, window.location.origin);
+    }
+  });
 
   const origFetch = window.fetch;
   window.fetch = function (...args) {
