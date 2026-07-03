@@ -6,6 +6,13 @@
 // shows a percent. extraction_capacity comes from the mining ship picked in that
 // card's selector (Stats.txt "Mining extraction capacity"). Each field keeps its
 // own ship/cycles; a new card inherits the last choice made anywhere.
+//
+// Wrapped in an IIFE + re-run guard: Firefox can inject a content script twice
+// into the same isolated world (extension reload into an open tab), and top-level
+// `const`s would then throw "redeclaration of const" and abort the whole script.
+if (!window.__nxGalaxyFields) {
+window.__nxGalaxyFields = true;
+(function () {
 const MAX_CYCLES = 10;
 
 // Specialized mining ship per field type + per-cycle extraction of that type
@@ -132,4 +139,9 @@ function paintAll() {
 }
 
 new MutationObserver(paintAll).observe(document.documentElement, { childList: true, subtree: true });
+// Ask the page-world hook to replay any field data it relayed before this
+// listener existed (game fetched the focused system on mount, pre-idle).
+window.postMessage({ __nxRequestFields: true }, window.location.origin);
 paintAll();
+})();
+}
