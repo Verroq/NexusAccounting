@@ -9,23 +9,24 @@
   const PLANETS = /\/api\/galaxy\/systems\/\d+\/planets/;
 
   function relay(text) {
-    try {
-      const data = JSON.parse(text);
-      const fields = (data.asteroidFields || []).map(f => ({
-        id: f.id, remaining: f.remainingResources,
-        richness: f.richness, type: f.fieldType,
-      }));
-      if (fields.length) window.postMessage({ __nxFields: fields }, window.location.origin);
-    } catch { /* ignore */ }
+    let data;
+    try { data = JSON.parse(text); }                       // only the parse can throw
+    catch (e) { console.debug('[nx] planets response not JSON', e); return; }
+    const fields = (data.asteroidFields || []).map(f => ({
+      id: f.id, remaining: f.remainingResources,
+      richness: f.richness, type: f.fieldType,
+    }));
+    if (fields.length) window.postMessage({ __nxFields: fields }, window.location.origin);
   }
 
   const origFetch = window.fetch;
   window.fetch = function (...args) {
     const p = origFetch.apply(this, args);
-    try {
-      const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
-      if (PLANETS.test(url)) p.then(r => r.clone().text()).then(relay).catch(() => {});
-    } catch { /* ignore */ }
+    const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+    if (PLANETS.test(url)) {
+      p.then(r => r.clone().text()).then(relay)
+        .catch(e => console.debug('[nx] planets fetch relay failed', e));
+    }
     return p;
   };
 
@@ -37,7 +38,7 @@
   const origSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function (...args) {
     this.addEventListener('load', () => {
-      try { if (PLANETS.test(this.__nxUrl || '')) relay(this.responseText); } catch { /* ignore */ }
+      if (PLANETS.test(this.__nxUrl || '')) relay(this.responseText);
     });
     return origSend.apply(this, args);
   };
