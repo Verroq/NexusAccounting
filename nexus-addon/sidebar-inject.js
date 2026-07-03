@@ -309,7 +309,7 @@ async function openFieldsPanel() {
   const planetId = live_search && live_search.planetId;
   const { fleet_templates, template_selections } =
     await ext.storage.local.get(['fleet_templates', 'template_selections']);
-  const templates = fleet_templates || [];
+  const templates = (fleet_templates || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));   // alphabetical picker
   let avail = {};
   if (planetId) {
     const av = await ext.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });

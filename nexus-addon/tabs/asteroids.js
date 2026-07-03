@@ -406,6 +406,7 @@ function recommend(f) {
 
 async function refreshTemplates() {
   afTemplates = await loadFleetTemplates();
+  afTemplates.sort((a, b) => (a.name || '').localeCompare(b.name || ''));   // alphabetical dropdown
   const sel = document.getElementById('af-template-select');
   const saved = await rememberedSelections();
   const want = saved['af-template-select'] || sel.value;   // survives tabs/sessions
