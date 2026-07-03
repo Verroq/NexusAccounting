@@ -90,6 +90,7 @@ export async function initScoutingTab() {
 
 async function refreshTemplates() {
   scTemplates = await loadFleetTemplates();
+  scTemplates.sort((a, b) => (a.name || '').localeCompare(b.name || ''));   // alphabetical dropdowns
   const saved = await rememberedSelections();
   for (const id of ['sc-scan-template', 'sc-inv-template']) {
     const sel = document.getElementById(id);

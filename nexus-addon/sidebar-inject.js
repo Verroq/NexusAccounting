@@ -180,9 +180,30 @@ const TYPE_COLOR = {
   ore: '#f0883e', gas: '#a371f7', ice: '#a5d6ff', plasma: '#ff7b72',
   quantum: '#d2a8ff', dark: '#6e40c9',
 };
+// Ship recommendation per field type: specialized ship + per-cycle extraction
+// (Stats.txt). ships = ceil( remaining / (rate * cycles * richness) ); an
+// Excavator in the fleet adds a whole-fleet yield bonus.
+const REC_SHIP = {
+  ore: ['Mining Vessel', 50], plasma: ['Mining Vessel', 25],
+  gas: ['Gas Collector', 17], quantum: ['Gas Collector', 3],
+  ice: ['Ice Drill', 25], dark: ['Ice Drill', 3],
+};
+const REC_CYCLES = 10;
+const EXCAVATOR_BONUS = 1.2;
+// Mining ships the recommendation manages; escort/combat ships in the editor
+// are kept when the recommendation swaps in the mining ships.
+const MINING_SHIPS = new Set([...Object.values(REC_SHIP).map(s => s[0]), 'Excavator']);
+// Returns { count, name } for a match, or null when it can't be computed.
+function recommend(m, excavator) {
+  const spec = REC_SHIP[m.type];
+  if (!spec || !m.remaining || !m.mult) return null;
+  const [name, rate] = spec;
+  const cap = rate * (excavator ? EXCAVATOR_BONUS : 1);
+  return { count: Math.ceil(m.remaining / (cap * REC_CYCLES * m.mult)), name };
+}
 // Confirmation dialog with the fleet composition — mirrors common.js
 // confirmDialog so a send from this window looks like one from the dashboard.
-function lsConfirm(message, ships, defs) {
+function lsConfirm(message, ships, defs, altLabel) {
   return new Promise(resolve => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483647;display:flex;align-items:center;justify-content:center';
@@ -226,9 +247,16 @@ function lsConfirm(message, ships, defs) {
     const cancel = mk('Cancel', false), ok = mk('Confirm', true);
     const done = v => { ov.remove(); resolve(v); };
     cancel.onclick = () => done(false);
-    ok.onclick = () => done(true);
+    ok.onclick = () => done('ok');
     ov.onclick = e => { if (e.target === ov) done(false); };
-    btns.append(cancel, ok);
+    btns.append(cancel);
+    if (altLabel) {
+      const alt = mk(altLabel, false);
+      alt.style.background = '#bd561d'; alt.style.borderColor = '#db6d28'; alt.style.color = '#fff';
+      alt.onclick = () => done('alt');
+      btns.append(alt);
+    }
+    btns.append(ok);
     box.append(btns);
     ov.append(box);
     document.body.append(ov);
@@ -281,7 +309,7 @@ async function openFieldsPanel() {
   const planetId = live_search && live_search.planetId;
   const { fleet_templates, template_selections } =
     await ext.storage.local.get(['fleet_templates', 'template_selections']);
-  const templates = fleet_templates || [];
+  const templates = (fleet_templates || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));   // alphabetical picker
   let avail = {};
   if (planetId) {
     const av = await ext.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
@@ -291,8 +319,37 @@ async function openFieldsPanel() {
   const planets = (await ext.runtime.sendMessage({ type: 'GET_PLANETS' })).planets || [];
   const planetName = (planets.find(p => p.id === planetId) || {}).name || planetId;
   const shipDefs = {};
-  for (const s of ((await ext.runtime.sendMessage({ type: 'GET_SHIP_DEFS' })).ships || [])) shipDefs[s.shipDefId] = s;
+  const nameToId = {};   // ship name → shipDefId, for the recommendation
+  for (const s of ((await ext.runtime.sendMessage({ type: 'GET_SHIP_DEFS' })).ships || [])) {
+    shipDefs[s.shipDefId] = s;
+    if (s.name) nameToId[s.name] = s.shipDefId;
+  }
   let tpl = templates.find(t => String(t.id) === String((template_selections || {})['af-template-select'])) || templates[0] || null;
+  let excavator = localStorage.getItem('nx-ls-excavator') === '1';   // +20% capacity toggle
+
+  // Recommended fleet for a match, capped to planet availability: [{shipDefId, quantity}].
+  function recShipsFor(m) {
+    const r = recommend(m, excavator);
+    const id = r && nameToId[r.name];
+    if (id == null) return [];
+    const q = Math.min(r.count, avail[id] || 0);
+    return q > 0 ? [{ shipDefId: id, quantity: q }] : [];
+  }
+
+  // Editor's escort/combat ships (non-mining) merged with the recommended mining
+  // ships — keeps escorts, swaps mining ships for the calc. Capped to availability.
+  function fleetWithRec(recShips) {
+    const out = new Map();
+    for (const [id, q] of shipsState) {
+      const def = shipDefs[id];
+      if (def && MINING_SHIPS.has(def.name)) continue;   // drop miners; rec supplies them
+      out.set(id, q);
+    }
+    for (const s of recShips) out.set(s.shipDefId, s.quantity);
+    return [...out.entries()]
+      .map(([id, q]) => ({ shipDefId: id, quantity: Math.min(q, avail[id] || 0) }))
+      .filter(s => s.quantity > 0);
+  }
 
   // Editable fleet composition: one ship type per line. Seeded from the chosen
   // template (capped to the planet), then the user can tweak quantities.
@@ -346,7 +403,20 @@ async function openFieldsPanel() {
       picker.appendChild(o);
     }
   }
-  pickWrap.append(pickLbl, picker, toggle);
+  // Excavator +20% toggle — boosts the recommended-ship calculation.
+  const excLbl = document.createElement('label');
+  excLbl.title = 'Include an Excavator: +20% fleet extraction capacity in the recommendation';
+  excLbl.style.cssText = 'display:inline-flex;align-items:center;gap:4px;color:#8b949e;font-size:0.85rem;cursor:pointer';
+  const excChk = document.createElement('input');
+  excChk.type = 'checkbox';
+  excChk.checked = excavator;
+  excChk.addEventListener('change', () => {
+    excavator = excChk.checked;
+    localStorage.setItem('nx-ls-excavator', excavator ? '1' : '0');
+    renderRows();
+  });
+  excLbl.append(excChk, document.createTextNode('Excavator +20%'));
+  pickWrap.append(pickLbl, picker, toggle, excLbl);
 
   // Per-ship-type editor — one line per ship available on the planet (or in the
   // template). Editing a quantity updates the fleet used for fuel + sending.
@@ -399,22 +469,28 @@ async function openFieldsPanel() {
   function renderRows() {
     body.textContent = '';
     if (!matches.length) { body.textContent = 'No current matches.'; body.style.color = '#8b949e'; return; }
-    const ships = effectiveShips();
-    const canMine = !!(planetId && ships.length);
-    const mineTip = !planetId ? 'Live search has no source planet set.'
-      : !ships.length ? 'Set a quantity for at least one available ship.'
-      : 'Send this fleet to mine the field.';
 
     const table = document.createElement('table');
     table.style.cssText = 'width:100%;border-collapse:collapse';
     table.innerHTML = `<thead><tr style="text-align:left;color:#8b949e;font-size:0.8rem">
       <th style="padding:4px 6px"></th><th style="padding:4px 6px">Fuel (System)</th>
       <th style="padding:4px 6px">Type</th><th style="padding:4px 6px;text-align:right">Mult</th>
-      <th style="padding:4px 6px;text-align:right">Left %</th></tr></thead>`;
+      <th style="padding:4px 6px;text-align:right">Left %</th>
+      <th style="padding:4px 6px">Recommended</th></tr></thead>`;
     const tb = document.createElement('tbody');
     for (const m of matches) {
       const tr = document.createElement('tr');
       tr.style.borderTop = '1px solid #2a3147';
+
+      // Fleet for this field: its recommendation (capped to the planet), else
+      // whatever's in the shared editor. "Modify the fleet based on the calc."
+      const rec = recommend(m, excavator);
+      const recShips = recShipsFor(m);
+      const ships = recShips.length ? fleetWithRec(recShips) : effectiveShips();
+      const canMine = !!(planetId && ships.length);
+      const mineTip = !planetId ? 'Live search has no source planet set.'
+        : !ships.length ? 'No recommendation and no ships set in the editor.'
+        : 'Send the recommended fleet to mine this field.';
 
       const mineTd = document.createElement('td');
       mineTd.style.cssText = 'padding:4px 6px';
@@ -427,15 +503,24 @@ async function openFieldsPanel() {
         : 'background:#30363d;border:1px solid #30363d;color:#8b949e;border-radius:6px;cursor:not-allowed;padding:2px 8px;font-size:0.95rem';
       mineBtn.onclick = async () => {
         if (!canMine) return;
-        const short = [...shipsState.entries()].some(([id, q]) => (avail[id] || 0) < q);
-        const ok = await lsConfirm(
+        // Non-optimised option: all available units of the recommended ship.
+        const recId = recShips[0] && recShips[0].shipDefId;
+        const shipsMax = (recId != null && (avail[recId] || 0) > recShips[0].quantity)
+          ? fleetWithRec([{ shipDefId: recId, quantity: avail[recId] || 0 }]) : null;
+        const short = ships.some(s => (avail[s.shipDefId] || 0) < s.quantity);
+        const r = await lsConfirm(
           `Send fleet?\nTo: ${m.name} (${m.system})\nFrom: ${planetName}` +
           (short ? '\n\n⚠ Some ships are short on this planet; sending what is available.' : ''),
-          ships, shipDefs);
-        if (!ok) return;
+          ships, shipDefs, shipsMax ? 'Send non-optimised fleet' : undefined);
+        if (!r) return;
+        const sendShips = r === 'alt' && shipsMax ? shipsMax : ships;
+        // Reflect the sent fleet in the shared editor (escorts kept, miners swapped).
+        shipsState.clear();
+        for (const s of sendShips) shipsState.set(s.shipDefId, s.quantity);
+        buildEditor();
         mineBtn.disabled = true; mineBtn.textContent = '…';
         const res = await ext.runtime.sendMessage({
-          type: 'SEND_MINE', sourcePlanetId: planetId, targetFieldId: m.id, ships, miningDuration: 600,
+          type: 'SEND_MINE', sourcePlanetId: planetId, targetFieldId: m.id, ships: sendShips, miningDuration: 600,
         });
         if (res && res.error) { mineBtn.textContent = '⛏'; mineBtn.disabled = false; window.alert(`Send failed: ${res.error}`); }
         else { mineBtn.textContent = '✓'; mineBtn.style.cssText = 'background:#1f6feb;border:1px solid #1f6feb;color:#fff;border-radius:6px;padding:2px 8px;font-size:0.95rem'; }
@@ -455,7 +540,8 @@ async function openFieldsPanel() {
       tr.append(mineTd, fuelTd,
         cell(m.type, `color:${TYPE_COLOR[m.type] || '#e6e8ee'}`),
         cell(m.mult != null ? `×${m.mult}` : '—', 'text-align:right'),
-        cell(m.leftPct != null ? `${m.leftPct}%` : '—', 'text-align:right'));
+        cell(m.leftPct != null ? `${m.leftPct}%` : '—', 'text-align:right'),
+        cell(rec ? `${rec.count}× ${rec.name}` : '—'));
       tb.appendChild(tr);
     }
     table.appendChild(tb);

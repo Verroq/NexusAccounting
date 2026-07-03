@@ -242,10 +242,10 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
   if (msg.type === 'GET_ARM_SECTORS') return apiGet(`/api/galaxy/arms/${msg.armId}/sectors`);
   if (msg.type === 'GET_SECTOR_SYSTEMS') return apiGet(`/api/galaxy/sectors/${msg.sectorId}/systems`);
-  if (msg.type === 'GET_HOME') return getHome();
   if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me');
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
+  if (msg.type === 'GET_PLAYER_RANK') return getPlayerRanks(msg.name);
   if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
   if (msg.type === 'GET_MARKET_ORDERS') return getOrders('/api/market/orders');
@@ -363,34 +363,20 @@ async function getAlliance() {
   }
 }
 
-// Home reference for the planet finder: home system coords (for distance) and
-// the player's user id (to flag/exclude own planets).
-async function getHome() {
-  const token = await getToken();
-  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
-  try {
-    const data = await apiFetch('/api/planets', token);
-    const planets = data.planets || [];
-    const home = planets.find(p => p.isHomeworld) || planets[0];
-    if (!home) return { error: 'No planets found for this account' };
-    const systemId = home.systemId ?? home.system?.id ?? null;
-    // /api/planets carries no userId; read it from the JWT payload instead.
-    const userId = home.userId ?? jwtUserId(token);
-    const ownedSystemIds = planets.map(p => p.systemId ?? p.system?.id).filter(x => x != null);
-    return { systemId, userId, name: home.name || null, ownedSystemIds };
-  } catch (err) {
-    return { error: err.message };
+// Look up a player's per-category leaderboard ranks by exact name (finder
+// rank columns). `category=` re-ranks the board; `rank` then holds that
+// category's rank. One request per category.
+async function getPlayerRanks(name) {
+  if (!name) return { military: null, economy: null, research: null };
+  const out = { military: null, economy: null, research: null };
+  for (const cat of ['military', 'economy', 'research']) {
+    const data = await apiGet(`/api/rankings/players?category=${cat}&search=${encodeURIComponent(name)}`);
+    if (data.error) return data;
+    const lb = data.leaderboard || [];
+    const e = lb.find(x => x.username === name) || lb[0];
+    if (e) out[cat] = e.rank;
   }
-}
-
-// Decode the userId claim from the nexus_token JWT payload (best-effort).
-function jwtUserId(token) {
-  try {
-    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(payload)).userId ?? null;
-  } catch {
-    return null;
-  }
+  return out;
 }
 
 function jwtRace(token) {

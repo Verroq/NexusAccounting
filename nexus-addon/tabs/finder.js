@@ -20,7 +20,9 @@ export let hitSystems = {};          // systemId → {x, y, screenX, screenY, pl
 
 export let mapBounds = null;
 
-export let homeSys = null;           // {x, y} of the home system, for distance
+export let homeSys = null;           // {x, y} of the origin system, for distance
+
+export let myPlanets = [];           // player's planets with system coords, for the origin selector
 
 export let myUserId = null;          // player's user id, for "exclude mine"
 
@@ -38,15 +40,17 @@ export let allianceSystems = {};         // systemId → owner name (alliance, f
 
 export let galaxyHubs = [];              // market hubs: {name, x, y}
 
+export const rankCache = {};             // ownerName → leaderboard rank (session cache)
+
 export async function initFinderTab() {
   if (finderInited) return;
   finderInited = true;
   const status = document.getElementById('f-progress');
   status.textContent = 'Loading galaxy map…';
-  const [arms, map, home, ally, hubs] = await Promise.all([
+  const [arms, map, me, ally, hubs] = await Promise.all([
     browser.runtime.sendMessage({ type: 'GET_ARMS' }),
     browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP' }),
-    browser.runtime.sendMessage({ type: 'GET_HOME' }),
+    browser.runtime.sendMessage({ type: 'GET_AUTH_ME' }),
     browser.runtime.sendMessage({ type: 'GET_ALLIANCE' }),
     browser.runtime.sendMessage({ type: 'GET_HUBS' }),
   ]);
@@ -58,12 +62,22 @@ export async function initFinderTab() {
   finderArms = arms.arms || [];
   galaxySystems = map.systems || [];
 
-  // Home reference for distance + "exclude mine" (best-effort).
-  if (home && !home.error) {
-    myUserId = home.userId ?? null;
-    myOwnedSystems = new Set(home.ownedSystemIds || []);
-    const hs = home.systemId != null && galaxySystems.find(s => s.id === home.systemId);
-    if (hs) homeSys = { x: hs.x, y: hs.y };
+  // Origin reference for distance + "exclude mine". auth/me carries per-planet
+  // system coords, so the user can pick any of their planets as the origin.
+  if (me && !me.error) {
+    myUserId = me.user?.id ?? null;
+    myOwnedSystems = new Set((me.planets || []).map(p => p.systemId).filter(x => x != null));
+    myPlanets = (me.planets || []).filter(p => p.systemX != null && p.systemY != null);
+    const osel = document.getElementById('f-origin');
+    osel.textContent = '';
+    for (const p of myPlanets) {
+      const o = document.createElement('option');
+      o.value = p.id;
+      o.textContent = `${p.name} (${p.systemName || p.systemId})`;
+      osel.appendChild(o);
+    }
+    const def = myPlanets.find(p => p.isHomeworld) || myPlanets[0];
+    if (def) { osel.value = def.id; homeSys = { x: def.systemX, y: def.systemY }; }
   }
   // Galaxy export/import is owner-only (Verrok).
   if (myUserId === 428) {
@@ -329,6 +343,8 @@ document.getElementById('f-search').addEventListener('click', async function () 
           type: p.planetType, size: p.size, temp: p.temperature,
           moons: nMoons, zone: s.securityZone || '—', distance: dist,
           owner: p.ownerName || null,
+          alliance: p.ownerAllianceTag || null,
+          rankMil: null, rankEco: null, rankRes: null,
         });
         if (!hitSystems[s.id]) hitSystems[s.id] = { planets: [] };
         hitSystems[s.id].planets.push(`${p.name} (${p.planetType}, ${p.size}, ${nMoons} moons)`);
@@ -358,6 +374,25 @@ document.getElementById('f-search').addEventListener('click', async function () 
     (fogged ? ` · ${fogged} unexplored` : '') +
     (errors ? ` · ${errors} systems skipped (errors)` : '') + '.';
   drawGalaxyMap();
+  renderFinderResults();
+
+  // Enrich owned hits with owner leaderboard rank (alliance tag already on
+  // the planet data). One lookup per unique owner, cheap-cached across scans.
+  const owners = [...new Set(finderHits.map(h => h.owner).filter(Boolean))];
+  const missing = owners.filter(n => !(n in rankCache));
+  for (let i = 0; i < missing.length; i++) {
+    const r = await browser.runtime.sendMessage({ type: 'GET_PLAYER_RANK', name: missing[i] });
+    rankCache[missing[i]] = (r && !r.error) ? r : { military: null, economy: null, research: null };
+    status.textContent = `Fetching player ranks… ${i + 1}/${missing.length}`;
+    await new Promise(res => setTimeout(res, 80));
+  }
+  finderHits.forEach(h => {
+    const r = h.owner ? rankCache[h.owner] : null;
+    if (r) { h.rankMil = r.military ?? null; h.rankEco = r.economy ?? null; h.rankRes = r.research ?? null; }
+  });
+  status.textContent = `Done: ${finderHits.length} matches in ${done} scanned systems` +
+    (fogged ? ` · ${fogged} unexplored` : '') +
+    (errors ? ` · ${errors} systems skipped (errors)` : '') + '.';
   renderFinderResults();
 });
 
@@ -403,7 +438,11 @@ export function renderFinderResults() {
     const tr = document.createElement('tr');
     const cells = [h.planet, h.system, String(h.sector), String(h.type ?? '—').replace(/_/g, ' '),
                    String(h.size), (h.temp == null ? '—' : `${h.temp}°`), String(h.moons),
-                   h.zone || '—', (h.distance == null ? '—' : String(h.distance)), h.owner || '—'];
+                   h.zone || '—', (h.distance == null ? '—' : String(h.distance)), h.owner || '—',
+                   h.alliance || '—',
+                   (h.rankMil == null ? '—' : `#${h.rankMil}`),
+                   (h.rankEco == null ? '—' : `#${h.rankEco}`),
+                   (h.rankRes == null ? '—' : `#${h.rankRes}`)];
     cells.forEach((v, i) => {
       const td = document.createElement('td');
       td.textContent = v;
@@ -487,6 +526,20 @@ document.getElementById('f-map').addEventListener('wheel', e => {
   document.getElementById(id).addEventListener('input', () => {
     if (galaxySystems) drawGalaxyMap();
   });
+});
+
+// Change the distance origin to another of the player's planets, recomputing
+// distances for the current results.
+document.getElementById('f-origin').addEventListener('change', e => {
+  const p = myPlanets.find(x => x.id === Number(e.target.value));
+  if (!p) return;
+  homeSys = { x: p.systemX, y: p.systemY };
+  finderHits.forEach(h => {
+    const s = galaxySystems && galaxySystems.find(x => x.id === h.systemId);
+    h.distance = s ? systemDistance(s) : null;
+  });
+  drawGalaxyMap();
+  renderFinderResults();
 });
 
 // Export the scanned-planet knowledge as a JSON file others can import.
