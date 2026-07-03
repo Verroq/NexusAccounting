@@ -4,8 +4,6 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
 ## [1.6.6] - 2026-07-03
 
 ### Added
