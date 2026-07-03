@@ -16,7 +16,7 @@
         richness: f.richness, type: f.fieldType,
       }));
       if (fields.length) window.postMessage({ __nxFields: fields }, window.location.origin);
-    } catch {}
+    } catch { /* ignore */ }
   }
 
   const origFetch = window.fetch;
@@ -25,7 +25,7 @@
     try {
       const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
       if (PLANETS.test(url)) p.then(r => r.clone().text()).then(relay).catch(() => {});
-    } catch {}
+    } catch { /* ignore */ }
     return p;
   };
 
@@ -37,7 +37,7 @@
   const origSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function (...args) {
     this.addEventListener('load', () => {
-      try { if (PLANETS.test(this.__nxUrl || '')) relay(this.responseText); } catch {}
+      try { if (PLANETS.test(this.__nxUrl || '')) relay(this.responseText); } catch { /* ignore */ }
     });
     return origSend.apply(this, args);
   };
