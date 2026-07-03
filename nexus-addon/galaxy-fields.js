@@ -24,6 +24,11 @@ function currentShip() {
   return SHIPS[s] ? s : 'Mining Vessel';
 }
 
+function currentCycles() {
+  const n = parseInt(localStorage.getItem('nx-mining-cycles'), 10);
+  return n >= 1 && n <= MAX_CYCLES ? n : MAX_CYCLES;      // clamp 1..MAX_CYCLES
+}
+
 window.addEventListener('message', e => {
   if (e.origin !== window.location.origin) return;
   const fields = e.data && e.data.__nxFields;
@@ -39,7 +44,7 @@ function optimalShips(d) {
   if (base == null) return { na: true };
   if (!d.richness) return null;
   const cap = base * (ship._mult || 1);
-  return { ships: Math.ceil(d.remaining / (cap * MAX_CYCLES * d.richness)) };
+  return { ships: Math.ceil(d.remaining / (cap * currentCycles() * d.richness)) };
 }
 
 function paint(card) {
@@ -59,7 +64,7 @@ function paint(card) {
   }
   el.textContent = r.na
     ? `⛏ ${currentShip()} can't mine ${data.type}`
-    : `⛏ Optimal: ${r.ships} ${currentShip()}${r.ships === 1 ? '' : 's'} to clear (${MAX_CYCLES} cyc)`;
+    : `⛏ Optimal: ${r.ships} ${currentShip()}${r.ships === 1 ? '' : 's'} to clear (${currentCycles()} cyc)`;
 }
 
 // Floating ship picker (clickable images), injected once when field cards exist.
@@ -96,6 +101,29 @@ function ensureSelector() {
     });
     box.appendChild(tile);
   }
+
+  const cyLabel = document.createElement('span');
+  cyLabel.textContent = 'cycles:';
+  cyLabel.style.marginLeft = '4px';
+  const btnCss = 'background:#1a1f2b;color:#ddd;border:1px solid #3a4256;border-radius:4px;' +
+    'width:20px;height:20px;line-height:1;cursor:pointer;font-size:0.9rem;padding:0;';
+  const minus = document.createElement('button'); minus.textContent = '−'; minus.style.cssText = btnCss;
+  const plus = document.createElement('button'); plus.textContent = '+'; plus.style.cssText = btnCss;
+  const val = document.createElement('span');
+  val.style.cssText = 'min-width:14px;text-align:center;';
+  val.textContent = currentCycles();
+
+  function setCycles(n) {
+    n = Math.min(MAX_CYCLES, Math.max(1, n));            // guard 1..MAX_CYCLES
+    localStorage.setItem('nx-mining-cycles', n);
+    val.textContent = n;
+    document.querySelectorAll('.nx-optimal-ships').forEach(e => e.remove());  // recompute cleanly
+    paintAll();
+  }
+  minus.addEventListener('click', () => setCycles(currentCycles() - 1));
+  plus.addEventListener('click', () => setCycles(currentCycles() + 1));
+  box.append(cyLabel, minus, val, plus);
+
   document.body.appendChild(box);
   refresh();
 }
