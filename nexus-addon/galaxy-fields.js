@@ -1,32 +1,35 @@
-// Injects "optimal ships to clear" into every .field-card on the galaxy page.
-//   ships = ceil( remaining / (extraction_capacity * MAX_CYCLES * richness) )
+// Injects a per-card ship/cycle picker + "optimal ships to clear" into every
+// .field-card on the galaxy page.
+//   ships = ceil( remaining / (extraction_capacity * cycles * richness) )
 // remaining, richness, fieldType are per-field from the game's own /planets
 // fetch (relayed by galaxy-fetch-hook.js, keyed by field id) — the card DOM only
-// shows a percent. extraction_capacity comes from the mining ship the user picks
-// in the injected selector (Stats.txt "Mining extraction capacity").
+// shows a percent. extraction_capacity comes from the mining ship picked in that
+// card's selector (Stats.txt "Mining extraction capacity"). Each field keeps its
+// own ship/cycles; a new card inherits the last choice made anywhere.
 const MAX_CYCLES = 10;
 
-// ship -> per-cycle extraction per field type. _mult = whole-fleet yield bonus,
-// _key = image key. ponytail: race hardcoded terran (this account); derive from
-// token if other races need their own ship art.
-const SHIP_RACE = 'terran';
+// Specialized mining ship per field type + per-cycle extraction of that type
+// (Stats.txt "Mining extraction capacity"). The ship is auto-picked from the
+// field type; an Excavator in the fleet adds a whole-fleet yield bonus.
 const SHIPS = {
-  'Mining Vessel': { _key: 'miner',         ore: 50, plasma: 25 },
-  'Gas Collector': { _key: 'gas_collector', gas: 17, quantum: 3 },
-  'Ice Drill':     { _key: 'ice_drill',     ice: 25, dark_matter: 3 },
-  'Excavator':     { _key: 'excavator',     ore: 50, ice: 10, gas: 15, plasma: 30, dark_matter: 3, quantum: 3, _mult: 1.2 },
+  ore:         { ship: 'Mining Vessel', rate: 50 },
+  plasma:      { ship: 'Mining Vessel', rate: 25 },
+  gas:         { ship: 'Gas Collector', rate: 17 },
+  quantum:     { ship: 'Gas Collector', rate: 3 },
+  ice:         { ship: 'Ice Drill',     rate: 25 },
+  dark_matter: { ship: 'Ice Drill',     rate: 3 },
 };
+const EXCAVATOR_BONUS = 1.2;   // fleet yield bonus when an Excavator is present
 
 const fieldData = new Map();   // fieldId(string) -> { remaining, richness, type }
 
-function currentShip() {
-  const s = localStorage.getItem('nx-mining-ship');
-  return SHIPS[s] ? s : 'Mining Vessel';
-}
-
-function currentCycles() {
-  const n = parseInt(localStorage.getItem('nx-mining-cycles'), 10);
+// Per-field, independent settings; unset fields use the base default.
+function currentCycles(id) {
+  const n = parseInt(localStorage.getItem('nx-mining-cycles-' + id), 10);
   return n >= 1 && n <= MAX_CYCLES ? n : MAX_CYCLES;      // clamp 1..MAX_CYCLES
+}
+function excavatorOn(id) {
+  return localStorage.getItem('nx-excavator-' + id) === '1';
 }
 
 window.addEventListener('message', e => {
@@ -37,14 +40,63 @@ window.addEventListener('message', e => {
   paintAll();
 });
 
-// Returns { ships } or { na:true } when the selected ship can't mine this type.
-function optimalShips(d) {
-  const ship = SHIPS[currentShip()];
-  const base = ship[d.type];
-  if (base == null) return { na: true };
+// Returns { ships, ship } or { na:true } when no ship mines this field type.
+function optimalShips(d, id) {
+  const spec = SHIPS[d.type];
+  if (!spec) return { na: true };
   if (!d.richness) return null;
-  const cap = base * (ship._mult || 1);
-  return { ships: Math.ceil(d.remaining / (cap * currentCycles() * d.richness)) };
+  const cap = spec.rate * (excavatorOn(id) ? EXCAVATOR_BONUS : 1);
+  return { ships: Math.ceil(d.remaining / (cap * currentCycles(id) * d.richness)), ship: spec.ship };
+}
+
+// Build the inline picker (Excavator checkbox + cycle stepper + optimal line)
+// once per card. `id` is the field id; changes write that field's key then
+// repaint just this card. Fully independent per field.
+function buildPicker(card, id) {
+  const box = document.createElement('div');
+  box.className = 'nx-field-picker';
+  box.style.cssText = 'display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:0.68rem;opacity:0.9;';
+  box.addEventListener('click', e => e.stopPropagation());   // don't trigger card nav
+
+  const excLabel = document.createElement('label');
+  excLabel.style.cssText = 'display:flex;gap:3px;align-items:center;cursor:pointer;';
+  const exc = document.createElement('input');
+  exc.type = 'checkbox';
+  exc.className = 'nx-excavator';
+  exc.addEventListener('change', () => {
+    localStorage.setItem('nx-excavator-' + id, exc.checked ? '1' : '0');
+    paint(card);
+  });
+  excLabel.append(exc, document.createTextNode('Excavator +20%'));
+  box.appendChild(excLabel);
+
+  const cyLabel = document.createElement('span');
+  cyLabel.textContent = 'cyc:';
+  cyLabel.style.marginLeft = '2px';
+  const btnCss = 'background:#1a1f2b;color:#ddd;border:1px solid #3a4256;border-radius:4px;' +
+    'width:18px;height:18px;line-height:1;cursor:pointer;font-size:0.85rem;padding:0;';
+  const minus = document.createElement('button'); minus.textContent = '−'; minus.style.cssText = btnCss;
+  const plus = document.createElement('button'); plus.textContent = '+'; plus.style.cssText = btnCss;
+  const val = document.createElement('span');
+  val.className = 'nx-cyc-val';
+  val.style.cssText = 'min-width:12px;text-align:center;';
+
+  const setCycles = n => {
+    n = Math.min(MAX_CYCLES, Math.max(1, n));                // guard 1..MAX_CYCLES
+    localStorage.setItem('nx-mining-cycles-' + id, n);
+    paint(card);
+  };
+  minus.addEventListener('click', () => setCycles(currentCycles(id) - 1));
+  plus.addEventListener('click', () => setCycles(currentCycles(id) + 1));
+  box.append(cyLabel, minus, val, plus);
+
+  const optimal = document.createElement('span');
+  optimal.className = 'nx-optimal-ships';
+  optimal.style.cssText = 'display:block;width:100%;margin-top:2px;';
+
+  const stats = card.querySelector('.field-card-stats') || card;
+  stats.append(box, optimal);
+  return box;
 }
 
 function paint(card) {
@@ -52,80 +104,20 @@ function paint(card) {
   const id = idBtn && idBtn.textContent.replace(/\D/g, '');
   const data = id && fieldData.get(id);
   if (!data) return;                                  // no field data yet
-  const r = optimalShips(data);
-  if (!r) return;
 
-  let el = card.querySelector('.nx-optimal-ships');
-  if (!el) {
-    el = document.createElement('span');
-    el.className = 'nx-optimal-ships';
-    el.style.cssText = 'display:block;margin-top:4px;font-size:0.7rem;opacity:0.85;';
-    card.querySelector('.field-card-stats').appendChild(el);
-  }
+  let box = card.querySelector('.nx-field-picker');
+  if (!box) box = buildPicker(card, id);
+
+  // Reflect current settings.
+  box.querySelector('.nx-excavator').checked = excavatorOn(id);
+  box.querySelector('.nx-cyc-val').textContent = currentCycles(id);
+
+  const el = card.querySelector('.nx-optimal-ships');
+  const r = optimalShips(data, id);
+  if (!r) { el.textContent = ''; return; }
   el.textContent = r.na
-    ? `⛏ ${currentShip()} can't mine ${data.type}`
-    : `⛏ Optimal: ${r.ships} ${currentShip()}${r.ships === 1 ? '' : 's'} to clear (${currentCycles()} cyc)`;
-}
-
-// Floating ship picker (clickable images), injected once when field cards exist.
-function ensureSelector() {
-  if (document.getElementById('nx-ship-picker')) return;
-  const box = document.createElement('div');
-  box.id = 'nx-ship-picker';
-  box.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:99999;background:rgba(20,24,34,0.95);' +
-    'color:#ddd;padding:6px 8px;border:1px solid #3a4256;border-radius:6px;font-size:0.72rem;' +
-    'display:flex;gap:6px;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,0.4);';
-  const label = document.createElement('span');
-  label.textContent = '⛏ Mining ship:';
-  box.appendChild(label);
-
-  function refresh() {
-    box.querySelectorAll('.nx-ship-tile').forEach(t => {
-      t.style.borderColor = t.dataset.ship === currentShip() ? '#ffb84d' : 'transparent';
-      t.style.opacity = t.dataset.ship === currentShip() ? '1' : '0.5';
-    });
-  }
-
-  for (const [name, def] of Object.entries(SHIPS)) {
-    const tile = document.createElement('img');
-    tile.className = 'nx-ship-tile';
-    tile.dataset.ship = name;
-    tile.src = `https://s0.nexuslegacy.space/api/images/ships/${SHIP_RACE}/${def._key}.webp`;
-    tile.title = name;
-    tile.style.cssText = 'width:41px;height:41px;object-fit:contain;cursor:pointer;border:2px solid transparent;border-radius:5px;padding:1px;';
-    tile.addEventListener('click', () => {
-      localStorage.setItem('nx-mining-ship', name);
-      document.querySelectorAll('.nx-optimal-ships').forEach(e => e.remove());  // recompute cleanly
-      refresh();
-      paintAll();
-    });
-    box.appendChild(tile);
-  }
-
-  const cyLabel = document.createElement('span');
-  cyLabel.textContent = 'cycles:';
-  cyLabel.style.marginLeft = '4px';
-  const btnCss = 'background:#1a1f2b;color:#ddd;border:1px solid #3a4256;border-radius:4px;' +
-    'width:20px;height:20px;line-height:1;cursor:pointer;font-size:0.9rem;padding:0;';
-  const minus = document.createElement('button'); minus.textContent = '−'; minus.style.cssText = btnCss;
-  const plus = document.createElement('button'); plus.textContent = '+'; plus.style.cssText = btnCss;
-  const val = document.createElement('span');
-  val.style.cssText = 'min-width:14px;text-align:center;';
-  val.textContent = currentCycles();
-
-  function setCycles(n) {
-    n = Math.min(MAX_CYCLES, Math.max(1, n));            // guard 1..MAX_CYCLES
-    localStorage.setItem('nx-mining-cycles', n);
-    val.textContent = n;
-    document.querySelectorAll('.nx-optimal-ships').forEach(e => e.remove());  // recompute cleanly
-    paintAll();
-  }
-  minus.addEventListener('click', () => setCycles(currentCycles() - 1));
-  plus.addEventListener('click', () => setCycles(currentCycles() + 1));
-  box.append(cyLabel, minus, val, plus);
-
-  document.body.appendChild(box);
-  refresh();
+    ? `⛏ No mining ship for ${data.type}`
+    : `⛏ Optimal: ${r.ships} ${r.ship}${r.ships === 1 ? '' : 's'} to clear (${currentCycles(id)} cyc)`;
 }
 
 let queued = false;
@@ -134,11 +126,7 @@ function paintAll() {
   queued = true;
   requestAnimationFrame(() => {
     queued = false;
-    if (location.pathname !== '/galaxy') {                 // SPA nav: hide off-galaxy
-      document.getElementById('nx-ship-picker')?.remove();
-      return;
-    }
-    ensureSelector();
+    if (location.pathname !== '/galaxy') return;             // SPA nav: skip off-galaxy
     document.querySelectorAll('.field-card').forEach(paint);
   });
 }
