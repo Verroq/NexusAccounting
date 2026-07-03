@@ -35,6 +35,17 @@
       "matches": ["https://s0.nexuslegacy.space/*"],
       "js": ["sidebar-inject.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://s0.nexuslegacy.space/*"],
+      "js": ["galaxy-fetch-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://s0.nexuslegacy.space/*"],
+      "js": ["galaxy-fields.js"],
+      "run_at": "document_idle"
     }
   ],
   "icons": {
