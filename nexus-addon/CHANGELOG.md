@@ -6,7 +6,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.6] - 2026-07-03
+
 ### Added
+- **Galaxy mining calculator**: on the in-game `/galaxy` page, each asteroid
+  `field-card` now shows the optimal number of mining ships to clear it —
+  `ceil(remaining / (extraction_capacity × cycles × richness))`. A floating
+  picker (image tiles) selects the mining ship (Mining Vessel / Gas Collector /
+  Ice Drill / Excavator) and a −/+ stepper sets the target cycle count (1–10);
+  both persist. Field data (resources, richness, type) is read from the game's
+  own `/planets` response via a page-world fetch/XHR hook.
 - **Battles tab**: one place aggregating every combat across sources — pirate
   camp raids, pirate ambushes while mining, survey ambushes and
   expedition/wormhole encounters. Summary cards (battles, ships lost/damaged,
