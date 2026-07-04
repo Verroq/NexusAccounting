@@ -24,7 +24,7 @@ const SHIPS = {
   gas:         { ship: 'Gas Collector', rate: 17 },
   quantum:     { ship: 'Gas Collector', rate: 3 },
   ice:         { ship: 'Ice Drill',     rate: 25 },
-  dark_matter: { ship: 'Ice Drill',     rate: 3 },
+  dark:        { ship: 'Ice Drill',     rate: 3 },   // field type is 'dark' (not 'dark_matter')
 };
 const EXCAVATOR_BONUS = 1.2;   // fleet yield bonus when an Excavator is present
 
