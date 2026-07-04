@@ -4,6 +4,18 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.9] - 2026-07-05
+
+### Added
+- **Scouting — fleet progress bars**: in-transit fleets now show a phase-coloured
+  progress bar (En route → working → Returning) with ETA. Scanning fleets get a
+  dedicated panel; the investigation, debris and salvage tables each get a
+  Progress column after the action button. Bars advance every second; the mission
+  list is refetched right after a launch so the bar appears promptly.
+- **Galaxy — mining toggle**: a persisted "⛏ Mining" switch in the galaxy
+  breadcrumb hides or shows the injected per-field mining picker + optimal-ships
+  line across all cards at once (green on, grey-red off).
+
 ## [1.6.8] - 2026-07-04
 
 ### Added
