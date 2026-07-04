@@ -4,6 +4,25 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.7] - 2026-07-04
+
+### Added
+- **Scouting → Uncollected salvage**: after a partial-recovery investigation,
+  leftover loot sits in-system (survey report `uncollectedLoot`, live until
+  `salvageExpiresAt`). A new table under *Live debris fields* lists these with
+  resource breakdown, total, planned haulers, fuel, travel time and an expiry
+  countdown. Collect launches the same cargo ships as debris via
+  `POST /api/fleet/collect-salvage`. Populated from the survey-reports fetch
+  already made — no extra API call.
+
+### Fixed
+- **Galaxy field cards**: the optimal-ships line stopped rendering. `galaxy-fields.js`
+  used top-level `const`s, and Firefox re-injecting the content script into the
+  same isolated world (extension reload) threw "redeclaration of const", aborting
+  the whole script. Wrapped the body in an IIFE + re-run guard. Also buffer relayed
+  field stats in the MAIN-world hook and replay them on init, so data fetched
+  before the isolated-world listener attaches isn't lost.
+
 ## [1.6.6] - 2026-07-03
 
 ### Added
