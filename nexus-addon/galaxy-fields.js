@@ -127,6 +127,41 @@ function paint(card) {
     : `⛏ Optimal: ${r.ships} ${r.ship}${r.ships === 1 ? '' : 's'} to clear (${currentCycles(id)} cyc)`;
 }
 
+// User toggle (persisted) to hide/show the injected mining picker + optimal line.
+const MINING_VIS_KEY = 'nx-mining-visible';
+const miningVisible = () => localStorage.getItem(MINING_VIS_KEY) !== '0';   // default on
+
+function applyMiningVisibility() {
+  const show = miningVisible();
+  document.querySelectorAll('.nx-field-picker').forEach(el => { el.style.display = show ? 'flex' : 'none'; });
+  document.querySelectorAll('.nx-optimal-ships').forEach(el => { el.style.display = show ? 'block' : 'none'; });
+  const btn = document.getElementById('nx-mining-toggle');
+  if (btn) {
+    btn.textContent = show ? '⛏ Mining: on' : '⛏ Mining: off';
+    btn.style.opacity = '1';
+    if (show) { btn.style.borderColor = '#2ea043'; btn.style.background = '#122117'; btn.style.color = '#56d364'; }
+    else { btn.style.borderColor = '#6e3a3a'; btn.style.background = '#2a1a1a'; btn.style.color = '#ff7b72'; }
+  }
+}
+
+// One toggle button in the galaxy breadcrumb (re-injected if the SPA re-renders).
+function injectToggle() {
+  if (document.getElementById('nx-mining-toggle')) return;
+  const bc = document.querySelector('.galaxy-breadcrumb');
+  if (!bc) return;
+  const btn = document.createElement('button');
+  btn.id = 'nx-mining-toggle';
+  btn.type = 'button';
+  btn.style.cssText = 'margin-left:10px; padding:3px 10px; border-radius:6px; cursor:pointer;' +
+    'font-size:0.72rem; border:1px solid #3a4256; background:#1a1f2b; color:#ddd;';
+  btn.addEventListener('click', () => {
+    localStorage.setItem(MINING_VIS_KEY, miningVisible() ? '0' : '1');
+    applyMiningVisibility();
+  });
+  bc.appendChild(btn);
+  applyMiningVisibility();   // set initial label
+}
+
 let queued = false;
 function paintAll() {
   if (queued) return;
@@ -134,7 +169,9 @@ function paintAll() {
   requestAnimationFrame(() => {
     queued = false;
     if (location.pathname !== '/galaxy') return;             // SPA nav: skip off-galaxy
+    injectToggle();
     document.querySelectorAll('.field-card').forEach(paint);
+    applyMiningVisibility();   // keep newly-painted cards in sync with the toggle
   });
 }
 

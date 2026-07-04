@@ -633,6 +633,14 @@
 
     <div class="reports-section">
       <div class="reports-header">
+        <h2>Scanning fleets in transit</h2>
+        <span id="sc-transit-count" style="color:#8b949e; font-size:0.8rem;"></span>
+      </div>
+      <div id="sc-transit-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
         <h2>Active surveys (awaiting investigation)</h2>
         <span id="sc-count" style="color:#8b949e; font-size:0.8rem;"></span>
         <label style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Investigate template
@@ -645,6 +653,7 @@
         <thead>
           <tr>
             <th title="Send investigation fleet"></th>
+            <th title="Fleet progress while investigating">Progress</th>
             <th>System</th>
             <th>Anomaly</th>
             <th>Zone</th>
@@ -676,6 +685,7 @@
         <thead id="sc-debris-head">
           <tr>
             <th title="Send collection fleet"></th>
+            <th title="Fleet progress while collecting">Progress</th>
             <th class="sortable" data-key="system">System</th>
             <th class="sortable" data-key="zone">Zone</th>
             <th class="sortable" data-key="ore">Ore</th>
@@ -702,6 +712,7 @@
         <thead id="sc-salvage-head">
           <tr>
             <th title="Send collection fleet"></th>
+            <th title="Fleet progress while collecting">Progress</th>
             <th class="sortable" data-key="system">System</th>
             <th class="sortable" data-key="zone">Zone</th>
             <th>Resources left</th>
