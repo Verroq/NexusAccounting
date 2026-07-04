@@ -118,7 +118,10 @@ export const miningSort = { key: 'created_at', dir: -1 };
 attachSortable('m-reports-head', miningSort, () => { miningPage = 1; renderMiningTable(); });
 
 export function renderMiningTable() {
-  const reports = applySort('m-reports-head', filterZone(store.mining_recent_reports || []), miningSort);
+  // Deliveries only — pirate_raid records are kept for the battles tab, not here.
+  // Records predating report_type default to delivery.
+  const deliveries = (store.mining_recent_reports || []).filter(r => (r.report_type || 'delivery') === 'delivery');
+  const reports = applySort('m-reports-head', filterZone(deliveries), miningSort);
   renderPagedTable(reports, miningPage, 'm-page-info', 'm-btn-prev', 'm-btn-next', 'm-reports-tbody', r => {
     const tr = document.createElement('tr');
     const tdDate = document.createElement('td');
