@@ -552,7 +552,7 @@ attachSortable('sc-debris-head', scDebrisSort, () => renderDebris());
 // Uncollected survey salvage: after a partial-recovery investigation, loot sits
 // in-system (survey report `uncollectedLoot`) until `salvageExpiresAt`. Collected
 // with the same cargo haulers as debris, via POST /api/fleet/collect-salvage.
-const SALVAGE_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys', 'ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter'];
+const SALVAGE_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys', 'cryo_ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter'];
 let scSalvage = [];                  // [{ reportId, systemId, system, zone, res, total, expires }]
 const scJustSalvaged = new Set();    // reportIds launched this session — keep the button disabled
 const scSalvageSort = { key: 'total', dir: -1 };
@@ -906,7 +906,7 @@ async function collectDebris(field) {
 // ── Uncollected salvage ─────────────────────────────────────────────────────
 
 const RES_LABEL = { ore: 'Ore', silicates: 'Sil', hydrogen: 'Hyd', alloys: 'Alloy',
-  ice: 'Ice', quantum_dust: 'Q.Dust', plasma_core: 'Plasma', dark_matter: 'D.Matter', antimatter: 'Antim' };
+  cryo_ice: 'Cryo-Ice', quantum_dust: 'Q.Dust', plasma_core: 'Plasma', dark_matter: 'D.Matter', antimatter: 'Antim' };
 
 function renderSalvage() {
   const tbody = document.getElementById('sc-salvage-tbody');

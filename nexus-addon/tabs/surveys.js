@@ -252,7 +252,7 @@ export function renderTable() {
     const tdAll = zeroTd(r.alloys);    tdAll.className = 'alloys';
 
     tr.append(tdDate, tdSys, zoneCell(r.zone), tdEvt, tdOre, tdHyd, tdSil, tdAll,
-              zeroTd(r.ice), zeroTd(r.quantum_dust), zeroTd(r.plasma_core),
+              zeroTd(r.cryo_ice), zeroTd(r.quantum_dust), zeroTd(r.plasma_core),
               zeroTd(r.dark_matter), zeroTd(r.antimatter),
               zeroTd(r.ships_lost), zeroTd(r.ships_damaged));
     tbody.appendChild(tr);

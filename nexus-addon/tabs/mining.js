@@ -2,7 +2,29 @@
 
 // ── Mining tab ─────────────────────────────────────────────────────────────
 
-import { EXTRA_RES_KEYS_UI, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, combinedLost, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelEstimate, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
+
+// Weighted value (ore×1, silicates×2, hydrogen×3, alloys×5, exotics×10), matching
+// the Net cards. Reads flat resource keys and an optional `rare` map.
+const RARE_KEYS = ['cryo_ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter', 'bio_extract'];
+function weightedValue(res) {
+  let v = (res.ore || 0) * RESOURCE_WEIGHTS.ore + (res.silicates || 0) * RESOURCE_WEIGHTS.silicates
+        + (res.hydrogen || 0) * RESOURCE_WEIGHTS.hydrogen + (res.alloys || 0) * RESOURCE_WEIGHTS.alloys;
+  for (const k of RARE_KEYS) v += (res[k] || 0) * RARE_WEIGHT;
+  if (res.rare) for (const val of Object.values(res.rare)) v += (val || 0) * RARE_WEIGHT;
+  return v;
+}
+
+// System name → id, from the galaxy map (cached). Used to resolve a mining
+// report's target system for the fuel estimate.
+let _sysMap = null;
+async function systemNameToId() {
+  if (_sysMap) return _sysMap;
+  const map = await browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP' });
+  _sysMap = {};
+  for (const s of (map.systems || [])) _sysMap[s.name] = s.id;
+  return _sysMap;
+}
 
 // Add drill-breakdown maintenance (alloys) to the repair bucket, without
 // mutating the source object. Net and the Repair card subtract this. The
@@ -122,6 +144,7 @@ export function renderMiningTable() {
   // Records predating report_type default to delivery.
   const deliveries = (store.mining_recent_reports || []).filter(r => (r.report_type || 'delivery') === 'delivery');
   const reports = applySort('m-reports-head', filterZone(deliveries), miningSort);
+  const pending = [];   // rows whose Fuel/ROI cells fill asynchronously
   renderPagedTable(reports, miningPage, 'm-page-info', 'm-btn-prev', 'm-btn-next', 'm-reports-tbody', r => {
     const tr = document.createElement('tr');
     const tdDate = document.createElement('td');
@@ -132,13 +155,53 @@ export function renderMiningTable() {
     const tdSil = zeroCell(r.silicates); tdSil.className = 'silicates';
     const tdHyd = zeroCell(r.hydrogen); tdHyd.className = 'hydrogen';
     const tdAll = zeroCell(r.alloys); tdAll.className = 'alloys';
+    const fuelCell = document.createElement('td'); fuelCell.textContent = '…'; fuelCell.className = 'hydrogen';
+    const roiCell = document.createElement('td'); roiCell.textContent = '…';
     tr.append(tdDate, tdLoc, zoneCell(r.zone), tdOre, tdSil, tdHyd, tdAll,
-              zeroCell(r.ice), zeroCell(r.quantum_dust), zeroCell(r.plasma_core),
+              zeroCell(r.cryo_ice), zeroCell(r.quantum_dust), zeroCell(r.plasma_core),
               zeroCell(r.dark_matter), zeroCell(r.antimatter),
               zeroCell(r.cycles), zeroCell(r.drill_breakdowns),
-              zeroCell(r.ships_lost), zeroCell(r.stolen_total));
+              fuelCell, roiCell);
+    pending.push({ r, fuelCell, roiCell });
     return tr;
   });
+  fillFuelRoi(pending);
+}
+
+// Fill the Fuel cost + ROI columns. Fuel is the POST fuel-estimate for the stored
+// fleet from its source planet to the mined system. ROI (weighted) =
+// resources mined − breakdown maintenance − fuel − ship-loss cost − stolen.
+// A generation guard discards a superseded render/page.
+let roiGen = 0;
+async function fillFuelRoi(rows) {
+  const gen = ++roiGen;
+  const ships = store.ships || {};
+  const nameToId = await systemNameToId().catch(() => ({}));
+  if (gen !== roiGen) return;
+  for (const { r, fuelCell, roiCell } of rows) {
+    if (gen !== roiGen) return;
+    const mined = weightedValue(r);
+    const breakdown = (r.maintenance_alloys || 0) * RESOURCE_WEIGHTS.alloys;
+    const shipLoss = weightedValue(combinedLost(computeResourcesLost([r], ships)));
+    const stolen = weightedValue(r.stolen || {});
+
+    const sysId = nameToId[(r.location || '').split(' / ')[0].trim()];
+    let fuel = null;
+    if (r.source_planet_id && sysId && Array.isArray(r.fleet) && r.fleet.length) {
+      const est = await fuelEstimate(r.source_planet_id, sysId, r.fleet);
+      if (gen !== roiGen) return;
+      if (!est.error && est.fuelCost != null) fuel = est.fuelCost;
+    }
+    fuelCell.textContent = fuel != null ? fmt(fuel) : '—';
+    if (fuel == null) fuelCell.title = 'No fuel estimate (missing fleet/system, or no game tab open).';
+
+    const roi = mined - breakdown - (fuel || 0) * RESOURCE_WEIGHTS.hydrogen - shipLoss - stolen;
+    roiCell.textContent = (roi >= 0 ? '+' : '') + fmt(roi);
+    roiCell.style.color = roi >= 0 ? '#56d364' : '#ff7b72';
+    roiCell.title = fuel == null
+      ? `Fuel excluded. mined ${fmt(mined)} − breakdown ${fmt(breakdown)} − ship loss ${fmt(shipLoss)} − stolen ${fmt(stolen)}`
+      : `mined ${fmt(mined)} − breakdown ${fmt(breakdown)} − fuel ${fmt(fuel * RESOURCE_WEIGHTS.hydrogen)} − ship loss ${fmt(shipLoss)} − stolen ${fmt(stolen)}`;
+  }
 }
 
 document.getElementById('m-btn-prev').addEventListener('click', () => { miningPage--; renderMiningTable(); });

@@ -136,7 +136,7 @@ export function renderExpTable() {
     const tdAll = zeroCell(loot.alloys); tdAll.className = 'alloys';
     tr.append(tdDate, tdKind, tdClass, tdLoc, zoneCell(r.zone), tdEvent,
               tdOre, tdSil, tdHyd, tdAll,
-              zeroCell(loot.ice), zeroCell(loot.quantum_dust), zeroCell(loot.plasma_core),
+              zeroCell(loot.cryo_ice), zeroCell(loot.quantum_dust), zeroCell(loot.plasma_core),
               zeroCell(loot.dark_matter), zeroCell(loot.antimatter),
               zeroCell(r.ships_lost));
     return tr;

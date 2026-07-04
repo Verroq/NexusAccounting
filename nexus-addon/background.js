@@ -1003,7 +1003,7 @@ function buildShipCatalog(shipyardData) {
 }
 
 // Alloys + exotic resources collected (beyond ore/silicates/hydrogen).
-const EXTRA_RES_KEYS = ['alloys', 'ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter'];
+const EXTRA_RES_KEYS = ['alloys', 'cryo_ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter'];
 function addExtraRes(target, loot) {
   for (const k of EXTRA_RES_KEYS) { const v = loot[k] || 0; if (v) target[k] = (target[k] || 0) + v; }
 }
@@ -1532,6 +1532,8 @@ async function processMiningReports(reports, ships, zones = {}) {
       planet: r.planetName || '—',
       zone: resolveZone(systemFromLocation(r.locationName), zones),
       report_type: r.reportType || 'delivery',
+      source_planet_id: r.planetId ?? null,   // for the mining tab's per-row fuel estimate
+      fleet: (r.fleetComposition || []).map(s => ({ shipDefId: s.shipDefId, quantity: s.quantity })),
       ore: delivered.ore || 0,
       silicates: delivered.silicates || 0,
       hydrogen: delivered.hydrogen || 0,
