@@ -4,6 +4,24 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.8] - 2026-07-04
+
+### Added
+- **Empire View**: a new "Empire View" link in the game sidebar opens a
+  game-styled overlay with a columnar per-planet summary (one column per planet
+  plus a Total column):
+  - **Workforce**: population (cur/max), growth/h, assigned workers, free
+    workers, energy (net).
+  - **Available resources**: stored / storage capacity per resource, red near
+    full; Total summed.
+  - **Resource buildings**: level and production/h for ore / silicates /
+    hydrogen / alloys (+ rares when produced).
+  - **Infrastructure** with live countdowns: building slots (used/max), build
+    queue, researching tech, buildings in construction, and ships in production
+    across both the Shipyard and Orbital Shipyard queues.
+  Data is fetched same-origin from the game APIs; the overlay lives in `<body>`
+  so game re-renders never wipe it.
+
 ## [1.6.7] - 2026-07-04
 
 ### Added

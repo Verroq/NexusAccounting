@@ -22,6 +22,13 @@ const CALC_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18
   <path d="M8 10h.01"></path><path d="M12 14h.01"></path><path d="M8 14h.01"></path>
   <path d="M12 18h.01"></path><path d="M8 18h.01"></path></svg>`;
 
+// lucide-style "globe" icon for the empire-wide view.
+const EMPIRE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+  class="lucide lucide-globe sidebar-link-icon" aria-hidden="true">
+  <circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+  <path d="M2 12h20"></path></svg>`;
+
 function buildSection() {
   const section = document.createElement('div');
   section.className = 'sidebar-section';
@@ -36,6 +43,9 @@ function buildSection() {
     </a>
     <a class="sidebar-link" href="#" data-nexus-lsbelts="1">
       ${ICON}<span class="sidebar-link-label">Live Search Belts</span>
+    </a>
+    <a class="sidebar-link" href="#" data-nexus-empire="1">
+      ${EMPIRE_ICON}<span class="sidebar-link-label">Empire View</span>
     </a>`;
   return section;
 }

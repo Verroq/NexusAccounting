@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Nexus Accounting",
-  "version": "1.6.7",
+  "version": "1.6.8",
   "description": "Tracks Nexus Legacy survey and pirate data — aggregates resources collected and ships lost, with daily and hourly breakdowns.",
   "author": "Verrok",
   "homepage_url": "https://github.com/Verroq/NexusAccounting",
@@ -45,6 +45,11 @@
     {
       "matches": ["https://s0.nexuslegacy.space/*"],
       "js": ["galaxy-fields.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://s0.nexuslegacy.space/*"],
+      "js": ["empire-view.js"],
       "run_at": "document_idle"
     }
   ],
