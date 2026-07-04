@@ -22,6 +22,117 @@ let scInvestigating = new Set();  // systemIds with an investigate mission in fl
 const scJustSurveyed = new Set(); // systemIds surveyed this session — the missions API lags, so exclude them locally
 const scJustInvestigated = new Set(); // same, for investigate missions
 let scTick = 0;
+let scMissions = [];          // in-flight survey/investigate/collect fleets
+// Per-surface bar updaters, each rebuilt by its own render. The 1s tick advances
+// all of them. Keyed so one render doesn't drop another surface's tickers.
+const scTicks = { scan: [], invest: [], debris: [], salvage: [] };
+
+const MISSION_LABELS = { survey: 'Survey', investigate: 'Investigate',
+  collect_debris: 'Collect Debris', collect_salvage: 'Collect Salvage' };
+
+// The in-flight mission heading to a system for a given type (or undefined).
+function findMission(type, systemId) {
+  return scMissions.find(m => m.missionType === type && m.targetSystemId === systemId);
+}
+
+// Compact inline progress bar for a table cell. Returns { el, upd }; caller
+// registers `upd` in the right scTicks bucket so it advances each second.
+function makeMissionBar(m) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:5px; min-width:120px;';
+  const track = document.createElement('div');
+  track.style.cssText = 'height:6px; border-radius:4px; background:#21262d; overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%; border-radius:4px; transition:width 0.5s linear;';
+  track.appendChild(fill);
+  const cap = document.createElement('div');
+  cap.style.cssText = 'display:flex; justify-content:space-between; gap:6px; font-size:0.7rem; margin-top:2px;';
+  const ph = document.createElement('span'), et = document.createElement('span');
+  et.style.cssText = 'color:#8b949e; font-variant-numeric:tabular-nums;';
+  cap.append(ph, et);
+  wrap.append(track, cap);
+  const upd = () => {
+    const p = missionProgress(m);
+    fill.style.width = `${(p.frac * 100).toFixed(1)}%`;
+    fill.style.background = p.color;
+    ph.textContent = p.label; ph.style.color = p.color;
+    et.textContent = p.eta > 0 ? fmtCountdown(p.eta) : '—';
+  };
+  upd();
+  return { el: wrap, upd };
+}
+
+// A table cell holding the in-flight progress bar for this row's fleet (or a
+// muted dash when idle). Registers the bar's ticker in the given scTicks bucket.
+function progressCell(type, systemId, bucket) {
+  const td = document.createElement('td');
+  td.style.cssText = 'padding:7px 12px; min-width:150px;';
+  const m = systemId != null ? findMission(type, systemId) : null;
+  if (m) {
+    const b = makeMissionBar(m);
+    b.el.style.marginTop = '0';
+    td.appendChild(b.el);
+    scTicks[bucket].push(b.upd);
+  } else {
+    td.textContent = '—';
+    td.style.cssText += ' color:#484f58; text-align:center;';
+  }
+  return td;
+}
+
+// Where a fleet is in its round trip: outbound (departs→arrives), on-site work
+// (arrives→returnDeparts), or returning (returnDeparts→returnArrives). Returns
+// the active leg's label, colour, 0..1 fraction, and ETA (ms) to that leg's end.
+function missionProgress(m) {
+  const g = k => (m[k] ? new Date(m[k]).getTime() : null);
+  const now = Date.now();
+  const dep = g('departsAt') ?? g('createdAt'), arr = g('arrivesAt');
+  const rdep = g('returnDepartsAt'), rarr = g('returnArrivesAt');
+  const work = { survey: 'Surveying', investigate: 'Investigating',
+    collect_debris: 'Collecting', collect_salvage: 'Collecting' }[m.missionType] || 'Working';
+  const stages = [];
+  if (dep && arr) stages.push(['En route', '#58a6ff', dep, arr]);
+  if (arr && rdep) stages.push([work, '#f0883e', arr, rdep]);
+  if (rdep && rarr) stages.push(['Returning', '#56d364', rdep, rarr]);
+  for (const [label, color, s, e] of stages) {
+    if (now < e) return { label, color, frac: now <= s ? 0 : Math.min(1, (now - s) / (e - s)), eta: e - now };
+  }
+  return { label: 'Arriving…', color: '#8b949e', frac: 1, eta: 0 };
+}
+
+// Scanning (survey) fleets have no table of their own, so list them here.
+// Investigate / collect_debris / collect_salvage progress is shown inline in
+// their respective tables instead.
+function renderTransit() {
+  const box = document.getElementById('sc-transit-list');
+  if (!box) return;
+  box.textContent = '';
+  scTicks.scan = [];
+  const surveys = scMissions.filter(m => m.missionType === 'survey');
+  document.getElementById('sc-transit-count').textContent = `${surveys.length} scanning`;
+  if (!surveys.length) {
+    const d = document.createElement('div');
+    d.style.cssText = 'color:#484f58; padding:4px 0;';
+    d.textContent = 'No scanning fleets in transit.';
+    box.appendChild(d);
+    return;
+  }
+  for (const m of surveys) {
+    const target = m.targetSystemName || m.targetPlanetName || `#${m.targetSystemId}`;
+    const row = document.createElement('div');
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex; align-items:baseline; gap:8px; font-size:0.85rem; margin-bottom:3px;';
+    const name = document.createElement('span');
+    name.style.color = '#e6edf3';
+    name.textContent = `${target} · Survey`;
+    head.appendChild(name);
+    const bar = makeMissionBar(m);
+    bar.el.style.marginTop = '0';
+    row.append(head, bar.el);
+    box.appendChild(row);
+    scTicks.scan.push(bar.upd);
+  }
+}
 
 export async function initScoutingTab() {
   if (inited) return;
@@ -79,6 +190,7 @@ export async function initScoutingTab() {
   setInterval(() => {
     if (document.getElementById('scouting-content').style.display === 'none') return;
     tickTimers();
+    for (const k in scTicks) for (const upd of scTicks[k]) upd();   // advance all progress bars
     if (++scTick % 10 === 0) updateAvail();       // catch returning fleets
     if (scTick % 30 === 0) { loadActiveSurveys(); loadDebris(); }
   }, 1000);
@@ -244,6 +356,8 @@ async function loadActiveSurveys() {
   if (mi.maxFleetSlots != null) {
     document.getElementById('sc-slots').textContent = `${(mi.missions || []).length}/${mi.maxFleetSlots} fleet slots`;
   }
+  scMissions = (mi.missions || []).filter(m => MISSION_LABELS[m.missionType]);
+  renderTransit();
   scInvestigating = new Set((mi.missions || [])
     .filter(m => m.missionType === 'investigate' && m.targetSystemId != null)
     .map(m => m.targetSystemId));
@@ -277,12 +391,13 @@ async function loadActiveSurveys() {
 
   renderSurveys();
   renderSalvage();
-  if (scInvestigatedOnly) renderDebris();   // filter depends on the history just updated
+  renderDebris();   // repaint so debris progress bars reflect the just-fetched missions
 }
 
 function renderSurveys() {
   const tbody = document.getElementById('sc-surveys-tbody');
   tbody.textContent = '';
+  scTicks.invest = [];
   document.getElementById('sc-count').textContent = `${scPending.length} awaiting investigation`;
   const now = Date.now();
   for (const r of scPending) {
@@ -302,6 +417,7 @@ function renderSurveys() {
     if (!busy) btn.addEventListener('click', () => investigate(r));
     tgtTd.appendChild(btn);
     tr.appendChild(tgtTd);
+    tr.appendChild(progressCell('investigate', r.systemId, 'invest'));
 
     tr.dataset.system = r.systemId;
     const cells = [
@@ -412,6 +528,7 @@ async function investigate(report) {
   scInvestigating.add(report.systemId);
   status.textContent = `Fleet sent to ${report.systemName} ✓`;
   loadActiveSurveys();
+  setTimeout(loadActiveSurveys, 2000);   // retry for post-POST API lag → prompt bar
   updateAvail();
 }
 
@@ -604,6 +721,7 @@ async function loadDebris() {
 function renderDebris() {
   const tbody = document.getElementById('sc-debris-tbody');
   tbody.textContent = '';
+  scTicks.debris = [];
 
   if (pruneInvHistory()) saveInvHistory();   // expire stale history between polls
 
@@ -637,7 +755,7 @@ function renderDebris() {
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 11; td.style.color = '#484f58';
+    td.colSpan = 12; td.style.color = '#484f58';
     td.textContent = !scDebris.length ? 'No debris fields currently visible.'
       : (scDebrisZoneFilter.size || scInvestigatedOnly) ? 'No debris matches the current filter.'
       : 'All debris fields hidden.';
@@ -663,6 +781,7 @@ function renderDebris() {
     if (ok) btn.addEventListener('click', () => collectDebris(f));
     btnTd.appendChild(btn);
     tr.appendChild(btnTd);
+    tr.appendChild(progressCell('collect_debris', f.systemId, 'debris'));
 
     const cells = [
       f.system,
@@ -778,6 +897,10 @@ async function collectDebris(field) {
   status.textContent = `Fleet sent to ${field.system} ✓`;
   renderDebris();
   updateAvail();
+  // Pull the new mission in so the progress bar shows promptly; retry once for
+  // the game's brief post-POST API lag.
+  loadActiveSurveys();
+  setTimeout(loadActiveSurveys, 2000);
 }
 
 // ── Uncollected salvage ─────────────────────────────────────────────────────
@@ -788,6 +911,7 @@ const RES_LABEL = { ore: 'Ore', silicates: 'Sil', hydrogen: 'Hyd', alloys: 'Allo
 function renderSalvage() {
   const tbody = document.getElementById('sc-salvage-tbody');
   tbody.textContent = '';
+  scTicks.salvage = [];
   document.getElementById('sc-salvage-count').textContent = `${scSalvage.length} awaiting collection`;
   const now = Date.now();
 
@@ -795,7 +919,7 @@ function renderSalvage() {
   if (!sorted.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 9; td.style.color = '#484f58';
+    td.colSpan = 10; td.style.color = '#484f58';
     td.textContent = 'No uncollected salvage.';
     tr.appendChild(td); tbody.appendChild(tr);
     return;
@@ -809,7 +933,8 @@ function renderSalvage() {
 
     const btnTd = document.createElement('td');
     const btn = document.createElement('button');
-    const busy = scJustSalvaged.has(s.reportId);
+    const mission = s.systemId != null ? findMission('collect_salvage', s.systemId) : null;
+    const busy = scJustSalvaged.has(s.reportId) || !!mission;
     btn.textContent = busy ? 'Collecting…' : 'Collect';
     btn.disabled = busy;
     btn.style.cssText = busy
@@ -818,6 +943,7 @@ function renderSalvage() {
     if (!busy) btn.addEventListener('click', () => collectSalvage(s));
     btnTd.appendChild(btn);
     tr.appendChild(btnTd);
+    tr.appendChild(progressCell('collect_salvage', s.systemId, 'salvage'));
 
     const breakdown = Object.entries(s.res)
       .map(([k, v]) => `${RES_LABEL[k] || k} ${v.toLocaleString()}`).join(', ');
@@ -919,4 +1045,7 @@ async function collectSalvage(salvage) {
   status.textContent = `Fleet sent to ${salvage.system} ✓`;
   renderSalvage();
   updateAvail();
+  // Pull the new mission in so the progress bar shows promptly (retry for lag).
+  loadActiveSurveys();
+  setTimeout(loadActiveSurveys, 2000);
 }
