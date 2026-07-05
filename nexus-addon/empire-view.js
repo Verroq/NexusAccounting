@@ -89,6 +89,7 @@ function modelOf(bundle) {
   return {
     id: pl.id,
     name: pl.name,
+    planetType: pl.planetType || null,
     population: pl.population, maxPopulation: pl.maxPopulation,
     growth: pl.populationGrowthRate,
     energyProduced: pl.energyProduced, energyConsumed: pl.energyConsumed,
@@ -121,7 +122,7 @@ async function openEmpire() {
   if (overlay) { closeEmpire(); return; }   // toggle
   overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed; inset:0; z-index:2147483646; overflow:auto;' +
-    'background:rgba(8,10,16,0.97); padding:24px; box-sizing:border-box;';
+    'background:#080a10; padding:24px; box-sizing:border-box;';
   overlay.addEventListener('click', e => { if (e.target === overlay) closeEmpire(); });
 
   const page = document.createElement('div');
@@ -130,11 +131,18 @@ async function openEmpire() {
   overlay.appendChild(page);
   document.body.appendChild(overlay);
 
+  // Self-styled banner (no .res-hero/.res-hero-main game classes — those pull in
+  // the game's hero layout, which rendered a second thumbnail of the image).
   page.innerHTML = `
-    <section class="res-hero"><div class="res-hero-main">
-      <h1 class="res-hero-title">Empire View</h1>
-      <p class="res-hero-sub">Loading planets…</p>
-    </div></section>`;
+    <section style="position:relative; overflow:hidden; border-radius:10px; height:150px; margin-bottom:14px;">
+      <img src="/api/images/page-heroes/research.webp" alt=""
+        style="width:100%; height:100%; object-fit:cover; object-position:center 40%; display:block; opacity:0.85;">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center; padding:0 24px;
+        background:linear-gradient(90deg, rgba(8,10,16,0.85) 0%, rgba(8,10,16,0.35) 60%, rgba(8,10,16,0) 100%);">
+        <h1 style="margin:0; font-size:1.9rem; color:#e6edf3;">Empire View</h1>
+        <p class="res-hero-sub" style="margin:5px 0 0; color:#9aa4b2; font-size:0.9rem;">Loading planets…</p>
+      </div>
+    </section>`;
 
   // Close (Esc + button).
   const close = document.createElement('button');
