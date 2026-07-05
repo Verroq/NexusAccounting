@@ -260,6 +260,37 @@ export function moonCount(planet, moons) {
   return (moons || []).filter(m => m.planetId === planet.id || m.parentPlanetId === planet.id).length;
 }
 
+// A planet's moons as [{ type, slots }] (slots = building slots).
+export function moonList(planet, moons) {
+  return (moons || [])
+    .filter(m => m.planetId === planet.id || m.parentPlanetId === planet.id)
+    .map(m => ({ type: (m.moonType || '?').replace(/_/g, ' '), slots: m.buildingSlots ?? 0 }));
+}
+
+// Plain-text moon summary (for the expandable per-system list): "metallic (6 slots)".
+export function moonSummary(planet, moons) {
+  const list = moonList(planet, moons);
+  return list.length ? list.map(m => `${m.type} (${m.slots} slots)`).join(', ') : '—';
+}
+
+const MOON_COLORS = {
+  metallic: '#e3b341', barren: '#8b949e', hollow: '#a5d6ff', crystalline: '#bc8cff',
+  icy: '#79c0ff', frozen: '#79c0ff', volcanic: '#ff7b72', gas: '#a371f7', oceanic: '#56d364',
+};
+
+// Fill a moon cell: coloured type + (size) per moon, comma-separated.
+function buildMoonCell(td, list) {
+  if (!list || !list.length) { td.textContent = '—'; return; }
+  list.forEach((m, i) => {
+    if (i) td.appendChild(document.createTextNode(', '));
+    const sp = document.createElement('span');
+    sp.textContent = m.type;
+    sp.style.color = MOON_COLORS[m.type] || '#c9d1d9';
+    td.appendChild(sp);
+    td.appendChild(document.createTextNode(` (${m.slots})`));
+  });
+}
+
 document.getElementById('f-search').addEventListener('click', async function () {
   if (finderRunning) {
     finderRunning = false;
@@ -341,13 +372,13 @@ document.getElementById('f-search').addEventListener('click', async function () 
           planet: p.name, system: s.name || `#${s.id}`,
           sector: s.sectorId - (region.armId - 1) * 50,
           type: p.planetType, size: p.size, temp: p.temperature,
-          moons: nMoons, zone: s.securityZone || '—', distance: dist,
+          moons: nMoons, moonList: moonList(p, moons), zone: s.securityZone || '—', distance: dist,
           owner: p.ownerName || null,
           alliance: p.ownerAllianceTag || null,
           rankMil: null, rankEco: null, rankRes: null,
         });
         if (!hitSystems[s.id]) hitSystems[s.id] = { planets: [] };
-        hitSystems[s.id].planets.push(`${p.name} (${p.planetType}, ${p.size}, ${nMoons} moons)`);
+        hitSystems[s.id].planets.push(`${p.name} (${p.planetType}, ${p.size}, ${nMoons} moons${nMoons ? ': ' + moonSummary(p, moons) : ''})`);
       }
       done++;
       if (done % 10 === 0) {
@@ -437,7 +468,8 @@ export function renderFinderResults() {
   for (const h of sorted) {
     const tr = document.createElement('tr');
     const cells = [h.planet, h.system, String(h.sector), String(h.type ?? '—').replace(/_/g, ' '),
-                   String(h.size), (h.temp == null ? '—' : `${h.temp}°`), String(h.moons),
+                   String(h.size), (h.temp == null ? '—' : `${h.temp}°`),
+                   null,   // moon cell built below (coloured type + size)
                    h.zone || '—', (h.distance == null ? '—' : String(h.distance)), h.owner || '—',
                    h.alliance || '—',
                    (h.rankMil == null ? '—' : `#${h.rankMil}`),
@@ -445,7 +477,8 @@ export function renderFinderResults() {
                    (h.rankRes == null ? '—' : `#${h.rankRes}`)];
     cells.forEach((v, i) => {
       const td = document.createElement('td');
-      td.textContent = v;
+      if (i === 6) buildMoonCell(td, h.moonList);
+      else td.textContent = v;
       if (i === 4) td.style.color = '#e3b341';
       tr.appendChild(td);
     });
