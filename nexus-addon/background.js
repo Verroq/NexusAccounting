@@ -2101,10 +2101,13 @@ async function checkDrift() {
     if (pirateArchive.length !== (s.pirate_totals.raids || 0)) problems.push('pirates.raids');
   }
   if (s.mining_totals && miningArchive.length) {
+    // Totals count 'delivery' reports only (pirate_raid records are kept for the
+    // battles tab), so compare against delivery records — not the whole archive.
+    const miningDeliv = miningArchive.filter(r => (r.report_type || 'delivery') === 'delivery');
     for (const f of ['ore', 'silicates', 'hydrogen']) {
-      if (sum(miningArchive, f) !== (s.mining_totals[f] || 0)) problems.push(`mining.${f}`);
+      if (sum(miningDeliv, f) !== (s.mining_totals[f] || 0)) problems.push(`mining.${f}`);
     }
-    if (miningArchive.length !== (s.mining_totals.deliveries || 0)) problems.push('mining.deliveries');
+    if (miningDeliv.length !== (s.mining_totals.deliveries || 0)) problems.push('mining.deliveries');
   }
   if (s.exp_totals && expArchive.length) {
     if (expArchive.length !== (s.exp_totals.missions || 0)) problems.push('expeditions.missions');
