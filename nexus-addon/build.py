@@ -27,7 +27,7 @@ FILES = [
     'package.json',
     'CHANGELOG.md',
     'background-sw.js', 'background.js', 'sidebar-inject.js',
-    'galaxy-fetch-hook.js', 'galaxy-fields.js', 'empire-view.js',
+    'galaxy-fetch-hook.js', 'galaxy-fields.js', 'empire-view.js', 'guide-view.js',
     'dashboard.html', 'dashboard.css', 'dashboard.js', 'common.js',
     'tabs/global.js', 'tabs/surveys.js', 'tabs/pirates.js', 'tabs/mining.js',
     'tabs/battles.js', 'tabs/debris.js', 'tabs/expeditions.js', 'tabs/finder.js', 'tabs/asteroids.js', 'tabs/fleets.js', 'tabs/scouting.js', 'tabs/market.js', 'tabs/techtree.js',
