@@ -15,12 +15,34 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Galaxy — mining toggle**: a persisted "⛏ Mining" switch in the galaxy
   breadcrumb hides or shows the injected per-field mining picker + optimal-ships
   line across all cards at once (green on, grey-red off).
+- **Mining — Fuel cost + ROI columns**: the Recent Deliveries table drops Ships
+  lost and Stolen for a Fuel cost column (POST fuel-estimate for the stored fleet,
+  source planet → mined system) and an ROI column (weighted: mined − breakdown −
+  fuel − ship loss − stolen).
+- **Scouting — investigation return tracked**: the row now persists with a
+  "Returning…" bar until the investigate fleet is home, instead of vanishing when
+  the investigation completes.
+- **Fleet Templates — mining ship colours**: each mining ship's name is coloured
+  by what it mines (Mining Vessel, Gas Collector, Ice Drill, Excavator, Freighter),
+  with a "Mines: …" tooltip and a legend.
+- **Empire View — hero banner** image at the top of the overlay.
 
 ### Fixed
 - **Galaxy mining picker**: the cycle number sometimes rendered blank. When the
   game re-rendered a field card and reconciled away part of the injected picker,
   `paint()` threw before setting the value. Rebuild the picker when it's
   incomplete and populate the cycle value at build time.
+- **Galaxy mining picker**: dark-matter fields ("Dark Matter Rift") showed "No
+  mining ship" — the ship map keyed the field by `dark_matter` instead of the
+  actual field type `dark`. Now recommends the Ice Drill.
+- **Mining reports**: only `delivery` reports count toward totals/cycles/table;
+  `pirate_raid` reports are kept for the battles tab but no longer inflate them.
+  Cycles come from `resourcesDelivered._cyclesDone` (default 10 when absent).
+- **Cryo-ice captured**: the game delivers `cryo_ice` but the addon used `ice`,
+  so cryo-ice was dropped from all report processing and rendered as zero. Renamed
+  the internal key across processing, series and the report tables.
+- **Loot doughnut**: rare resources (cryo-ice, plasma core, quantum dust, …) were
+  missing in windowed modes; now read whether stored flat or in the rare map.
 
 ## [1.6.8] - 2026-07-04
 
