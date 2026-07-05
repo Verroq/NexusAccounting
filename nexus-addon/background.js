@@ -475,9 +475,36 @@ async function getToken() {
 
 // ── API ────────────────────────────────────────────────────────────────────
 
+// Proactive rate-limit throttle. The server advertises its budget on every
+// response (`RateLimit-Remaining` / `RateLimit-Reset`, policy 400/60s). Track the
+// last-seen values and pause before sending once the remaining budget dips below
+// RL_MIN_REMAINING, until the window resets — so a big scan self-paces instead of
+// waiting to get 429'd. The reactive Retry-After path below still backstops.
+const RL_MIN_REMAINING = 20;     // headroom to keep under the limit
+let rlRemaining = Infinity;      // last-seen RateLimit-Remaining
+let rlResetAt = 0;               // epoch ms when the current window resets
+
+function updateRateLimit(headers) {
+  const rem = parseInt(headers.get('ratelimit-remaining'), 10);
+  const reset = parseFloat(headers.get('ratelimit-reset'));   // seconds until reset
+  if (Number.isFinite(rem)) rlRemaining = rem;                // authoritative — corrects drift
+  if (Number.isFinite(reset)) rlResetAt = Date.now() + reset * 1000;
+}
+
+// Wait while low on budget and the window hasn't reset, then reserve one slot
+// optimistically (corrected by the next response header) so parallel callers
+// don't all slip through before any response updates the count.
+async function rateLimitGate() {
+  while (rlRemaining <= RL_MIN_REMAINING && Date.now() < rlResetAt) {
+    await new Promise(res => setTimeout(res, Math.min(Math.max(rlResetAt - Date.now(), 0) + 100, 2000)));
+  }
+  rlRemaining--;
+}
+
 async function apiFetch(path, token) {
   // Retry on 429 (rate limit), honouring Retry-After, then exponential backoff.
   for (let attempt = 0; ; attempt++) {
+    await rateLimitGate();
     let r;
     try {
       r = await fetch(`${GAME_URL}${path}`, {
@@ -486,6 +513,7 @@ async function apiFetch(path, token) {
     } catch (e) {
       throw new Error(`API ${path} → ${e.message}`, { cause: e });   // network/CORS/blocked
     }
+    updateRateLimit(r.headers);
     if (r.status === 429 && attempt < 4) {
       const ra = parseFloat(r.headers.get('Retry-After'));
       await new Promise(res => setTimeout(res, Number.isFinite(ra) ? ra * 1000 : 500 * 2 ** attempt));
