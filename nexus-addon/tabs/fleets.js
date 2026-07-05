@@ -11,6 +11,17 @@ let currentId = null;        // template open in the editor
 const GROUP_ORDER = ['combat', 'special', 'recon', 'utility'];
 const GROUP_LABELS = { combat: 'Combat', special: 'Special', recon: 'Recon', utility: 'Utility' };
 
+// Colour + "what it mines" per mining ship (keyed by ship key), so the template
+// editor shows at a glance which fields each hauler works. Colours match the
+// asteroid field-type palette.
+const MINING_SHIPS = {
+  miner:         { name: 'Mining Vessel', color: '#f0883e', mines: 'Ore, Plasma Core' },
+  gas_collector: { name: 'Gas Collector', color: '#79c0ff', mines: 'Hydrogen, Quantum Dust' },
+  ice_drill:     { name: 'Ice Drill',     color: '#a5d6ff', mines: 'Cryo-Ice, Dark Matter' },
+  excavator:     { name: 'Excavator',     color: '#e3b341', mines: '+20% fleet mining yield (all)' },
+  freighter:     { name: 'Freighter',     color: '#8b949e', mines: 'Ore, Cryo-Ice (basic)' },
+};
+
 function statText(s) {
   return `ATK ${s.attack} · HP ${s.hp} · SH ${s.shieldHp}` +
     (s.weaponType ? ` · ${s.weaponType}` : '') +
@@ -37,9 +48,26 @@ async function save() {
   await browser.storage.local.set({ fleet_templates: templates });
 }
 
+// Mining-ship colour legend (built once).
+function renderLegend() {
+  const box = document.getElementById('ft-legend');
+  if (!box || box.childElementCount) return;
+  for (const { name, color, mines } of Object.values(MINING_SHIPS)) {
+    const item = document.createElement('span');
+    item.style.cssText = 'display:inline-flex; align-items:center; gap:6px;';
+    const sw = document.createElement('span');
+    sw.style.cssText = `width:11px; height:11px; border-radius:2px; background:${color}; flex:none;`;
+    const label = document.createElement('span');
+    label.innerHTML = `<b style="color:${color}">${name}</b> <span style="color:#8b949e">${mines}</span>`;
+    item.append(sw, label);
+    box.appendChild(item);
+  }
+}
+
 export async function renderFleetsTab() {
   if (inited) return;
   inited = true;
+  renderLegend();
 
   document.getElementById('ft-new').addEventListener('click', () => {
     const t = { id: Date.now(), name: 'New template', ships: {} };
@@ -136,7 +164,9 @@ function fillShips() {
     const tdName = document.createElement('td');
     tdName.className = 'ship-name';
     tdName.textContent = s.name;
-    if (s.miningCargo) tdName.style.color = '#e3b341';
+    const mine = MINING_SHIPS[s.key];
+    if (mine) { tdName.style.color = mine.color; tdName.title = `Mines: ${mine.mines}`; }
+    else if (s.miningCargo) tdName.style.color = '#e3b341';   // any other hauler with mining cargo
 
     const tdStats = document.createElement('td');
     tdStats.className = 'ship-stats';
