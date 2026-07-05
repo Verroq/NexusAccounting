@@ -29,6 +29,12 @@ const EMPIRE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="
   <circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
   <path d="M2 12h20"></path></svg>`;
 
+// lucide-style "book-open" icon for the user guide.
+const GUIDE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+  class="lucide lucide-book-open sidebar-link-icon" aria-hidden="true">
+  <path d="M12 7v14"></path><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"></path></svg>`;
+
 function buildSection() {
   const section = document.createElement('div');
   section.className = 'sidebar-section';
@@ -46,6 +52,9 @@ function buildSection() {
     </a>
     <a class="sidebar-link" href="#" data-nexus-empire="1">
       ${EMPIRE_ICON}<span class="sidebar-link-label">Empire View</span>
+    </a>
+    <a class="sidebar-link" href="#" data-nexus-guide="1">
+      ${GUIDE_ICON}<span class="sidebar-link-label">User Guide</span>
     </a>`;
   return section;
 }
