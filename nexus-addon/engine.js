@@ -264,45 +264,55 @@ function _roundJamMult(fleet) {
   return 1 - Math.min(EW_JAM_CAP, ewJamFraction(n) * 2 * Math.random());
 }
 
-// Per-level stats for planetary defense buildings, from Stats.txt (2026-06-22).
-// Index 0 = level 1. EW has no attack; its ewDrPerLvl applies to attacker damage.
+// Per-level stats for planetary defense buildings, from Stats.txt (2026-07-05).
+// A defense building is a battery of `units` individual units per level; atk/hp are
+// the building TOTAL (split evenly across its units — each unit is a separate combat
+// instance with total/units stats). EW has no attack; its ewDrPerLvl applies to
+// attacker damage. Index 0 = level 1.
 const DEFENSE_BUILDINGS = {
   missile_defense: {
     name: 'Missile Defense', weaponType: 'missile', armorType: 'heavy',
-    atk: [29, 61, 97, 136, 178, 225, 275, 330, 390, 456, 526, 603, 686, 776, 873],
-    hp:  [273, 573, 902, 1264, 1659, 2090, 2560, 3073, 3630, 4235, 4891, 5603, 6373, 7206, 8107],
+    atk:   [7, 18, 35, 61, 102, 165, 263, 415, 651, 1017, 1565, 2388, 3622, 5473, 8249],
+    hp:    [88, 225, 438, 767, 1277, 2068, 3295, 5197, 8145, 12715, 19570, 29853, 45276, 68413, 103117],
+    units: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75],
   },
   laser_defense: {
     name: 'Laser Defense', weaponType: 'laser', armorType: 'heavy',
-    atk: [57, 121, 191, 267, 350, 442, 541, 650, 767, 895, 1034, 1185, 1348, 1524, 1715],
-    hp:  [546, 1146, 1805, 2528, 3318, 4181, 5121, 6146, 7260, 8470, 9783, 11206, 12746, 14413, 16215],
+    atk:   [10, 27, 54, 100, 176, 300, 506, 846, 1406, 2331, 3718, 5798, 8918, 13599, 20620],
+    hp:    [173, 459, 931, 1709, 2994, 5115, 8613, 14386, 23912, 39630, 63207, 98573, 151622, 231195, 350555],
+    units: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75],
   },
   railgun_defense: {
     name: 'Railgun Defense', weaponType: 'kinetic', armorType: 'heavy',
-    atk: [94, 198, 312, 437, 574, 723, 886, 1063, 1256, 1466, 1693, 1939, 2206, 2494, 2806],
-    hp:  [504, 1058, 1666, 2333, 3063, 3859, 4727, 5673, 6701, 7818, 9030, 10344, 11766, 13305, 14968],
+    atk:   [14, 39, 81, 155, 281, 497, 870, 1511, 2614, 4512, 7357, 11626, 18029, 27634, 42041],
+    hp:    [208, 565, 1180, 2238, 4059, 7190, 12575, 21838, 37770, 65174, 106281, 167940, 260430, 399164, 607265],
+    units: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60],
   },
   plasma_defense: {
     name: 'Plasma Defense', weaponType: 'plasma', armorType: 'heavy',
-    atk: [136, 286, 451, 632, 829, 1045, 1280, 1536, 1815, 2117, 2445, 2801, 3186, 3603, 4053],
-    hp:  [945, 1984, 3125, 4375, 5743, 7236, 8864, 10637, 12565, 14660, 16932, 19395, 22062, 24947, 28065],
+    atk:   [19, 55, 121, 240, 457, 853, 1572, 2882, 5266, 9604, 16111, 25872, 40513, 62475, 95419],
+    hp:    [561, 1582, 3439, 6821, 12976, 24178, 44567, 81674, 149210, 272125, 456497, 733056, 1147894, 1770152, 2703538],
+    units: [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45],
   },
   ion_defense: {
     name: 'Ion Defense', weaponType: 'ion', armorType: 'heavy',
-    atk: [68, 143, 225, 316, 414, 522, 640, 768, 907, 1058, 1222, 1400, 1593, 1801, 2026],
-    hp:  [682, 1433, 2257, 3160, 4147, 5226, 6402, 7682, 9075, 10587, 12228, 14007, 15933, 18017, 20269],
+    atk:   [13, 36, 75, 141, 251, 435, 746, 1267, 2143, 3614, 5820, 9131, 14096, 21544, 32715],
+    hp:    [505, 1356, 2783, 5182, 9212, 15984, 27359, 46471, 78580, 132522, 213436, 334807, 516864, 789949, 1199577],
+    units: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60],
   },
   ew_system: {
     name: 'EW System', weaponType: null, armorType: 'heavy',
-    atk: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    hp:  [336, 705, 1111, 1555, 2042, 2572, 3151, 3782, 4467, 5212],
+    atk:   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    hp:    [222, 588, 1192, 2189, 3834, 6549, 11028, 18420, 30615, 50739],
+    units: [3, 6, 9, 12, 15, 18, 21, 24, 27, 30],
     ewDrPerLvl: 0.03,   // 3% attacker damage reduction per level, max 30%
   },
 };
 
 // defense: { missile_defense: lvl, laser_defense: lvl, ... } → array of combat instances.
-// Each building is a single structure with real ATK/HP from Stats.txt. EW has no attack
-// but its DR effect is applied separately in simulateOnce.
+// Each building fields `units` units at its level; the building's total ATK/HP is split
+// evenly across them, so each unit is a separate combat instance with total/units stats.
+// EW units have no attack; its DR effect is applied separately in simulateOnce.
 function buildDefenseInstances(defense) {
   if (!defense) return [];
   const out = [];
@@ -310,14 +320,19 @@ function buildDefenseInstances(defense) {
     const lvl = defense[key] || 0;
     if (lvl < 1) continue;
     const idx = Math.min(lvl, bld.hp.length) - 1;
-    out.push({
-      key,
-      hp: bld.hp[idx],
-      shield: 0, maxShield: 0,
-      attack: bld.atk[idx] || 0,
-      drMult: 1,
-      def: { key, weaponType: bld.weaponType, armorType: bld.armorType },
-    });
+    const count = bld.units[idx] || 1;
+    const hp = bld.hp[idx] / count;
+    const attack = (bld.atk[idx] || 0) / count;
+    for (let i = 0; i < count; i++) {
+      out.push({
+        key,
+        hp,
+        shield: 0, maxShield: 0,
+        attack,
+        drMult: 1,
+        def: { key, weaponType: bld.weaponType, armorType: bld.armorType },
+      });
+    }
   }
   return out;
 }
