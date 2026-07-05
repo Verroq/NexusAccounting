@@ -16,6 +16,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   breadcrumb hides or shows the injected per-field mining picker + optimal-ships
   line across all cards at once (green on, grey-red off).
 
+### Fixed
+- **Galaxy mining picker**: the cycle number sometimes rendered blank. When the
+  game re-rendered a field card and reconciled away part of the injected picker,
+  `paint()` threw before setting the value. Rebuild the picker when it's
+  incomplete and populate the cycle value at build time.
+
 ## [1.6.8] - 2026-07-04
 
 ### Added

@@ -136,7 +136,7 @@ export function renderCollectionLog() {
     const tdAl = zeroCell(r.alloys); tdAl.className = 'alloys';
     const tdHyd = zeroCell(r.hydrogen); tdHyd.className = 'hydrogen';
     tr.append(tdWhen, tdSys, zoneCell(r.zone), tdOre, tdSil, tdAl, tdHyd,
-              zeroCell(r.ice), zeroCell(r.quantum_dust), zeroCell(r.plasma_core),
+              zeroCell(r.cryo_ice), zeroCell(r.quantum_dust), zeroCell(r.plasma_core),
               zeroCell(r.dark_matter), zeroCell(r.antimatter));
     tbody.appendChild(tr);
   }

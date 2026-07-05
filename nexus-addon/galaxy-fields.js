@@ -24,7 +24,7 @@ const SHIPS = {
   gas:         { ship: 'Gas Collector', rate: 17 },
   quantum:     { ship: 'Gas Collector', rate: 3 },
   ice:         { ship: 'Ice Drill',     rate: 25 },
-  dark_matter: { ship: 'Ice Drill',     rate: 3 },
+  dark:        { ship: 'Ice Drill',     rate: 3 },   // field type is 'dark' (not 'dark_matter')
 };
 const EXCAVATOR_BONUS = 1.2;   // fleet yield bonus when an Excavator is present
 
@@ -87,6 +87,7 @@ function buildPicker(card, id) {
   const val = document.createElement('span');
   val.className = 'nx-cyc-val';
   val.style.cssText = 'min-width:12px;text-align:center;';
+  val.textContent = currentCycles(id);   // populate at build so it's never born blank
 
   const setCycles = n => {
     n = Math.min(MAX_CYCLES, Math.max(1, n));                // guard 1..MAX_CYCLES
@@ -112,8 +113,15 @@ function paint(card) {
   const data = id && fieldData.get(id);
   if (!data) return;                                  // no field data yet
 
+  // Rebuild if the box is missing or the game re-rendered .field-card-stats and
+  // reconciled away some of the injected children (a partial box would make the
+  // reads below throw and leave the cycle number blank).
   let box = card.querySelector('.nx-field-picker');
-  if (!box) box = buildPicker(card, id);
+  if (!box || !box.querySelector('.nx-excavator') || !box.querySelector('.nx-cyc-val')) {
+    if (box) box.remove();
+    card.querySelectorAll('.nx-optimal-ships').forEach(e => e.remove());   // sibling of box; avoid a dup on rebuild
+    box = buildPicker(card, id);
+  }
 
   // Reflect current settings.
   box.querySelector('.nx-excavator').checked = excavatorOn(id);

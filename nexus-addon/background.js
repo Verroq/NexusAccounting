@@ -1003,7 +1003,7 @@ function buildShipCatalog(shipyardData) {
 }
 
 // Alloys + exotic resources collected (beyond ore/silicates/hydrogen).
-const EXTRA_RES_KEYS = ['alloys', 'ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter'];
+const EXTRA_RES_KEYS = ['alloys', 'cryo_ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter'];
 function addExtraRes(target, loot) {
   for (const k of EXTRA_RES_KEYS) { const v = loot[k] || 0; if (v) target[k] = (target[k] || 0) + v; }
 }
@@ -1492,23 +1492,36 @@ async function processMiningReports(reports, ships, zones = {}) {
     const nLost = (r.shipsLost || []).reduce((sum, i) => sum + (i.quantity || 1), 0);
     const lostDetail = parseShipsLost(r.shipsLost);
 
-    addResources(totals, delivered);
-    addResources(totals.stolen, stolen);
-    totals.deliveries += 1;
-    totals.cycles += r.cycleCount || 0;
-    totals.drill_breakdowns += r.drillBreakdowns || 0;
+    // Only 'delivery' reports count toward mining totals; 'pirate_raid' etc. are
+    // kept for combat/loss tracking but aren't deliveries. Cycles come from
+    // resourcesDelivered._cyclesDone; a finished delivery drops that meta, so
+    // assume a full run of MAX cycles (10) when it's absent.
+    const isDelivery = r.reportType === 'delivery';
+    const cyc = isDelivery
+      ? (typeof r.resourcesDelivered?._cyclesDone === 'number' ? r.resourcesDelivered._cyclesDone : 10)
+      : 0;
     const maint = maintenanceAlloys(r.fleetComposition);
+
+    addResources(totals.stolen, stolen);
     totals.maintenance_alloys = (totals.maintenance_alloys || 0) + maint;
     totals.ships_lost += nLost;
+    if (isDelivery) {
+      addResources(totals, delivered);
+      totals.deliveries += 1;
+      totals.cycles += cyc;
+      totals.drill_breakdowns += r.drillBreakdowns || 0;
+    }
 
     const day = r.createdAt.slice(0, 10);
     if (!dailyMap[day]) dailyMap[day] = { day, ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, ships_lost: 0 };
-    dailyMap[day].ore += delivered.ore || 0;
-    dailyMap[day].silicates += delivered.silicates || 0;
-    dailyMap[day].hydrogen += delivered.hydrogen || 0;
-    dailyMap[day].deliveries += 1;
     dailyMap[day].ships_lost += nLost;
-    addExtraRes(dailyMap[day], delivered);
+    if (isDelivery) {
+      dailyMap[day].ore += delivered.ore || 0;
+      dailyMap[day].silicates += delivered.silicates || 0;
+      dailyMap[day].hydrogen += delivered.hydrogen || 0;
+      dailyMap[day].deliveries += 1;
+      addExtraRes(dailyMap[day], delivered);
+    }
 
     addShipCost(lostDetail, ships, lost.destroyed, 1);
 
@@ -1519,11 +1532,13 @@ async function processMiningReports(reports, ships, zones = {}) {
       planet: r.planetName || '—',
       zone: resolveZone(systemFromLocation(r.locationName), zones),
       report_type: r.reportType || 'delivery',
+      source_planet_id: r.planetId ?? null,   // for the mining tab's per-row fuel estimate
+      fleet: (r.fleetComposition || []).map(s => ({ shipDefId: s.shipDefId, quantity: s.quantity })),
       ore: delivered.ore || 0,
       silicates: delivered.silicates || 0,
       hydrogen: delivered.hydrogen || 0,
       ...extrasOf(delivered),
-      cycles: r.cycleCount || 0,
+      cycles: cyc,
       drill_breakdowns: r.drillBreakdowns || 0,
       maintenance_alloys: maint,
       ships_lost: nLost,
@@ -1956,25 +1971,32 @@ async function rebuildAggregates() {
     };
     const daily = {};
     for (const r of miningRecords) {
-      totals.ore += r.ore || 0;
-      totals.silicates += r.silicates || 0;
-      totals.hydrogen += r.hydrogen || 0;
-      totals.deliveries += 1;
-      totals.cycles += r.cycles || 0;
-      totals.drill_breakdowns += r.drill_breakdowns || 0;
+      // Match live processing: only 'delivery' records are deliveries. Older
+      // records predate report_type; treat those as deliveries (default).
+      const isDelivery = (r.report_type || 'delivery') === 'delivery';
       totals.maintenance_alloys += r.maintenance_alloys || 0;
       totals.ships_lost += r.ships_lost || 0;
-      addExtraRes(totals, r);
       totals.stolen.ore += r.stolen_total || 0; // breakdown unknown — lump into ore
+      if (isDelivery) {
+        totals.ore += r.ore || 0;
+        totals.silicates += r.silicates || 0;
+        totals.hydrogen += r.hydrogen || 0;
+        totals.deliveries += 1;
+        totals.cycles += r.cycles || 0;
+        totals.drill_breakdowns += r.drill_breakdowns || 0;
+        addExtraRes(totals, r);
+      }
 
       const day = r.created_at.slice(0, 10);
       if (!daily[day]) daily[day] = { day, ore: 0, silicates: 0, hydrogen: 0, deliveries: 0, ships_lost: 0 };
-      daily[day].ore += r.ore || 0;
-      daily[day].silicates += r.silicates || 0;
-      daily[day].hydrogen += r.hydrogen || 0;
-      addExtraRes(daily[day], r);
-      daily[day].deliveries += 1;
       daily[day].ships_lost += r.ships_lost || 0;
+      if (isDelivery) {
+        daily[day].ore += r.ore || 0;
+        daily[day].silicates += r.silicates || 0;
+        daily[day].hydrogen += r.hydrogen || 0;
+        addExtraRes(daily[day], r);
+        daily[day].deliveries += 1;
+      }
     }
     out.mining_totals = totals;
     out.mining_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));

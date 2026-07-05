@@ -491,7 +491,7 @@ export const RESOURCE_SERIES = [
   { field: 'silicates',    label: 'Silicates',    color: '#56d364' },
   { field: 'hydrogen',     label: 'Hydrogen',     color: '#79c0ff' },
   { field: 'alloys',       label: 'Alloys',       color: '#e3b341' },
-  { field: 'ice',          label: 'Ice',          color: '#a5d6ff' },
+  { field: 'cryo_ice',     label: 'Cryo-Ice',     color: '#a5d6ff' },
   { field: 'quantum_dust', label: 'Quantum Dust', color: '#bc8cff' },
   { field: 'plasma_core',  label: 'Plasma Core',  color: '#ff7b72' },
   { field: 'dark_matter',  label: 'Dark Matter',  color: '#d2a8ff' },
@@ -648,7 +648,7 @@ export function zeroCell(v) {
 // stored flat on totals or inside a `rare` map; read either.
 export const EXTRA_RESOURCES = [
   ['alloys', 'Alloys', 'alloys'],
-  ['ice', 'Ice', 'hydrogen'],
+  ['cryo_ice', 'Cryo-Ice', 'hydrogen'],
   ['quantum_dust', 'Quantum Dust', 'rare'],
   ['plasma_core', 'Plasma Core', 'rare'],
   ['dark_matter', 'Dark Matter', 'rare'],

@@ -18,6 +18,7 @@ const ZONES = ['sentinel', 'open', 'dead', 'rift'];
 const ZONE_COLOR = { sentinel: '#56d364', open: '#f0883e', dead: '#ff7b72', rift: '#bc8cff' };
 const scZoneFilter = new Set();   // empty = any zone
 let scPending = [];               // anomalies awaiting investigation
+let scReturning = [];             // investigated systems whose fleet is still homebound
 let scInvestigating = new Set();  // systemIds with an investigate mission in flight
 const scJustSurveyed = new Set(); // systemIds surveyed this session — the missions API lags, so exclude them locally
 const scJustInvestigated = new Set(); // same, for investigate missions
@@ -367,6 +368,23 @@ async function loadActiveSurveys() {
   scPending = (res.reports || [])
     .filter(r => !r.investigated && (!r.anomalyExpiresAt || new Date(r.anomalyExpiresAt) > now))
     .sort((a, b) => exp(a) - exp(b));   // soonest expiry first
+
+  // Keep a row for systems whose investigate fleet is still out/returning even
+  // after the report leaves scPending (investigation done), until it's home.
+  const pendingSys = new Set(scPending.map(r => r.systemId));
+  const reportBySys = {};
+  for (const r of (res.reports || [])) if (r.systemId != null && !(r.systemId in reportBySys)) reportBySys[r.systemId] = r;
+  scReturning = scMissions
+    .filter(m => m.missionType === 'investigate' && m.targetSystemId != null && !pendingSys.has(m.targetSystemId))
+    .map(m => {
+      const rep = reportBySys[m.targetSystemId] || {};
+      return {
+        systemId: m.targetSystemId,
+        systemName: m.targetSystemName || rep.systemName || `#${m.targetSystemId}`,
+        eventTitle: rep.eventTitle || rep.eventType || '—',
+        securityZone: rep.securityZone || null,
+      };
+    });
   let histChanged = false;
   for (const r of (res.reports || [])) {
     if (r.investigated && r.systemId != null && !scInvHistory.has(r.systemId)) {
@@ -398,7 +416,8 @@ function renderSurveys() {
   const tbody = document.getElementById('sc-surveys-tbody');
   tbody.textContent = '';
   scTicks.invest = [];
-  document.getElementById('sc-count').textContent = `${scPending.length} awaiting investigation`;
+  document.getElementById('sc-count').textContent =
+    `${scPending.length} awaiting investigation` + (scReturning.length ? ` · ${scReturning.length} returning` : '');
   const now = Date.now();
   for (const r of scPending) {
     const tr = document.createElement('tr');
@@ -435,6 +454,30 @@ function renderSurveys() {
       if (i === 3) td.className = 'sc-fuel';
       if (i === 4) td.className = 'sc-time';
       if (i === 5) td.className = 'sc-timer';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+
+  // Returning fleets: investigation done, keep the row (with the returning
+  // progress bar) until the fleet is home. No launch button, no fuel/expiry.
+  for (const r of scReturning) {
+    const tr = document.createElement('tr');
+    tr.dataset.system = r.systemId;
+    const tgtTd = document.createElement('td');
+    const btn = document.createElement('button');
+    btn.textContent = 'Returning…';
+    btn.disabled = true;
+    btn.style.cssText = 'background:#30363d; border:1px solid #30363d; color:#8b949e;' +
+      ' padding:6px 16px; border-radius:6px; cursor:not-allowed; font-size:0.85rem;';
+    tgtTd.appendChild(btn);
+    tr.appendChild(tgtTd);
+    tr.appendChild(progressCell('investigate', r.systemId, 'invest'));
+    const cells = [r.systemName, r.eventTitle, r.securityZone || '—', '—', '—', '—'];
+    cells.forEach((v, i) => {
+      const td = document.createElement('td');
+      td.textContent = v;
+      if (i === 2) td.style.color = ZONE_COLOR[r.securityZone] || '#8b949e';
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -552,7 +595,7 @@ attachSortable('sc-debris-head', scDebrisSort, () => renderDebris());
 // Uncollected survey salvage: after a partial-recovery investigation, loot sits
 // in-system (survey report `uncollectedLoot`) until `salvageExpiresAt`. Collected
 // with the same cargo haulers as debris, via POST /api/fleet/collect-salvage.
-const SALVAGE_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys', 'ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter'];
+const SALVAGE_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys', 'cryo_ice', 'quantum_dust', 'plasma_core', 'dark_matter', 'antimatter'];
 let scSalvage = [];                  // [{ reportId, systemId, system, zone, res, total, expires }]
 const scJustSalvaged = new Set();    // reportIds launched this session — keep the button disabled
 const scSalvageSort = { key: 'total', dir: -1 };
@@ -906,7 +949,7 @@ async function collectDebris(field) {
 // ── Uncollected salvage ─────────────────────────────────────────────────────
 
 const RES_LABEL = { ore: 'Ore', silicates: 'Sil', hydrogen: 'Hyd', alloys: 'Alloy',
-  ice: 'Ice', quantum_dust: 'Q.Dust', plasma_core: 'Plasma', dark_matter: 'D.Matter', antimatter: 'Antim' };
+  cryo_ice: 'Cryo-Ice', quantum_dust: 'Q.Dust', plasma_core: 'Plasma', dark_matter: 'D.Matter', antimatter: 'Antim' };
 
 function renderSalvage() {
   const tbody = document.getElementById('sc-salvage-tbody');
