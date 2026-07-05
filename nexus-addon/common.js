@@ -764,14 +764,25 @@ export const RESOURCE_COLORS = {
 };
 export const RARE_PALETTE = ['#bc8cff', '#d2a8ff', '#ff7b72', '#ffa657', '#a5d6ff', '#7ee787'];
 
+// Exotic resources shown in the loot doughnut (beyond ore/silicates/hydrogen/alloys).
+const DOUGHNUT_RARE_KEYS = ['cryo_ice', 'quantum_dust', 'plasma_core', 'bio_extract', 'dark_matter', 'antimatter'];
+
 export function makeResourceDoughnut(canvasId, totals) {
   const entries = [];
   for (const k of ['ore', 'silicates', 'hydrogen', 'alloys']) {
     if (totals[k] > 0) entries.push([k, totals[k], RESOURCE_COLORS[k]]);
   }
+  // Rares may be stored flat on totals (survey/pirate, mining windowed modes) or
+  // inside a `rare` map (mining all-time) — resourceVal reads either. Cover the
+  // known exotics first, then any extra keys that only exist in the rare map.
   let ri = 0;
+  const seen = new Set();
+  for (const k of DOUGHNUT_RARE_KEYS) {
+    const v = resourceVal(totals, k);
+    if (v > 0) { entries.push([k.replace(/_/g, ' '), v, RARE_PALETTE[ri++ % RARE_PALETTE.length]]); seen.add(k); }
+  }
   for (const [k, v] of Object.entries(totals.rare || {})) {
-    if (v > 0) entries.push([k.replace(/_/g, ' '), v, RARE_PALETTE[ri++ % RARE_PALETTE.length]]);
+    if (v > 0 && !seen.has(k)) entries.push([k.replace(/_/g, ' '), v, RARE_PALETTE[ri++ % RARE_PALETTE.length]]);
   }
   const total = entries.reduce((s, e) => s + e[1], 0);
   return new Chart(document.getElementById(canvasId), {
