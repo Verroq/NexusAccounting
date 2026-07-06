@@ -210,6 +210,23 @@ function collectBattles() {
       cost: emptyResources(), debrisRes: emptyResources(), pillage: emptyResources(),
     });
   }
+  // Player-vs-player attacks/defences (background pvp_recent_reports).
+  for (const r of (store.pvp_recent_reports || [])) {
+    rows.push({
+      key: `pvp:${r.id}`, created_at: r.created_at, source: 'PvP',
+      location: r.opponent ? `${r.planet || '—'} vs ${r.opponent}` : (r.planet || '—'),
+      zone: null, outcome: r.won ? 'won' : 'lost',
+      lost: r.ships_lost || 0, damaged: r.ships_damaged || 0, killed: null,
+      debris: (r.debris_ore || 0) + (r.debris_alloys || 0) + (r.debris_silicates || 0),
+      yourFleet: fleetToNames(r.your_fleet, byKey), enemyFleet: fleetToNames(r.enemy_fleet, byKey),
+      lostDetail: detailToNames(r.ships_lost_detail), damagedDetail: detailToNames(r.ships_damaged_detail),
+      rounds: r.rounds || [],
+      // Loot: gained if we attacked (pillage), lost if we defended (added to cost).
+      cost: (() => { const c = lossCost(r); if (r.side === 'defender') addRes(c, r.loot || {}); return c; })(),
+      debrisRes: (() => { const w = emptyResources(); addDebris(w, r); return w; })(),
+      pillage: (() => { const w = emptyResources(); if (r.side === 'attacker') addRes(w, r.loot || {}); return w; })(),
+    });
+  }
   return rows;
 }
 
@@ -223,6 +240,29 @@ function outcomeColor(o) {
   if (OUTCOME_WIN.test(o)) return '#56d364';
   if (OUTCOME_LOSS.test(o)) return '#ff7b72';
   return '#8b949e';
+}
+
+// Download the given battle rows as CSV (the current filtered/sorted view).
+function exportBattlesCsv(rows) {
+  const cols = ['Date', 'Source', 'Location', 'Zone', 'Outcome', 'Lost', 'Damaged', 'Enemy killed', 'Debris', 'Ship-loss cost'];
+  const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [cols.join(',')];
+  for (const r of rows) {
+    lines.push([
+      new Date(r.created_at).toISOString(),
+      r.source, r.location, r.zone || 'unknown',
+      String(r.outcome).replace(/_/g, ' '),
+      r.lost || 0, r.damaged || 0, r.killed || 0, r.debris || 0,
+      weighted(r.cost || emptyResources()),
+    ].map(esc).join(','));
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `battles-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function sortRows(rows) {
@@ -496,13 +536,18 @@ export function renderBattlesTab() {
   const header = document.createElement('div');
   header.className = 'reports-header';
   const h2 = document.createElement('h2'); h2.textContent = 'Recent battles';
+  const exportBtn = document.createElement('button');
+  exportBtn.textContent = '⭳ Export CSV';
+  exportBtn.title = 'Download the current view (all pages, current filter/range) as CSV';
+  exportBtn.disabled = !sorted.length;
+  exportBtn.addEventListener('click', () => exportBattlesCsv(sorted));
   const pg = document.createElement('div'); pg.className = 'pagination';
   const prev = document.createElement('button'); prev.textContent = '← Prev'; prev.disabled = battlePage <= 1;
   const info = document.createElement('span'); info.textContent = `Page ${battlePage} / ${totalPages} (${sorted.length} total)`;
   const next = document.createElement('button'); next.textContent = 'Next →'; next.disabled = battlePage >= totalPages;
   prev.addEventListener('click', () => { battlePage--; renderBattlesTab(); });
   next.addEventListener('click', () => { battlePage++; renderBattlesTab(); });
-  pg.append(prev, info, next); header.append(h2, pg);
+  pg.append(prev, info, next); header.append(h2, exportBtn, pg);
   wrap.append(header, table);
 
   if (!allRows.length) {
