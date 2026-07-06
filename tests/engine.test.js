@@ -124,12 +124,13 @@ test('damage reduction protects the defender asymmetrically', () => {
 });
 
 test('planetary defenses: bombers crack laser defense lv 12, fighters do not', () => {
-  // Laser defense lv 12: 11206 HP, 1185 ATK. Fighters (laser, no RF) deal 1200 DPS but
-  // take ~3.8 losses/round — all die before 10-round cap. Bombers (missile ×3 RF) deal
-  // ~9000 DPS and finish in 2 rounds.
+  // Laser defense lv 12 is a battery of 60 units sharing the building total
+  // (98,573 HP / 5,798 ATK) → ~1,643 HP, ~97 ATK each. Fighters (laser, no RF vs
+  // laser_defense) can't crack it even at 120; bombers (missile ×3 RF vs defenses)
+  // finish it at 60.
   const defense = { laser_defense: 12 };
-  const fighters = engine.runSimulations({ fighter: 40 }, {}, { ...BASE_OPTS, sims: 500, defense });
-  const bombers = engine.runSimulations({ bomber: 20 }, {}, { ...BASE_OPTS, sims: 500, defense });
+  const fighters = engine.runSimulations({ fighter: 120 }, {}, { ...BASE_OPTS, sims: 500, defense });
+  const bombers = engine.runSimulations({ bomber: 60 }, {}, { ...BASE_OPTS, sims: 500, defense });
   assert.equal(fighters.outcomes.attacker_won, 0, 'fighters must not crack laser defense lv 12');
   assert.ok(bombers.outcomes.attacker_won / 500 > 0.8,
     `bombers should win most runs, won ${bombers.outcomes.attacker_won}`);
