@@ -29,6 +29,7 @@ export async function loadAll() {
     'debris_fields', 'debris_last_check',
     'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
     'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'stats_drift',
+    'pvp_recent_reports',
     'research', 'research_speed_mult', 'active_research', 'fuel_log',
   ]));
 

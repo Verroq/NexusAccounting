@@ -6,6 +6,7 @@
 const GAME_URL = 'https://s0.nexuslegacy.space';
 const REPORTS_PATH = '/api/fleet/survey-reports';
 const PIRATES_PATH = '/api/fleet/pirate-reports';
+const PVP_PATH = '/api/fleet/reports';   // player-vs-player combat reports
 const SPY_PATH = '/api/fleet/spy-reports';
 const CAMP_SCOUT_PATH = '/api/fleet/camp-scout-reports';
 const PIRATE_CAMPS_PATH = '/api/fleet/pirate-camps';
@@ -20,7 +21,7 @@ const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes; add a MIGRATIONS entry for it.
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
@@ -1492,6 +1493,82 @@ function addResources(target, res) {
   }
 }
 
+// Player-vs-player combat reports for the battles tab. The list endpoint
+// (/api/fleet/reports) omits the fleets/rounds/debris, so for each new report we
+// fetch the detail (/api/fleet/reports/{id}) to store a full battle record: side
+// fought on, win/loss, our real-ship losses (defense buildings have negative
+// shipDefId + no build cost → excluded), opponent, both fleets, the round log, the
+// debris field, and the loot (gained if we attacked, lost if we defended).
+async function processPvpReports(reports, ships) {
+  const stored = await browser.storage.local.get(['pvp_seen_ids', 'pvp_recent_reports', 'records_cap']);
+  const cap = stored.records_cap ?? 5000;
+  const seen = new Set(stored.pvp_seen_ids || []);
+  const recent = [...(stored.pvp_recent_reports || [])];
+  const CORE = ['ore', 'silicates', 'hydrogen', 'alloys'];
+  const fresh = reports.filter(r => !seen.has(r.id));
+  if (!fresh.length) return 0;
+  const token = await getToken();
+  let n = 0;
+  for (const lite of fresh) {
+    seen.add(lite.id);   // mark seen even if we skip it, so it's not reconsidered
+    // /api/fleet/reports is a generic combat feed — most entries are pirate/NPC
+    // encounters (no opponent profile). Keep only real player-vs-player fights.
+    const liteSide = lite.currentUserBattleSide === 'defender' ? 'defender' : 'attacker';
+    const liteOpp = liteSide === 'attacker' ? lite.defenderProfile : lite.attackerProfile;
+    if (!liteOpp || !liteOpp.username) continue;
+    let r = lite;
+    if (token) {
+      try { const det = await apiFetch(`/api/fleet/reports/${lite.id}`, token); if (det && det.report) r = det.report; }
+      catch { /* fall back to the list record */ }
+    }
+    const side = r.currentUserBattleSide === 'defender' ? 'defender' : 'attacker';
+    const won = (r.outcome === 'attacker_won' && side === 'attacker') ||
+                (r.outcome === 'defender_won' && side === 'defender');
+    const myLosses = (side === 'attacker' ? r.attackerLosses : r.defenderLosses) || [];
+    const lostDetail = {}, dmgDetail = {};
+    let lostN = 0, dmgN = 0;
+    for (const it of myLosses) {
+      const destroyed = it.destroyed ?? it.lost ?? 0, damaged = it.damaged || 0;
+      lostN += destroyed; dmgN += damaged;
+      if (it.shipDefId > 0) {   // real ships only (defense buildings have negative ids)
+        if (destroyed) lostDetail[it.shipDefId] = (lostDetail[it.shipDefId] || 0) + destroyed;
+        if (damaged) dmgDetail[it.shipDefId] = (dmgDetail[it.shipDefId] || 0) + damaged;
+      }
+    }
+    const raw = numericResources(r.lootStolen);
+    const loot = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+    for (const [k, v] of Object.entries(raw)) { if (CORE.includes(k)) loot[k] = v; else loot.rare[k] = v; }
+    const opp = side === 'attacker' ? r.defenderProfile : r.attackerProfile;
+    const debris = r.debrisField || {};
+    // The defender's fleet lists only ships; its planetary defenses live in
+    // defenderDefenses.planetaryDefense — merge them so the defending side shows
+    // its turrets too.
+    const attackerFleet = r.attackerFleet || [];
+    const defenderFleet = [
+      ...(r.defenderFleet || []),
+      ...((r.defenderDefenses && r.defenderDefenses.planetaryDefense) || []),
+    ];
+    recent.unshift({
+      id: r.id, created_at: r.createdAt,
+      planet: r.planetName || null,
+      side, won, opponent: (opp && opp.username) || null,
+      ships_lost_detail: lostDetail, ships_damaged_detail: dmgDetail, ships_lost: lostN, ships_damaged: dmgN,
+      your_fleet: side === 'attacker' ? attackerFleet : defenderFleet,
+      enemy_fleet: side === 'attacker' ? defenderFleet : attackerFleet,
+      rounds: combatRounds(r),
+      debris_ore: debris.ore || 0, debris_silicates: debris.silicates || 0, debris_alloys: debris.alloys || 0,
+      loot,
+    });
+    n++;
+  }
+  recent.length = Math.min(recent.length, cap);
+  await browser.storage.local.set({
+    pvp_seen_ids: [...seen].slice(-20000),
+    pvp_recent_reports: recent,
+  });
+  return n;
+}
+
 async function processMiningReports(reports, ships, zones = {}) {
   const stored = await browser.storage.local.get([
     'mining_seen_ids', 'mining_totals', 'mining_daily', 'mining_resources_lost',
@@ -2205,6 +2282,11 @@ const MIGRATIONS = {
       'home_system_id', 'owned_system_ids',
     ]);
   },
+  // v8: PvP battle records added; early ones were list-only (no fleets/rounds/
+  // debris/defenses). Clear them so they re-ingest from the detail endpoint.
+  8: async () => {
+    await browser.storage.local.remove(['pvp_seen_ids', 'pvp_recent_reports']);
+  },
 };
 
 async function ensureSchema() {
@@ -2248,7 +2330,7 @@ async function scrape() {
   try {
     const planetId = await getHomePlanetId(token);
     const [shipyardData, reportData, pirateData, spyData, campScoutData,
-           miningData, expeditionData, wormholeData, systemDebrisData, missionsData, researchData, zones] = await Promise.all([
+           miningData, expeditionData, wormholeData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
       apiFetch(`/api/planets/${planetId}/shipyard`, token),
       apiFetch(REPORTS_PATH, token),
       apiFetch(PIRATES_PATH, token),
@@ -2260,6 +2342,7 @@ async function scrape() {
       apiFetch(SYSTEM_DEBRIS_PATH, token).catch(() => ({ debris: [] })),
       apiFetch(MISSIONS_PATH, token).catch(() => ({ missions: [] })),
       apiFetch(RESEARCH_PATH, token).catch(() => ({ research: [] })),
+      apiFetch(PVP_PATH, token).catch(() => ({ reports: [] })),
       getSystemZones(token),
     ]);
 
@@ -2287,6 +2370,7 @@ async function scrape() {
       });
       await processSpyReports(spyData.reports || []);
       await processCampScoutReports(campScoutData.reports || []);
+      await processPvpReports(pvpData.reports || [], ships);
       await checkDrift();
       console.log(`[NexusAccounting] Scraped ${nSurveys} surveys, ${nPirates} pirate, ${nMining} mining reports.`);
     });
@@ -2310,6 +2394,7 @@ async function scrape() {
 const WATCHED_URLS = [
   `${GAME_URL}/api/fleet/survey-reports*`,
   `${GAME_URL}/api/fleet/pirate-reports*`,
+  `${GAME_URL}/api/fleet/reports*`,   // PvP combat reports
   `${GAME_URL}/api/fleet/spy-reports*`,
   `${GAME_URL}/api/fleet/camp-scout-reports*`,
   `${GAME_URL}/api/fleet/mining-reports*`,
@@ -2365,6 +2450,11 @@ function routeIntercepted(url, json) {
       await processCampScoutReports(json.reports || []);
       return;
     }
+    if (url.includes('/api/fleet/reports')) {   // PvP (distinct from *-reports)
+      const { ships } = await browser.storage.local.get('ships');
+      await processPvpReports(json.reports || [], ships || {});
+      return;
+    }
     if (url.includes('/system-debris')) {
       const { system_zones } = await browser.storage.local.get('system_zones');
       await processSystemDebris(json.debris || [], system_zones || {});
@@ -2403,6 +2493,7 @@ function routeIntercepted(url, json) {
 // worker itself drives everything through the listeners registered above.
 export {
   processSurveyReports, processPirateReports, processMiningReports,
+  processPvpReports,
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
