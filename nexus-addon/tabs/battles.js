@@ -215,7 +215,7 @@ function collectBattles() {
     rows.push({
       key: `pvp:${r.id}`, created_at: r.created_at, source: 'PvP',
       location: r.opponent ? `${r.planet || '—'} vs ${r.opponent}` : (r.planet || '—'),
-      zone: null, outcome: r.won ? 'won' : 'lost',
+      zone: null, outcome: r.won ? 'won' : 'lost', youAttacker: r.side === 'attacker',
       lost: r.ships_lost || 0, damaged: r.ships_damaged || 0, killed: null,
       debris: (r.debris_ore || 0) + (r.debris_alloys || 0) + (r.debris_silicates || 0),
       yourFleet: fleetToNames(r.your_fleet, byKey), enemyFleet: fleetToNames(r.enemy_fleet, byKey),
@@ -244,7 +244,18 @@ function outcomeColor(o) {
 
 // Download the given battle rows as CSV (the current filtered/sorted view).
 function exportBattlesCsv(rows) {
-  const cols = ['Date', 'Source', 'Location', 'Zone', 'Outcome', 'Lost', 'Damaged', 'Enemy killed', 'Debris', 'Ship-loss cost'];
+  const fleetStr = list => (list || []).filter(x => x.qty).map(x => `${x.qty}x ${x.name}`).join('; ');
+  const killsStr = ks => (ks || []).filter(k => k.qty).map(k => `${k.qty} ${k.name}`).join(', ');
+  // One line per round, from your perspective (youAttacker picks which combat side is you).
+  const roundsStr = (rounds, ya) => (rounds || []).map(rd => {
+    const yDmg = ya ? rd.atk_dmg : rd.def_dmg, eDmg = ya ? rd.def_dmg : rd.atk_dmg;
+    const yHp = ya ? rd.atk_hp : rd.def_hp, eHp = ya ? rd.def_hp : rd.atk_hp;
+    const yK = killsStr(ya ? rd.atk_killed : rd.def_killed), eK = killsStr(ya ? rd.def_killed : rd.atk_killed);
+    return `R${rd.round}: you ${yDmg} dmg${yK ? ` (killed ${yK})` : ''}, enemy ${eDmg} dmg${eK ? ` (killed ${eK})` : ''}, HP ${yHp ?? '-'}/${eHp ?? '-'}`;
+  }).join(' | ');
+
+  const cols = ['Date', 'Source', 'Location', 'Zone', 'Outcome', 'Lost', 'Damaged', 'Enemy killed', 'Debris',
+    'Ship-loss cost', 'Your fleet', 'Enemy fleet', 'Rounds'];
   const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [cols.join(',')];
   for (const r of rows) {
@@ -254,9 +265,12 @@ function exportBattlesCsv(rows) {
       String(r.outcome).replace(/_/g, ' '),
       r.lost || 0, r.damaged || 0, r.killed || 0, r.debris || 0,
       weighted(r.cost || emptyResources()),
+      fleetStr(r.yourFleet), fleetStr(r.enemyFleet),
+      roundsStr(r.rounds, r.youAttacker !== false),
     ].map(esc).join(','));
   }
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  // Prepend a UTF-8 BOM so Excel reads non-ASCII (e.g. accented names) correctly.
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
