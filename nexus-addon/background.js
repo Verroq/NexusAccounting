@@ -2331,7 +2331,7 @@ async function scrape() {
     const planetId = await getHomePlanetId(token);
     const [shipyardData, reportData, pirateData, spyData, campScoutData,
            miningData, expeditionData, wormholeData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
-      apiFetch(`/api/planets/${planetId}/shipyard`, token),
+      apiFetch(`/api/planets/${planetId}/shipyard`, token).catch(() => null),   // 403s while ships are on patrol — fall back to cached catalog
       apiFetch(REPORTS_PATH, token),
       apiFetch(PIRATES_PATH, token),
       apiFetch(SPY_PATH, token),
@@ -2354,8 +2354,15 @@ async function scrape() {
       await browser.storage.local.get(['wormhole_classes', 'system_zone_by_id']);
 
     await enqueue(async () => {
-      const ships = buildShipCatalog(shipyardData);
-      await browser.storage.local.set({ ships });
+      // Shipyard can 403 (e.g. ships on patrol) — reuse the last-known catalog so
+      // the rest of the scrape still runs. Ship defs rarely change.
+      let ships;
+      if (shipyardData) {
+        ships = buildShipCatalog(shipyardData);
+        await browser.storage.local.set({ ships });
+      } else {
+        ships = (await browser.storage.local.get('ships')).ships || {};
+      }
       await backfillZones(zones, campZones, wormholeZones);
       const nSurveys = await processSurveyReports(reportData.reports || [], ships, zones);
       const nPirates = await processPirateReports(pirateData.reports || [], ships, campZones);
