@@ -16,13 +16,13 @@ const DASH_URL = ext.runtime.getURL('dashboard.html');
 const SECTIONS = [
   ['Getting started', [
     ['Nexus Tracker', 'The main dashboard: opens in a new tab from the sidebar. Aggregates every report over time into charts, stat cards and sortable tables.'],
-    ['In-game tools', 'Empire View, User Guide, Ratio Calculator and Live Search Belts open as overlays/panels on the game page itself, from the Addon section of the sidebar.'],
+    ['In-game tools', 'Empire View, User Guide, Ratio Calculator and Live Search Belts open from the Addon section of the sidebar; the Quartermaster opens from the 📦 button in the top bar. All render as overlays/panels on the game page itself.'],
     ['Data', 'The addon scrapes the game APIs every 15 minutes (and on demand). Everything is stored locally in your browser; nothing is sent anywhere. Auto-backups are written to Downloads before each update.'],
   ]],
   ['Dashboard tabs', [
     ['Global', 'Combined resource totals and a "share by source" breakdown across all activities.'],
     ['Surveys / Pirates / Mining / Expeditions', 'Per-activity totals, net gain (loot − ship-cost losses − fuel), loot-composition doughnut, daily/hourly charts and a sortable report table.'],
-    ['Battles', 'Every combat in one place: camp raids, mining/survey ambushes, expedition and wormhole fights. Click a row to expand the fleets and per-ship losses.'],
+    ['Battles', 'Every combat in one place: camp raids, mining/survey ambushes, expedition/wormhole fights and player-vs-player attacks. Click a row to expand the fleets (incl. enemy planetary defenses) and per-ship losses. Export CSV downloads the current view with fleets and per-round detail.'],
     ['Debris', 'Aggregated debris collected over time.'],
     ['Galaxy Scout (Finder)', 'Search explored systems for planets by type, size, temperature, moons, zone and ownership. Moons show type (colour-coded) + building slots.'],
     ['Asteroids', 'Scan the nearest systems for asteroid fields, with a background live-search that notifies you when a new field matches your filter.'],
@@ -42,6 +42,11 @@ const SECTIONS = [
   ]],
   ['Empire View', [
     ['Per-planet overview', 'A columnar summary of every planet plus a Total column: workforce (population, growth, free/assigned workers, energy), available resources (stored / capacity), resource-building levels + production, and infrastructure with live timers (slots, build queue, research, construction, ship queues).'],
+  ]],
+  ['Quartermaster (📦 top bar)', [
+    ['Overview', 'Total ships stationed across all colonies plus an "In flight" total (ships on active missions), and a card per planet/outpost with its resources and ships.'],
+    ['Move by drag & drop', 'Drag a resource or ship from a colony onto another to stage a transfer in the docked builder card at the top: adjust amounts and the transport ships (auto-planned by effective cargo capacity), see fuel + ETA, then Send.'],
+    ['What each drop does', 'Planet→planet: deliver resources / transfer (relocate) ships. Planet→outpost: supply resources / deploy ships. Drag an outpost resource onto a planet to collect it (choose source planet + resource types). Nothing sends until you press Send.'],
   ]],
   ['Other sidebar tools', [
     ['Ratio Calculator', 'A floating calculator: enter any two of offer / pay / ratio and it infers the third.'],
