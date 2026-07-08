@@ -153,7 +153,7 @@ async function openView() {
   const onKey = e => { if (e.key === 'Escape') { closeView(); document.removeEventListener('keydown', onKey); } };
   document.addEventListener('keydown', onKey);
 
-  let colonies, missions = [];
+  let colonies, missions;
   try {
     const [planetList, outpostData, missionsData, meData] = await Promise.all([
       jget('/api/planets'), jget('/api/outposts').catch(() => ({})), jget('/api/fleet/missions').catch(() => ({ missions: [] })), jget('/api/auth/me').catch(() => ({})),
@@ -437,7 +437,7 @@ function fieldRow(labelHtml, input, onRemove) {
   }
   return row;
 }
-function numInput(value, max) {
+function numInput(value) {
   // Text (not number) so there are no spinner arrows; guard to positive integers.
   const i = document.createElement('input');
   i.type = 'text'; i.inputMode = 'numeric';

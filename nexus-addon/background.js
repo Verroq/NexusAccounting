@@ -1499,7 +1499,7 @@ function addResources(target, res) {
 // fought on, win/loss, our real-ship losses (defense buildings have negative
 // shipDefId + no build cost → excluded), opponent, both fleets, the round log, the
 // debris field, and the loot (gained if we attacked, lost if we defended).
-async function processPvpReports(reports, ships) {
+async function processPvpReports(reports) {
   const stored = await browser.storage.local.get(['pvp_seen_ids', 'pvp_recent_reports', 'records_cap']);
   const cap = stored.records_cap ?? 5000;
   const seen = new Set(stored.pvp_seen_ids || []);
@@ -2377,7 +2377,7 @@ async function scrape() {
       });
       await processSpyReports(spyData.reports || []);
       await processCampScoutReports(campScoutData.reports || []);
-      await processPvpReports(pvpData.reports || [], ships);
+      await processPvpReports(pvpData.reports || []);
       await checkDrift();
       console.log(`[NexusAccounting] Scraped ${nSurveys} surveys, ${nPirates} pirate, ${nMining} mining reports.`);
     });
@@ -2459,7 +2459,7 @@ function routeIntercepted(url, json) {
     }
     if (url.includes('/api/fleet/reports')) {   // PvP (distinct from *-reports)
       const { ships } = await browser.storage.local.get('ships');
-      await processPvpReports(json.reports || [], ships || {});
+      await processPvpReports(json.reports || []);
       return;
     }
     if (url.includes('/system-debris')) {
