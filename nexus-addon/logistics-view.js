@@ -148,7 +148,7 @@ async function openView() {
 
     // Colonized moons have their own /api/moons/{id} endpoints; find their ids via
     // the galaxy view of my planets' systems (mine = matching userId).
-    const myId = meData.user && meData.user.userId;
+    const myId = meData.user && (meData.user.id ?? meData.user.userId);
     const sysIds = [...new Set(planets.map(p => p.systemId).filter(x => x != null))];
     const sysData = await Promise.all(sysIds.map(s => jget(`/api/galaxy/systems/${s}/planets`).catch(() => ({}))));
     const moonIds = [];
@@ -238,20 +238,28 @@ function render(page, colonies, missions = []) {
   page.appendChild(grid);
 }
 
+// Which source→target moves are supported. Outpost/moon export only to a planet;
+// a planet can send to a planet, outpost, or moon.
+function validCombo(item, tgt) {
+  const sk = item.src.kind, tk = tgt.kind;
+  if (sk === 'Outpost') return item.type === 'resource' && tk === 'Planet';   // collect
+  if (sk === 'Moon') return tk === 'Planet';                                   // recall / transfer
+  return tk === 'Planet' || tk === 'Outpost' || tk === 'Moon';                 // planet → anywhere
+}
+
 function colonyCard(c) {
   const card = document.createElement('div');
   card.style.cssText = 'background:#0d1117; border:1px solid #21262d; border-radius:10px; padding:12px 14px;';
-  // Drop target: accept a dragged resource/ship from another colony. An outpost
-  // resource can only land on a planet (→ collect).
-  const accepts = () => dragItem && dragItem.src !== c && c.id != null && c.kind !== 'Moon' &&
-    !(dragItem.type === 'resource' && dragItem.src.kind === 'Outpost' && c.kind !== 'Planet');
+  // Drop target: accept only valid source→target combos (outpost/moon exports go
+  // to a planet; planets export anywhere).
+  const accepts = () => dragItem && dragItem.src !== c && c.id != null && validCombo(dragItem, c);
   card.addEventListener('dragover', e => { if (accepts()) { e.preventDefault(); card.style.outline = '2px dashed #58a6ff'; } });
   card.addEventListener('dragleave', () => { card.style.outline = ''; });
   card.addEventListener('drop', e => {
     e.preventDefault(); card.style.outline = '';
     const it = dragItem; dragItem = null;
-    if (!it || it.src === c || c.id == null) return;
-    if (it.type === 'resource' && it.src.kind === 'Outpost') { if (c.kind === 'Planet') stageCollectResource(it.src, c, it.resKey); return; }
+    if (!it || it.src === c || c.id == null || !validCombo(it, c)) return;
+    if (it.type === 'resource' && it.src.kind === 'Outpost') { stageCollectResource(it.src, c, it.resKey); return; }
     stageTransfer(it, c);
   });
   const head = document.createElement('div');
@@ -274,7 +282,7 @@ function colonyCard(c) {
     // drop on a planet to collect them there.
     if (c.id != null) {
       row.draggable = true; row.style.cursor = 'grab';
-      row.title = c.kind === 'Outpost' ? 'Drag to a planet to collect' : 'Drag to another colony to send';
+      row.title = c.kind === 'Outpost' ? 'Drag to a planet to collect' : c.kind === 'Moon' ? 'Drag to a planet to transfer' : 'Drag to another colony to send';
       row.style.border = '1px solid #30363d'; row.style.background = '#161b22';
       const grip = document.createElement('span'); grip.textContent = '⠿';
       grip.style.cssText = 'color:#484f58; font-size:0.8rem; cursor:grab;';
@@ -309,8 +317,8 @@ function colonyCard(c) {
       sp.innerHTML = `<b style="color:#e6edf3;">${fmt(f.quantity)}</b>&times; <span style="color:#9aa4b2;">${nm}</span>`;
       // Draggable → relocate these ships to another colony.
       const avail = (f.quantity || 0) - (f.damagedQuantity || 0);
-      if (c.id != null && avail > 0 && c.kind !== 'Moon') {
-        sp.draggable = true; sp.style.cursor = 'grab'; sp.title = 'Drag to another colony to relocate';
+      if (c.id != null && avail > 0) {
+        sp.draggable = true; sp.style.cursor = 'grab'; sp.title = c.kind === 'Moon' ? 'Drag to a planet to recall' : 'Drag to another colony to relocate';
         sp.style.border = '1px solid #30363d'; sp.style.background = '#161b22';
         const grip = document.createElement('span'); grip.textContent = '⠿';
         grip.style.cssText = 'color:#484f58; font-size:0.75rem;';
@@ -498,7 +506,8 @@ async function renderBuilder() {
     box.append(fuelLine);
     updateSend();
   } else if (b.mode === 'resource') {
-    head.innerHTML = `<b style="color:#e6edf3;">${toOutpost ? 'Supply outpost' : 'Deliver resources'}</b>` +
+    const rVerb = b.src.kind === 'Moon' ? 'Transfer resources' : b.target.kind === 'Moon' ? 'Send resources' : toOutpost ? 'Supply outpost' : 'Deliver resources';
+    head.innerHTML = `<b style="color:#e6edf3;">${rVerb}</b>` +
       `<span style="color:#f0883e;">${b.src.name} → ${b.target.name}</span>` +
       `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${b.target.name} to add</span>`;
     for (const [k, ent] of Object.entries(b.res)) {
@@ -536,7 +545,8 @@ async function renderBuilder() {
     box.append(fuelLine);
     refreshCargo();
   } else {   // ship
-    head.innerHTML = `<b style="color:#e6edf3;">${toOutpost ? 'Deploy ships' : 'Relocate ships'}</b>` +
+    const sVerb = b.src.kind === 'Moon' ? 'Recall ships' : b.target.kind === 'Moon' ? 'Send ships' : toOutpost ? 'Deploy ships' : 'Relocate ships';
+    head.innerHTML = `<b style="color:#e6edf3;">${sVerb}</b>` +
       `<span style="color:#f0883e;">${b.src.name} → ${b.target.name}</span>` +
       `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${b.target.name} to add</span>`;
     for (const [id, ent] of Object.entries(b.ships)) {
@@ -560,20 +570,28 @@ async function renderBuilder() {
   }
   if (b.mode === 'ship') refreshFuel();
 
-  // Endpoint + body per mode/target (payloads match the game's own requests).
+  // Endpoint + body per mode/source/target (payloads match the game's own requests).
   function sendSpec() {
     const ships = getShips();
     if (b.mode === 'collect')
       return { path: `/api/outposts/${b.outpost.id}/collect`, body: { sourcePlanetId: b.srcPlanetId, ships, resourceFilter: [...b.filter].map(k => RES_BY_K[k].cargo) } };
-    if (b.mode === 'resource') {
-      const resources = Object.fromEntries(Object.entries(b.res).filter(([, e]) => e.amount > 0).map(([k, e]) => [RES_BY_K[k].cargo, e.amount]));
-      return toOutpost
-        ? { path: `/api/outposts/${b.target.id}/supply`, body: { sourcePlanetId: b.src.id, ships, resources } }
-        : { path: '/api/fleet/dispatch', body: { sourcePlanetId: b.src.id, targetPlanetId: b.target.id, missionType: 'deliver', ships, cargo: resources } };
-    }
-    return toOutpost
-      ? { path: `/api/outposts/${b.target.id}/garrison`, body: { sourcePlanetId: b.src.id, ships } }
-      : { path: '/api/fleet/dispatch', body: { sourcePlanetId: b.src.id, targetPlanetId: b.target.id, missionType: 'transfer', ships, cargo: {} } };
+    const src = b.src, tgt = b.target;
+    const resources = b.mode === 'resource'
+      ? Object.fromEntries(Object.entries(b.res).filter(([, e]) => e.amount > 0).map(([k, e]) => [RES_BY_K[k].cargo, e.amount]))
+      : {};
+    if (src.kind === 'Moon')   // moon → planet
+      return b.mode === 'resource'
+        ? { path: `/api/moons/${src.id}/dispatch`, body: { missionType: 'transfer', targetPlanetId: tgt.id, ships, cargo: resources } }
+        : { path: `/api/moons/${src.id}/recall`, body: { targetPlanetId: tgt.id, ships } };
+    if (tgt.kind === 'Moon')   // planet → moon (send handles resources + ships)
+      return { path: `/api/moons/${tgt.id}/send`, body: { sourcePlanetId: src.id, ships, cargo: resources } };
+    if (tgt.kind === 'Outpost')
+      return b.mode === 'resource'
+        ? { path: `/api/outposts/${tgt.id}/supply`, body: { sourcePlanetId: src.id, ships, resources } }
+        : { path: `/api/outposts/${tgt.id}/garrison`, body: { sourcePlanetId: src.id, ships } };
+    return b.mode === 'resource'   // planet → planet
+      ? { path: '/api/fleet/dispatch', body: { sourcePlanetId: src.id, targetPlanetId: tgt.id, missionType: 'deliver', ships, cargo: resources } }
+      : { path: '/api/fleet/dispatch', body: { sourcePlanetId: src.id, targetPlanetId: tgt.id, missionType: 'transfer', ships, cargo: {} } };
   }
 
   send.onclick = async () => {
