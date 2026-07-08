@@ -101,7 +101,7 @@ async function openView() {
   page.style.cssText = 'max-width:1280px; margin:0 auto; color:#c9d1d9;';
   overlay.appendChild(page);
   document.body.appendChild(overlay);
-  page.innerHTML = `<h1 style="margin:0 0 4px; font-size:1.6rem; color:#e6edf3;">Fleet &amp; Resources</h1>
+  page.innerHTML = `<h1 style="margin:0 0 4px; font-size:1.6rem; color:#e6edf3;">Quartermaster</h1>
     <p class="lv-sub" style="margin:0 0 16px; color:#9aa4b2; font-size:0.9rem;">Loading colonies…</p>`;
 
   const close = document.createElement('button');
@@ -113,14 +113,17 @@ async function openView() {
   const onKey = e => { if (e.key === 'Escape') { closeView(); document.removeEventListener('keydown', onKey); } };
   document.addEventListener('keydown', onKey);
 
-  let colonies;
+  let colonies, missions = [];
   try {
-    const [planetList, outpostData] = await Promise.all([jget('/api/planets'), jget('/api/outposts').catch(() => ({}))]);
+    const [planetList, outpostData, missionsData] = await Promise.all([
+      jget('/api/planets'), jget('/api/outposts').catch(() => ({})), jget('/api/fleet/missions').catch(() => ({ missions: [] })),
+    ]);
     const planets = (planetList.planets || []).filter(p => p.id != null);
     const details = await Promise.all(planets.map(p => Promise.all([
       jget(`/api/planets/${p.id}`).catch(() => null),
       jget(`/api/planets/${p.id}/fleet`).catch(() => ({ fleet: [] })),
     ])));
+    missions = missionsData.missions || [];
     const outposts = outpostData.outposts || (Array.isArray(outpostData) ? outpostData : []);
     colonies = planets.map((p, i) => {
       const [detail, fleet] = details[i];
@@ -132,10 +135,27 @@ async function openView() {
     return;
   }
   if (!overlay) return;
-  render(page, colonies);
+  render(page, colonies, missions);
 }
 
-function render(page, colonies) {
+// A titled box of ship chips (qty × name) — used for stationed + in-flight totals.
+function shipBox(title, list, emptyMsg) {
+  const sec = document.createElement('div');
+  sec.style.cssText = 'background:#0d1117; border:1px solid #21262d; border-radius:10px; padding:14px 16px; margin-bottom:14px;';
+  sec.innerHTML = `<div style="color:#f0883e; font-size:0.9rem; margin-bottom:8px;">${title}</div>`;
+  const chips = document.createElement('div');
+  chips.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px 14px;';
+  if (!list.length) chips.innerHTML = `<span style="color:#484f58;">${emptyMsg}</span>`;
+  for (const s of list) {
+    const chip = document.createElement('span'); chip.style.cssText = 'font-size:0.88rem;';
+    chip.innerHTML = `<b style="color:#e6edf3;">${fmt(s.qty)}</b>&times; <span style="color:#9aa4b2;">${s.name}</span>`;
+    chips.appendChild(chip);
+  }
+  sec.appendChild(chips);
+  return sec;
+}
+
+function render(page, colonies, missions = []) {
   page.querySelector('.lv-sub').innerHTML =
     `${colonies.length} colonies (${colonies.filter(c => c.kind === 'Planet').length} planets, ${colonies.filter(c => c.kind === 'Outpost').length} outposts)` +
     ` · <span style="color:#6e7681;">drag a resource or ship onto another colony to send it (confirm before dispatch)</span>`;
@@ -147,7 +167,7 @@ function render(page, colonies) {
   builderEl.style.cssText = 'display:none; position:sticky; top:0; z-index:2; margin-bottom:16px;';
   page.appendChild(builderEl);
 
-  // ── Total ships across all planets, summed by ship def ──
+  // ── Total ships stationed (summed across colonies) ──
   const totals = new Map();   // shipDefId → { name, sortOrder, qty }
   for (const c of colonies) {
     for (const f of (c.ships || [])) {
@@ -158,21 +178,19 @@ function render(page, colonies) {
     }
   }
   const totalList = [...totals.values()].filter(s => s.qty > 0).sort((a, b) => a.sortOrder - b.sortOrder);
+  page.appendChild(shipBox('Total ships (stationed)', totalList, 'No ships stationed.'));
 
-  const totalSec = document.createElement('div');
-  totalSec.style.cssText = 'background:#0d1117; border:1px solid #21262d; border-radius:10px; padding:14px 16px; margin-bottom:18px;';
-  totalSec.innerHTML = '<div style="color:#f0883e; font-size:0.9rem; margin-bottom:8px;">Total ships (all planets)</div>';
-  const chips = document.createElement('div');
-  chips.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px 14px;';
-  if (!totalList.length) chips.innerHTML = '<span style="color:#484f58;">No ships stationed.</span>';
-  for (const s of totalList) {
-    const chip = document.createElement('span');
-    chip.style.cssText = 'font-size:0.88rem;';
-    chip.innerHTML = `<b style="color:#e6edf3;">${fmt(s.qty)}</b>&times; <span style="color:#9aa4b2;">${s.name}</span>`;
-    chips.appendChild(chip);
+  // ── In flight: ships on active missions (fleetComposition per mission) ──
+  const flight = new Map();
+  for (const m of missions) {
+    for (const f of (m.fleetComposition || [])) {
+      const cur = flight.get(f.shipDefId) || { name: f.shipName || `#${f.shipDefId}`, qty: 0 };
+      cur.qty += f.quantity || 0;
+      flight.set(f.shipDefId, cur);
+    }
   }
-  totalSec.appendChild(chips);
-  page.appendChild(totalSec);
+  const flightList = [...flight.values()].filter(s => s.qty > 0).sort((a, b) => b.qty - a.qty);
+  page.appendChild(shipBox(`In flight (${missions.length} mission${missions.length === 1 ? '' : 's'})`, flightList, 'None in flight.'));
 
   // ── One card per colony: resources + ships ──
   const grid = document.createElement('div');
@@ -508,10 +526,10 @@ function injectButton() {
   const btn = document.createElement('button');
   btn.id = 'nx-logistics-btn';
   btn.type = 'button';
-  btn.title = 'Fleet & resources overview (addon)';
-  btn.textContent = '📦 Logistics';
-  btn.style.cssText = 'margin:0 8px; padding:4px 10px; border-radius:6px; cursor:pointer;' +
-    'font-size:0.78rem; border:1px solid #3a4256; background:#1a1f2b; color:#ddd;';
+  btn.title = 'Quartermaster — fleet & resources overview (addon)';
+  btn.textContent = '📦 Quartermaster';
+  btn.style.cssText = 'margin:0 10px; padding:7px 14px; border-radius:7px; cursor:pointer;' +
+    'font-size:0.92rem; font-weight:600; border:1px solid #3a4256; background:#1a1f2b; color:#eee;';
   btn.addEventListener('click', openView);
   const left = bar.querySelector('.topbar-left') || bar;
   left.appendChild(btn);
