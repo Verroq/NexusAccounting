@@ -183,6 +183,8 @@ export async function initScoutingTab() {
   document.getElementById('sc-debris-refresh').addEventListener('click', loadDebris);
   document.getElementById('sc-debris-hidden').addEventListener('click', () => { scShowHidden = !scShowHidden; renderDebris(); });
   document.getElementById('sc-debris-invonly').addEventListener('change', e => { scInvestigatedOnly = e.target.checked; renderDebris(); });
+  document.getElementById('sc-debris-nearest').checked = savedSel['sc-debris-nearest'] === true;
+  document.getElementById('sc-debris-nearest').addEventListener('change', e => { rememberSelection('sc-debris-nearest', e.target.checked); computeDebrisFuel(); });
   await loadCargoShips();
   updateAvail();
 
@@ -724,6 +726,27 @@ function selectedCargo() {
   return scCargoShips.filter(s => scCargoSel.has(s.shipDefId));
 }
 
+// Nearest owned planet to a target system (Euclidean on galaxy-map coords).
+function nearestPlanet(systemId) {
+  const t = scSystems[systemId];
+  if (!t) return null;
+  let best = null, bd = Infinity;
+  for (const p of scPlanets) {
+    const s = scSystems[p.systemId];
+    if (!s) continue;
+    const d = Math.hypot(s.x - t.x, s.y - t.y);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+// Source planet for a debris field: nearest owned planet when the toggle is on,
+// else the selected planet.
+function debrisSourcePlanet(systemId) {
+  if (document.getElementById('sc-debris-nearest').checked) return nearestPlanet(systemId);
+  const id = Number(document.getElementById('sc-planet').value);
+  return scPlanets.find(p => p.id === id) || null;
+}
+
 // Ships stationed on the selected planet, shown above both tables (one fetch):
 // cargo-only above the debris table, every type above the investigation table.
 async function updateAvail() {
@@ -869,7 +892,6 @@ function renderDebris() {
 let debrisFuelGen = 0;
 async function computeDebrisFuel() {
   const gen = ++debrisFuelGen;
-  const planetId = Number(document.getElementById('sc-planet').value);
   const sel = q => () => document.querySelectorAll(`#sc-debris-tbody td.${q}`);
   const fuelCells = sel('sc-debris-fuel');
   const shipCells = sel('sc-debris-shipn');
@@ -892,9 +914,10 @@ async function computeDebrisFuel() {
     const cell = tr.querySelector('.sc-debris-fuel');
     const timeCell = tr.querySelector('.sc-debris-time');
     const sysId = Number(tr.dataset.system);
-    if (!cell || !sysId) continue;
+    const srcId = debrisSourcePlanet(sysId)?.id;
+    if (!cell || !sysId || !srcId) continue;
     if (!ships.length) { cell.textContent = '—'; if (timeCell) timeCell.textContent = '—'; continue; }
-    const est = await fuelEstimate(planetId, sysId, ships);
+    const est = await fuelEstimate(srcId, sysId, ships);
     if (gen !== debrisFuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
@@ -906,8 +929,9 @@ async function computeDebrisFuel() {
 
 async function collectDebris(field) {
   const status = document.getElementById('sc-progress');
-  const planetId = Number(document.getElementById('sc-planet').value);
-  const planet = scPlanets.find(p => p.id === planetId);
+  const planet = debrisSourcePlanet(field.systemId);
+  if (!planet) { status.textContent = 'No source planet found for this field.'; return; }
+  const planetId = planet.id;
 
   const cargo = selectedCargo();
   const plan = planFleet(field.total, cargo);
