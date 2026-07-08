@@ -61,17 +61,37 @@ function effCap(def, ctx) {
   const b = ctx.general + ctx.commander + (def.key === 'transport_shuttle' ? ctx.shuttle : 0);
   return Math.floor((def.cargoCapacity || 0) * (1 + b));
 }
-// Fewest cargo ships (largest cap first, capped to availability) to carry `total`.
-function planFleet(total, ships) {
-  const sorted = ships.filter(s => s.cap > 0 && s.avail > 0).sort((a, b) => b.cap - a.cap);
-  let rem = total; const out = [];
-  for (let i = 0; i < sorted.length && rem > 0; i++) {
-    const s = sorted[i];
-    const want = i === sorted.length - 1 ? Math.ceil(rem / s.cap) : Math.floor(rem / s.cap);
-    const n = Math.min(want, s.avail);
-    if (n > 0) { out.push({ shipDefId: s.shipDefId, quantity: n, cap: s.cap, name: s.name }); rem -= n * s.cap; }
+const canCarry = (h, k) => !h.allowed || h.allowed.includes(k);
+// Restricted haulers (ore_freighter, tanker) first (largest cap), then general —
+// dedicating specialised haulers to their resources frees general haulers for the
+// rest. Greedy fill; used by both the planner and the feasibility check.
+function haulerOrder(haulers) {
+  return haulers.slice().sort((a, b) => (Number(!!b.allowed) - Number(!!a.allowed)) || (b.cap - a.cap));
+}
+function fillFrom(rem, capLeft, h) {
+  for (const k of Object.keys(rem).filter(k => canCarry(h, k) && rem[k] > 0).sort((a, b) => rem[b] - rem[a])) {
+    const take = Math.min(rem[k], capLeft); rem[k] -= take; capLeft -= take; if (capLeft <= 0) break;
   }
-  return { plan: out, remaining: Math.max(0, rem) };
+}
+// How much of `amounts` (snake→qty) the given ship counts CAN'T carry.
+function residualAfter(shipQtys, amounts, haulers) {
+  const rem = { ...amounts };
+  for (const h of haulerOrder(haulers)) fillFrom(rem, (shipQtys[h.shipDefId] || 0) * h.cap, h);
+  return Object.values(rem).reduce((s, v) => s + Math.max(0, v), 0);
+}
+// Fewest haulers to carry `amounts`, respecting each ship's allowedCargo.
+function planFleetMulti(amounts, haulers) {
+  const rem = { ...amounts };
+  const plan = {};
+  for (const h of haulerOrder(haulers)) {
+    const need = Object.keys(rem).reduce((s, k) => s + (canCarry(h, k) ? Math.max(0, rem[k]) : 0), 0);
+    if (need <= 0) continue;
+    const n = Math.min(h.avail, Math.ceil(need / h.cap));
+    if (n <= 0) continue;
+    plan[h.shipDefId] = (plan[h.shipDefId] || 0) + n;
+    fillFrom(rem, n * h.cap, h);
+  }
+  return { plan, remaining: Object.values(rem).reduce((s, v) => s + Math.max(0, v), 0) };
 }
 function fmtDur(sec) {
   if (!sec || sec < 0) return '—';
@@ -115,8 +135,8 @@ async function openView() {
 
   let colonies, missions = [];
   try {
-    const [planetList, outpostData, missionsData] = await Promise.all([
-      jget('/api/planets'), jget('/api/outposts').catch(() => ({})), jget('/api/fleet/missions').catch(() => ({ missions: [] })),
+    const [planetList, outpostData, missionsData, meData] = await Promise.all([
+      jget('/api/planets'), jget('/api/outposts').catch(() => ({})), jget('/api/fleet/missions').catch(() => ({ missions: [] })), jget('/api/auth/me').catch(() => ({})),
     ]);
     const planets = (planetList.planets || []).filter(p => p.id != null);
     const details = await Promise.all(planets.map(p => Promise.all([
@@ -125,11 +145,30 @@ async function openView() {
     ])));
     missions = missionsData.missions || [];
     const outposts = outpostData.outposts || (Array.isArray(outpostData) ? outpostData : []);
+
+    // Colonized moons have their own /api/moons/{id} endpoints; find their ids via
+    // the galaxy view of my planets' systems (mine = matching userId).
+    const myId = meData.user && meData.user.userId;
+    const sysIds = [...new Set(planets.map(p => p.systemId).filter(x => x != null))];
+    const sysData = await Promise.all(sysIds.map(s => jget(`/api/galaxy/systems/${s}/planets`).catch(() => ({}))));
+    const moonIds = [];
+    for (const sd of sysData) for (const mo of (sd.moons || [])) if (mo.userId != null && mo.userId === myId) moonIds.push(mo.id);
+    const moonDetails = await Promise.all(moonIds.map(id => Promise.all([
+      jget(`/api/moons/${id}`).catch(() => null),
+      jget(`/api/moons/${id}/fleet`).catch(() => ({ fleet: [] })),
+    ])));
+    const moonCol = moonIds.map((id, i) => {
+      const [det, fl] = moonDetails[i];
+      const res = (det && det.moon) || {};
+      return { id, systemId: res.systemId, kind: 'Moon', name: res.name || `Moon #${id}`, res, ships: (fl.fleet || []) };
+    });
+
     colonies = planets.map((p, i) => {
       const [detail, fleet] = details[i];
       const res = (detail && detail.planet) || p;
       return { id: p.id, systemId: p.systemId, kind: 'Planet', name: p.name, res, ships: (fleet.fleet || []) };
-    }).concat(outposts.map(o => ({ id: o.id, systemId: o.systemId, kind: 'Outpost', name: o.name || `Outpost #${o.id}`, res: o, ships: null, deployed: o.deployedShipCount })));
+    }).concat(moonCol,
+      outposts.map(o => ({ id: o.id, systemId: o.systemId, kind: 'Outpost', name: o.name || `Outpost #${o.id}`, res: o, ships: null, deployed: o.deployedShipCount })));
   } catch (e) {
     page.querySelector('.lv-sub').textContent = `Error: ${e.message}`;
     return;
@@ -157,7 +196,7 @@ function shipBox(title, list, emptyMsg) {
 
 function render(page, colonies, missions = []) {
   page.querySelector('.lv-sub').innerHTML =
-    `${colonies.length} colonies (${colonies.filter(c => c.kind === 'Planet').length} planets, ${colonies.filter(c => c.kind === 'Outpost').length} outposts)` +
+    `${colonies.length} colonies (${colonies.filter(c => c.kind === 'Planet').length} planets, ${colonies.filter(c => c.kind === 'Moon').length} moons, ${colonies.filter(c => c.kind === 'Outpost').length} outposts)` +
     ` · <span style="color:#6e7681;">drag a resource or ship onto another colony to send it (confirm before dispatch)</span>`;
 
   allColonies = colonies;
@@ -204,7 +243,7 @@ function colonyCard(c) {
   card.style.cssText = 'background:#0d1117; border:1px solid #21262d; border-radius:10px; padding:12px 14px;';
   // Drop target: accept a dragged resource/ship from another colony. An outpost
   // resource can only land on a planet (→ collect).
-  const accepts = () => dragItem && dragItem.src !== c && c.id != null &&
+  const accepts = () => dragItem && dragItem.src !== c && c.id != null && c.kind !== 'Moon' &&
     !(dragItem.type === 'resource' && dragItem.src.kind === 'Outpost' && c.kind !== 'Planet');
   card.addEventListener('dragover', e => { if (accepts()) { e.preventDefault(); card.style.outline = '2px dashed #58a6ff'; } });
   card.addEventListener('dragleave', () => { card.style.outline = ''; });
@@ -270,7 +309,7 @@ function colonyCard(c) {
       sp.innerHTML = `<b style="color:#e6edf3;">${fmt(f.quantity)}</b>&times; <span style="color:#9aa4b2;">${nm}</span>`;
       // Draggable → relocate these ships to another colony.
       const avail = (f.quantity || 0) - (f.damagedQuantity || 0);
-      if (c.id != null && avail > 0) {
+      if (c.id != null && avail > 0 && c.kind !== 'Moon') {
         sp.draggable = true; sp.style.cursor = 'grab'; sp.title = 'Drag to another colony to relocate';
         sp.style.border = '1px solid #30363d'; sp.style.background = '#161b22';
         const grip = document.createElement('span'); grip.textContent = '⠿';
@@ -314,13 +353,18 @@ function stageTransfer(item, target) {
   renderBuilder();
 }
 
-// Cargo-capable ships on a colony, with effective capacity.
-async function cargoShipsOf(colony) {
+// Dedicated cargo haulers (not combat/mining ships). tanker/ore_freighter also
+// restrict which resources they carry (definition.allowedCargo).
+const CARGO_KEYS = new Set(['freighter', 'transport_shuttle', 'bulk_carrier', 'ore_freighter', 'tanker']);
+// Cargo haulers on a colony (effective capacity). If `wantKeys` (snake cargo
+// keys being moved) is given, exclude haulers that can't carry all of them.
+async function cargoShipsOf(colony, wantKeys) {
   const ctx = await cargoContext();
   return ((colony && colony.ships) || []).map(f => {
     const def = f.definition || {};
-    return { shipDefId: f.shipDefId, name: def.name || ('#' + f.shipDefId), cap: effCap(def, ctx), avail: (f.quantity || 0) - (f.damagedQuantity || 0) };
-  }).filter(s => s.cap > 0 && s.avail > 0);
+    return { shipDefId: f.shipDefId, key: def.key, name: def.name || ('#' + f.shipDefId), cap: effCap(def, ctx), avail: (f.quantity || 0) - (f.damagedQuantity || 0), allowed: def.allowedCargo || null };
+  }).filter(s => CARGO_KEYS.has(s.key) && s.cap > 0 && s.avail > 0 &&
+    (!wantKeys || !wantKeys.length || !s.allowed || wantKeys.some(k => s.allowed.includes(k))));
 }
 
 // Collect: a resource dragged from an outpost onto a planet. The planet is the
@@ -399,20 +443,46 @@ async function renderBuilder() {
       if (have <= 0) continue;
       const lbl = document.createElement('label'); lbl.style.cssText = 'display:inline-flex; align-items:center; gap:5px; font-size:0.82rem; cursor:pointer;';
       const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = b.filter.has(r.k);
-      cb.addEventListener('change', () => { if (cb.checked) b.filter.add(r.k); else b.filter.delete(r.k); updateSend(); });
+      cb.addEventListener('change', () => { if (cb.checked) b.filter.add(r.k); else b.filter.delete(r.k); b.cargoManual = {}; renderBuilder(); });
       lbl.append(cb, Object.assign(document.createElement('img'), { src: `${IMG}/${r.icon}`, width: 14, height: 14 }), document.createTextNode(`${r.label} (${fmt(have)})`));
       typeWrap.appendChild(lbl);
     }
     box.appendChild(typeWrap);
-    // Transport ships from the source planet.
-    const cargoShips = await cargoShipsOf(srcPlanet);
+    // Transport ships from the source planet (only haulers that can carry the
+    // selected resource types).
+    const cargoShips = await cargoShipsOf(srcPlanet, [...b.filter].map(k => RES_BY_K[k].cargo));
+    const availableOf = () => [...b.filter].reduce((s, k) => s + ((b.outpost.res && b.outpost.res[k]) || 0), 0);
+    const availAll = () => Object.fromEntries([...b.filter].map(k => [RES_BY_K[k].cargo, (b.outpost.res && b.outpost.res[k]) || 0]));
+    // Amounts to plan for: full availability, or capped to the target (largest first).
+    const collectAmounts = () => {
+      const av = availAll();
+      if (!b.target) return av;
+      let left = b.target; const out = {};
+      for (const [ck, v] of Object.entries(av).sort((a, b2) => b2[1] - a[1])) { const t = Math.min(v, left); out[ck] = t; left -= t; }
+      return out;
+    };
+    // Target amount: the API takes no amount (it fills ships to capacity), but we
+    // can auto-plan the transport ships to carry ~this much.
+    const targetInp = numInput(b.target || '', null);
+    targetInp.placeholder = 'auto (fill ships)';
+    targetInp.addEventListener('change', () => {
+      b.target = Math.min(availableOf(), Math.max(0, parseInt(targetInp.value, 10) || 0));
+      b.cargoManual = planFleetMulti(collectAmounts(), cargoShips).plan;
+      renderBuilder();
+    });
+    box.appendChild(fieldRow('<span style="color:#9aa4b2;">Target amount (auto-plan ships)</span>', targetInp));
     const cw = document.createElement('div'); cw.style.cssText = 'border-top:1px solid #21262d; margin-top:6px; padding-top:8px;';
     cw.innerHTML = '<div style="color:#8b949e; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Transport ships</div>';
     box.appendChild(cw);
     const capLine = document.createElement('div'); capLine.style.cssText = 'font-size:0.82rem; margin-top:4px;';
     const updateSend = () => {
-      const have = cargoShips.reduce((s, cs) => s + (b.cargoManual[cs.shipDefId] || 0) * cs.cap, 0);
-      capLine.innerHTML = `Cargo capacity <b style="color:#e6edf3">${fmt(have)}</b> · collects what fits`;
+      const avail = availableOf();
+      const cap = cargoShips.reduce((s, cs) => s + (b.cargoManual[cs.shipDefId] || 0) * cs.cap, 0);
+      // Resource-aware: a ship can only carry resources its allowedCargo permits.
+      const collected = avail - residualAfter(b.cargoManual, availAll(), cargoShips);
+      const pct = avail > 0 ? Math.min(100, Math.round(collected / avail * 100)) : 0;
+      capLine.innerHTML = `Available <b style="color:#e6edf3">${fmt(avail)}</b> · capacity <b style="color:#e6edf3">${fmt(cap)}</b> · ` +
+        `~<b style="color:${collected >= avail && avail > 0 ? '#56d364' : '#e3b341'}">${pct}%</b> collected (≈${fmt(collected)})`;
       send.disabled = !getShips().length || b.filter.size === 0;
       refreshFuel();
     };
@@ -438,18 +508,20 @@ async function renderBuilder() {
       box.appendChild(fieldRow(`<img src="${IMG}/${r.icon}" width="15" height="15" style="width:15px;height:15px;"> ${r.label} <span style="color:#6e7681;">/ ${fmt(ent.max)}</span>`,
         inp, () => { delete b.res[k]; b.cargoManual = null; if (!Object.keys(b.res).length) builder = null; renderBuilder(); }));
     }
-    const cargoShips = await cargoShipsOf(b.src);
+    const cargoShips = await cargoShipsOf(b.src, Object.keys(b.res).map(k => RES_BY_K[k].cargo));
     const cw = document.createElement('div'); cw.style.cssText = 'border-top:1px solid #21262d; margin-top:10px; padding-top:8px;';
     cw.innerHTML = '<div style="color:#8b949e; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Transport ships</div>';
     box.appendChild(cw);
     const capLine = document.createElement('div'); capLine.style.cssText = 'font-size:0.82rem; margin-top:4px;';
+    const amountsOf = () => Object.fromEntries(Object.entries(b.res).map(([k, e]) => [RES_BY_K[k].cargo, e.amount]));
     const totalCargo = () => Object.values(b.res).reduce((s, e) => s + e.amount, 0);
-    if (b.cargoManual == null) { const { plan } = planFleet(totalCargo(), cargoShips); b.cargoManual = {}; for (const p of plan) b.cargoManual[p.shipDefId] = p.quantity; }
+    if (b.cargoManual == null) b.cargoManual = planFleetMulti(amountsOf(), cargoShips).plan;
     const refreshCargo = () => {
       const need = totalCargo();
-      const have = cargoShips.reduce((s, cs) => s + (b.cargoManual[cs.shipDefId] || 0) * cs.cap, 0);
-      capLine.innerHTML = `Capacity <b style="color:${have >= need ? '#56d364' : '#ff7b72'}">${fmt(have)}</b> / need ${fmt(need)}`;
-      send.disabled = need <= 0 || have < need;
+      const short = residualAfter(b.cargoManual, amountsOf(), cargoShips);
+      capLine.innerHTML = `Carrying <b style="color:${short <= 0 ? '#56d364' : '#ff7b72'}">${fmt(need - short)}</b> / ${fmt(need)}` +
+        (short > 0 ? ` <span style="color:#ff7b72;">· short ${fmt(short)}</span>` : '');
+      send.disabled = need <= 0 || short > 0;
       refreshFuel();
     };
     for (const cs of cargoShips) {
