@@ -138,7 +138,7 @@ async function openView() {
   overlay.addEventListener('dragend', stopDragScroll);
 
   const page = document.createElement('div');
-  page.style.cssText = 'max-width:1280px; margin:0 auto; color:#c9d1d9;';
+  page.style.cssText = 'max-width:1900px; margin:0 auto; color:#c9d1d9;';
   overlay.appendChild(page);
   document.body.appendChild(overlay);
   page.innerHTML = `<h1 style="margin:0 0 4px; font-size:1.6rem; color:#e6edf3;">Quartermaster</h1>
@@ -251,19 +251,30 @@ function render(page, colonies, missions = []) {
   const flightList = [...flight.values()].filter(s => s.qty > 0).sort((a, b) => b.qty - a.qty);
   page.appendChild(shipBox(`In flight (${missions.length} mission${missions.length === 1 ? '' : 's'})`, flightList, 'None in flight.'));
 
-  // ── Colony cards, grouped by kind ──
-  for (const [kind, label] of [['Planet', 'Planets'], ['Moon', 'Moons'], ['Outpost', 'Outposts']]) {
-    const group = colonies.filter(c => c.kind === kind);
-    if (!group.length) continue;
+  // ── Colony columns: moons (left) · planets (centre) · outposts (right) ──
+  const makeCol = (label, list, opts) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = opts.grow ? 'flex:1; min-width:0;' : `flex:0 0 ${opts.width};`;
     const lbl = document.createElement('div');
-    lbl.style.cssText = 'color:#8b949e; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; margin:18px 0 8px;';
-    lbl.textContent = `${label} (${group.length})`;
-    page.appendChild(lbl);
-    const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px;';
-    for (const c of group) grid.appendChild(colonyCard(c));
-    page.appendChild(grid);
-  }
+    lbl.style.cssText = 'color:#8b949e; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; margin:0 0 8px;';
+    lbl.textContent = `${label} (${list.length})`;
+    wrap.appendChild(lbl);
+    const inner = document.createElement('div');
+    inner.style.cssText = opts.grow
+      ? 'display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:14px;'
+      : 'display:flex; flex-direction:column; gap:14px;';
+    for (const c of list) inner.appendChild(colonyCard(c));
+    wrap.appendChild(inner);
+    return wrap;
+  };
+  const moons = colonies.filter(c => c.kind === 'Moon');
+  const outposts = colonies.filter(c => c.kind === 'Outpost');
+  const cols = document.createElement('div');
+  cols.style.cssText = 'display:flex; gap:28px; align-items:flex-start;';
+  if (moons.length) cols.appendChild(makeCol('Moons', moons, { width: '235px' }));
+  cols.appendChild(makeCol('Planets', colonies.filter(c => c.kind === 'Planet'), { grow: true }));
+  if (outposts.length) cols.appendChild(makeCol('Outposts', outposts, { width: '235px' }));
+  page.appendChild(cols);
 }
 
 // Which source→target moves are supported. Outpost/moon export only to a planet;
