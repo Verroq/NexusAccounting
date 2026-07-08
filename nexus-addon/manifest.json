@@ -56,6 +56,11 @@
       "matches": ["https://s0.nexuslegacy.space/*"],
       "js": ["guide-view.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://s0.nexuslegacy.space/*"],
+      "js": ["logistics-view.js"],
+      "run_at": "document_idle"
     }
   ],
   "icons": {
