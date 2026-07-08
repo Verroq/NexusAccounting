@@ -35,6 +35,7 @@ const RES_BY_K = Object.fromEntries(RESOURCES.map(r => [r.k, r]));
 let dragItem = null;   // { src, resKey } while a resource chip is being dragged
 let builder = null;    // staged transfer being configured in the top card
 let builderEl = null;  // the top card element
+let allColonies = [];  // current colonies (for the collect source-planet picker)
 
 // Effective cargo capacity: base × (1 + cargo research + commander + shuttle
 // bonus), fetched once. Mirrors the Scouting tab's hauler sizing.
@@ -139,6 +140,7 @@ function render(page, colonies) {
     `${colonies.length} colonies (${colonies.filter(c => c.kind === 'Planet').length} planets, ${colonies.filter(c => c.kind === 'Outpost').length} outposts)` +
     ` · <span style="color:#6e7681;">drag a resource or ship onto another colony to send it (confirm before dispatch)</span>`;
 
+  allColonies = colonies;
   // Transfer builder card (populated on drop, hidden otherwise), pinned on top.
   builder = null;
   builderEl = document.createElement('div');
@@ -182,15 +184,18 @@ function render(page, colonies) {
 function colonyCard(c) {
   const card = document.createElement('div');
   card.style.cssText = 'background:#0d1117; border:1px solid #21262d; border-radius:10px; padding:12px 14px;';
-  // Drop target: accept a dragged resource/ship from another colony.
-  card.addEventListener('dragover', e => {
-    if (dragItem && dragItem.src !== c && c.id != null) { e.preventDefault(); card.style.outline = '2px dashed #58a6ff'; }
-  });
+  // Drop target: accept a dragged resource/ship from another colony. An outpost
+  // resource can only land on a planet (→ collect).
+  const accepts = () => dragItem && dragItem.src !== c && c.id != null &&
+    !(dragItem.type === 'resource' && dragItem.src.kind === 'Outpost' && c.kind !== 'Planet');
+  card.addEventListener('dragover', e => { if (accepts()) { e.preventDefault(); card.style.outline = '2px dashed #58a6ff'; } });
   card.addEventListener('dragleave', () => { card.style.outline = ''; });
   card.addEventListener('drop', e => {
     e.preventDefault(); card.style.outline = '';
     const it = dragItem; dragItem = null;
-    if (it && it.src !== c && c.id != null) stageTransfer(it, c);
+    if (!it || it.src === c || c.id == null) return;
+    if (it.type === 'resource' && it.src.kind === 'Outpost') { if (c.kind === 'Planet') stageCollectResource(it.src, c, it.resKey); return; }
+    stageTransfer(it, c);
   });
   const head = document.createElement('div');
   head.style.cssText = 'display:flex; align-items:baseline; gap:8px; margin-bottom:8px;';
@@ -205,13 +210,22 @@ function colonyCard(c) {
     const v = c.res ? c.res[r.k] : 0;
     if (!v) continue;
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex; align-items:center; gap:6px;';
+    row.style.cssText = 'display:flex; align-items:center; gap:6px; padding:3px 5px; border-radius:6px; border:1px solid transparent;';
     row.innerHTML = `<img src="${IMG}/${r.icon}" width="15" height="15" style="width:15px;height:15px;" alt="">` +
       `<span style="color:#9aa4b2; flex:1;">${r.label}</span><span style="color:#e6edf3;">${fmt(v)}</span>`;
-    // Draggable → deliver to another colony (needs cargo ships on this one).
+    // Draggable: planet resources → deliver/supply anywhere; outpost resources →
+    // drop on a planet to collect them there.
     if (c.id != null) {
-      row.draggable = true; row.style.cursor = 'grab'; row.title = 'Drag to another colony to send';
-      row.addEventListener('dragstart', () => { dragItem = { type: 'resource', src: c, resKey: r.k, max: v }; });
+      row.draggable = true; row.style.cursor = 'grab';
+      row.title = c.kind === 'Outpost' ? 'Drag to a planet to collect' : 'Drag to another colony to send';
+      row.style.border = '1px solid #30363d'; row.style.background = '#161b22';
+      const grip = document.createElement('span'); grip.textContent = '⠿';
+      grip.style.cssText = 'color:#484f58; font-size:0.8rem; cursor:grab;';
+      row.insertBefore(grip, row.firstChild);
+      row.addEventListener('mouseenter', () => { row.style.borderColor = '#58a6ff'; });
+      row.addEventListener('mouseleave', () => { row.style.borderColor = '#30363d'; });
+      row.addEventListener('dragstart', () => { dragItem = { type: 'resource', src: c, resKey: r.k, max: v }; row.style.opacity = '0.5'; });
+      row.addEventListener('dragend', () => { row.style.opacity = '1'; });
     }
     resWrap.appendChild(row);
   }
@@ -234,12 +248,20 @@ function colonyCard(c) {
     for (const f of ships) {
       const sp = document.createElement('span');
       const nm = (f.definition || {}).name || '#' + f.shipDefId;
+      sp.style.cssText = 'display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:6px; border:1px solid transparent;';
       sp.innerHTML = `<b style="color:#e6edf3;">${fmt(f.quantity)}</b>&times; <span style="color:#9aa4b2;">${nm}</span>`;
       // Draggable → relocate these ships to another colony.
       const avail = (f.quantity || 0) - (f.damagedQuantity || 0);
       if (c.id != null && avail > 0) {
         sp.draggable = true; sp.style.cursor = 'grab'; sp.title = 'Drag to another colony to relocate';
-        sp.addEventListener('dragstart', () => { dragItem = { type: 'ship', src: c, shipDefId: f.shipDefId, name: nm, max: avail }; });
+        sp.style.border = '1px solid #30363d'; sp.style.background = '#161b22';
+        const grip = document.createElement('span'); grip.textContent = '⠿';
+        grip.style.cssText = 'color:#484f58; font-size:0.75rem;';
+        sp.insertBefore(grip, sp.firstChild);
+        sp.addEventListener('mouseenter', () => { sp.style.borderColor = '#58a6ff'; });
+        sp.addEventListener('mouseleave', () => { sp.style.borderColor = '#30363d'; });
+        sp.addEventListener('dragstart', () => { dragItem = { type: 'ship', src: c, shipDefId: f.shipDefId, name: nm, max: avail }; sp.style.opacity = '0.5'; });
+        sp.addEventListener('dragend', () => { sp.style.opacity = '1'; });
       }
       shipWrap.appendChild(sp);
     }
@@ -274,13 +296,24 @@ function stageTransfer(item, target) {
   renderBuilder();
 }
 
-// Cargo-capable ships on the builder's source, with effective capacity.
-async function sourceCargoShips() {
+// Cargo-capable ships on a colony, with effective capacity.
+async function cargoShipsOf(colony) {
   const ctx = await cargoContext();
-  return (builder.src.ships || []).map(f => {
+  return ((colony && colony.ships) || []).map(f => {
     const def = f.definition || {};
     return { shipDefId: f.shipDefId, name: def.name || ('#' + f.shipDefId), cap: effCap(def, ctx), avail: (f.quantity || 0) - (f.damagedQuantity || 0) };
   }).filter(s => s.cap > 0 && s.avail > 0);
+}
+
+// Collect: a resource dragged from an outpost onto a planet. The planet is the
+// fleet origin/return; drop more outpost resources onto the same planet to add
+// their types. Fleet goes planet → outpost → back with what fits the cargo.
+function stageCollectResource(outpost, planet, resKey) {
+  if (!builder || builder.mode !== 'collect' || builder.outpost.id !== outpost.id || builder.srcPlanetId !== planet.id) {
+    builder = { mode: 'collect', outpost, srcPlanetId: planet.id, filter: new Set(), cargoManual: {} };
+  }
+  builder.filter.add(resKey);
+  renderBuilder();
 }
 
 function fieldRow(labelHtml, input, onRemove) {
@@ -296,9 +329,12 @@ function fieldRow(labelHtml, input, onRemove) {
   return row;
 }
 function numInput(value, max) {
-  const i = document.createElement('input'); i.type = 'number'; i.min = '0'; if (max != null) i.max = String(max);
+  // Text (not number) so there are no spinner arrows; guard to positive integers.
+  const i = document.createElement('input');
+  i.type = 'text'; i.inputMode = 'numeric';
   i.value = String(value);
   i.style.cssText = 'width:120px; background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:4px 7px; border-radius:6px; text-align:right;';
+  i.addEventListener('input', () => { const c = i.value.replace(/[^\d]/g, ''); if (c !== i.value) i.value = c; });
   return i;
 }
 
@@ -308,13 +344,11 @@ async function renderBuilder() {
   if (!builder) { builderEl.style.display = 'none'; return; }
   builderEl.style.display = '';
   const b = builder;
+  const toOutpost = b.mode !== 'collect' && b.target.kind === 'Outpost';
   const box = document.createElement('div');
   box.style.cssText = 'background:#12161f; border:1px solid #2ea043; border-radius:10px; padding:14px 16px;';
   const head = document.createElement('div');
   head.style.cssText = 'display:flex; align-items:baseline; gap:8px; margin-bottom:10px;';
-  head.innerHTML = `<b style="color:#e6edf3;">${b.mode === 'resource' ? 'Deliver resources' : 'Relocate ships'}</b>` +
-    `<span style="color:#f0883e;">${b.src.name} → ${b.target.name}</span>` +
-    `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${b.target.name} to add</span>`;
   box.appendChild(head);
 
   const status = document.createElement('div'); status.style.cssText = 'color:#8b949e; font-size:0.82rem; min-height:16px; margin-top:6px;';
@@ -325,32 +359,74 @@ async function renderBuilder() {
   clear.style.cssText = 'padding:6px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer;';
   clear.onclick = () => { builder = null; renderBuilder(); };
 
-  let getShips;   // () → [{shipDefId, quantity}] for dispatch/fuel
-  let dispatchBody;
+  let getShips = () => [];
+  let fuelSrc, fuelSys;
 
-  if (b.mode === 'resource') {
-    // Staged resources with editable amounts.
+  if (b.mode === 'collect') {
+    const planets = allColonies.filter(c => c.kind === 'Planet');
+    const srcPlanet = planets.find(c => c.id === b.srcPlanetId) || planets[0];
+    head.innerHTML = `<b style="color:#e6edf3;">Collect resources</b>` +
+      `<span style="color:#f0883e;">${srcPlanet ? srcPlanet.name : '?'} → ${b.outpost.name} → back</span>`;
+    // Source planet picker.
+    const sel = document.createElement('select');
+    sel.style.cssText = 'background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:4px 7px; border-radius:6px;';
+    for (const p of planets) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; if (p.id === b.srcPlanetId) o.selected = true; sel.appendChild(o); }
+    sel.addEventListener('change', () => { b.srcPlanetId = Number(sel.value); b.cargoManual = {}; renderBuilder(); });
+    box.appendChild(fieldRow('<span style="color:#9aa4b2;">From planet</span>', sel));
+    // Resource types to collect (present on the outpost).
+    const typeWrap = document.createElement('div');
+    typeWrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px 14px; margin:8px 0;';
+    for (const r of RESOURCES) {
+      const have = (b.outpost.res && b.outpost.res[r.k]) || 0;
+      if (have <= 0) continue;
+      const lbl = document.createElement('label'); lbl.style.cssText = 'display:inline-flex; align-items:center; gap:5px; font-size:0.82rem; cursor:pointer;';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = b.filter.has(r.k);
+      cb.addEventListener('change', () => { if (cb.checked) b.filter.add(r.k); else b.filter.delete(r.k); updateSend(); });
+      lbl.append(cb, Object.assign(document.createElement('img'), { src: `${IMG}/${r.icon}`, width: 14, height: 14 }), document.createTextNode(`${r.label} (${fmt(have)})`));
+      typeWrap.appendChild(lbl);
+    }
+    box.appendChild(typeWrap);
+    // Transport ships from the source planet.
+    const cargoShips = await cargoShipsOf(srcPlanet);
+    const cw = document.createElement('div'); cw.style.cssText = 'border-top:1px solid #21262d; margin-top:6px; padding-top:8px;';
+    cw.innerHTML = '<div style="color:#8b949e; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Transport ships</div>';
+    box.appendChild(cw);
+    const capLine = document.createElement('div'); capLine.style.cssText = 'font-size:0.82rem; margin-top:4px;';
+    const updateSend = () => {
+      const have = cargoShips.reduce((s, cs) => s + (b.cargoManual[cs.shipDefId] || 0) * cs.cap, 0);
+      capLine.innerHTML = `Cargo capacity <b style="color:#e6edf3">${fmt(have)}</b> · collects what fits`;
+      send.disabled = !getShips().length || b.filter.size === 0;
+      refreshFuel();
+    };
+    for (const cs of cargoShips) {
+      const inp = numInput(b.cargoManual[cs.shipDefId] || 0, cs.avail);
+      inp.addEventListener('input', () => { b.cargoManual[cs.shipDefId] = Math.min(cs.avail, Math.max(0, parseInt(inp.value, 10) || 0)); updateSend(); });
+      cw.appendChild(fieldRow(`${cs.name} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, inp));
+    }
+    if (!cargoShips.length) cw.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">No cargo ships on this planet.</span>';
+    cw.appendChild(capLine);
+    getShips = () => cargoShips.map(cs => ({ shipDefId: cs.shipDefId, quantity: b.cargoManual[cs.shipDefId] || 0 })).filter(s => s.quantity > 0);
+    fuelSrc = b.srcPlanetId; fuelSys = b.outpost.systemId;
+    box.append(fuelLine);
+    updateSend();
+  } else if (b.mode === 'resource') {
+    head.innerHTML = `<b style="color:#e6edf3;">${toOutpost ? 'Supply outpost' : 'Deliver resources'}</b>` +
+      `<span style="color:#f0883e;">${b.src.name} → ${b.target.name}</span>` +
+      `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${b.target.name} to add</span>`;
     for (const [k, ent] of Object.entries(b.res)) {
       const r = RES_BY_K[k];
       const inp = numInput(ent.amount, ent.max);
       inp.addEventListener('input', () => { ent.amount = Math.min(ent.max, Math.max(0, parseInt(inp.value, 10) || 0)); refreshCargo(); });
       box.appendChild(fieldRow(`<img src="${IMG}/${r.icon}" width="15" height="15" style="width:15px;height:15px;"> ${r.label} <span style="color:#6e7681;">/ ${fmt(ent.max)}</span>`,
-        inp, () => { delete b.res[k]; b.cargoManual = null; if (!Object.keys(b.res).length) { builder = null; } renderBuilder(); }));
+        inp, () => { delete b.res[k]; b.cargoManual = null; if (!Object.keys(b.res).length) builder = null; renderBuilder(); }));
     }
-    // Cargo-ship configuration (auto-planned, editable).
-    const cargoShips = await sourceCargoShips();
-    const cargoWrap = document.createElement('div');
-    cargoWrap.style.cssText = 'border-top:1px solid #21262d; margin-top:10px; padding-top:8px;';
-    cargoWrap.innerHTML = '<div style="color:#8b949e; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Transport ships</div>';
-    box.appendChild(cargoWrap);
+    const cargoShips = await cargoShipsOf(b.src);
+    const cw = document.createElement('div'); cw.style.cssText = 'border-top:1px solid #21262d; margin-top:10px; padding-top:8px;';
+    cw.innerHTML = '<div style="color:#8b949e; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Transport ships</div>';
+    box.appendChild(cw);
     const capLine = document.createElement('div'); capLine.style.cssText = 'font-size:0.82rem; margin-top:4px;';
-
     const totalCargo = () => Object.values(b.res).reduce((s, e) => s + e.amount, 0);
-    if (b.cargoManual == null) {
-      const { plan } = planFleet(totalCargo(), cargoShips);
-      b.cargoManual = {}; for (const p of plan) b.cargoManual[p.shipDefId] = p.quantity;
-    }
-    const capOf = id => (cargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
+    if (b.cargoManual == null) { const { plan } = planFleet(totalCargo(), cargoShips); b.cargoManual = {}; for (const p of plan) b.cargoManual[p.shipDefId] = p.quantity; }
     const refreshCargo = () => {
       const need = totalCargo();
       const have = cargoShips.reduce((s, cs) => s + (b.cargoManual[cs.shipDefId] || 0) * cs.cap, 0);
@@ -361,20 +437,18 @@ async function renderBuilder() {
     for (const cs of cargoShips) {
       const inp = numInput(b.cargoManual[cs.shipDefId] || 0, cs.avail);
       inp.addEventListener('input', () => { b.cargoManual[cs.shipDefId] = Math.min(cs.avail, Math.max(0, parseInt(inp.value, 10) || 0)); refreshCargo(); });
-      cargoWrap.appendChild(fieldRow(`${cs.name} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, inp));
+      cw.appendChild(fieldRow(`${cs.name} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, inp));
     }
-    if (!cargoShips.length) cargoWrap.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">No cargo ships on this colony.</span>';
-    cargoWrap.appendChild(capLine);
-
+    if (!cargoShips.length) cw.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">No cargo ships on this colony.</span>';
+    cw.appendChild(capLine);
     getShips = () => cargoShips.map(cs => ({ shipDefId: cs.shipDefId, quantity: b.cargoManual[cs.shipDefId] || 0 })).filter(s => s.quantity > 0);
-    dispatchBody = () => ({
-      sourcePlanetId: b.src.id, targetPlanetId: b.target.id, missionType: 'deliver',
-      ships: getShips(),
-      cargo: Object.fromEntries(Object.entries(b.res).filter(([, e]) => e.amount > 0).map(([k, e]) => [RES_BY_K[k].cargo, e.amount])),
-    });
+    fuelSrc = b.src.id; fuelSys = b.target.systemId;
     box.append(fuelLine);
     refreshCargo();
-  } else {
+  } else {   // ship
+    head.innerHTML = `<b style="color:#e6edf3;">${toOutpost ? 'Deploy ships' : 'Relocate ships'}</b>` +
+      `<span style="color:#f0883e;">${b.src.name} → ${b.target.name}</span>` +
+      `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${b.target.name} to add</span>`;
     for (const [id, ent] of Object.entries(b.ships)) {
       const inp = numInput(ent.qty, ent.max);
       inp.addEventListener('input', () => { ent.qty = Math.min(ent.max, Math.max(0, parseInt(inp.value, 10) || 0)); refreshFuel(); send.disabled = !getShips().length; });
@@ -382,7 +456,7 @@ async function renderBuilder() {
         () => { delete b.ships[id]; if (!Object.keys(b.ships).length) builder = null; renderBuilder(); }));
     }
     getShips = () => Object.entries(b.ships).map(([id, e]) => ({ shipDefId: Number(id), quantity: e.qty })).filter(s => s.quantity > 0);
-    dispatchBody = () => ({ sourcePlanetId: b.src.id, targetPlanetId: b.target.id, missionType: 'transfer', ships: getShips(), cargo: {} });
+    fuelSrc = b.src.id; fuelSys = b.target.systemId;
     box.append(fuelLine);
     send.disabled = !getShips().length;
   }
@@ -391,16 +465,31 @@ async function renderBuilder() {
     const ships = getShips();
     if (!ships.length) { fuelLine.textContent = ''; return; }
     fuelLine.textContent = 'Fuel: …';
-    const est = await fuelEstimate(b.src.id, b.target.systemId, ships).catch(() => null);
+    const est = await fuelEstimate(fuelSrc, fuelSys, ships).catch(() => null);
     fuelLine.textContent = est ? `Fuel: ${fmt(est.fuelCost)} H · ETA ${fmtDur(est.travelTime)}${est.inRange === false ? ' · OUT OF RANGE' : ''}` : 'Fuel: —';
   }
   if (b.mode === 'ship') refreshFuel();
 
-  send.onclick = async () => {
+  // Endpoint + body per mode/target (payloads match the game's own requests).
+  function sendSpec() {
     const ships = getShips();
-    if (!ships.length) return;
+    if (b.mode === 'collect')
+      return { path: `/api/outposts/${b.outpost.id}/collect`, body: { sourcePlanetId: b.srcPlanetId, ships, resourceFilter: [...b.filter].map(k => RES_BY_K[k].cargo) } };
+    if (b.mode === 'resource') {
+      const resources = Object.fromEntries(Object.entries(b.res).filter(([, e]) => e.amount > 0).map(([k, e]) => [RES_BY_K[k].cargo, e.amount]));
+      return toOutpost
+        ? { path: `/api/outposts/${b.target.id}/supply`, body: { sourcePlanetId: b.src.id, ships, resources } }
+        : { path: '/api/fleet/dispatch', body: { sourcePlanetId: b.src.id, targetPlanetId: b.target.id, missionType: 'deliver', ships, cargo: resources } };
+    }
+    return toOutpost
+      ? { path: `/api/outposts/${b.target.id}/garrison`, body: { sourcePlanetId: b.src.id, ships } }
+      : { path: '/api/fleet/dispatch', body: { sourcePlanetId: b.src.id, targetPlanetId: b.target.id, missionType: 'transfer', ships, cargo: {} } };
+  }
+
+  send.onclick = async () => {
+    if (!getShips().length) return;
     send.disabled = true; status.textContent = 'Sending…';
-    try { await jpost('/api/fleet/dispatch', dispatchBody()); builder = null; refresh(); }
+    try { const s = sendSpec(); await jpost(s.path, s.body); builder = null; refresh(); }
     catch (e) { status.innerHTML = `<span style="color:#ff7b72;">${e.message}</span>`; send.disabled = false; }
   };
 
