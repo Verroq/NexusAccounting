@@ -4,6 +4,39 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.0] - 2026-07-09
+
+### Added
+- **Quartermaster** (in-game fleet & resource overview): a new panel giving a
+  fleet + stored-resource overview across all your colonies with drag-and-drop
+  transfers. Cards are grouped by kind in a 3-column layout (moons left, planets
+  centre, outposts right) with drag edge-autoscroll and boxed drag chips.
+  - **Per-resource cargo allocation** when planning a transfer, plus moon support.
+  - **Moon transfers** and correct moon-ownership id handling.
+  - **Outpost supply / deploy / collect** actions.
+  - **In-flight ships** shown from active missions.
+- **Scouting — nearest-planet debris collection**: a "Nearest planet" toggle in
+  the Live debris fields header. When on, each field's collection fleet launches
+  from your nearest owned planet (per-field, by galaxy-map distance) instead of
+  the single selected planet — driving both the Fuel Cost / Travel Time columns
+  and the actual launch. Persists across tabs/sessions.
+- **Battles — PvP combat**: ingest player-vs-player combat reports, show PvP rows
+  in the Battles table, and a CSV export button (fleets + rounds included; Excel
+  encoding fixed).
+- **Simulator**: defense buildings can now field multiple units; simulations
+  default to 100 runs.
+- **In-game User Guide** overlay.
+- **Object Finder — moon column**: shows moon types with slot counts,
+  colour-coded.
+- **API — proactive rate-limit throttle** to avoid hitting the game's limits.
+
+### Fixed
+- **Scrape**: tolerate a shipyard `403` (ships out on patrol) instead of failing
+  the whole scrape.
+- **Mining**: false `mining.deliveries` drift sourced from raid records.
+- Lint: removed unused params (`processPvpReports` ships, `numInput` max) and a
+  dead `missions` assignment.
+
 ## [1.6.9] - 2026-07-05
 
 ### Added
