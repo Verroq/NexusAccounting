@@ -108,7 +108,23 @@ async function jget(path) {
 }
 
 let overlay = null;
-function closeView() { if (overlay) { overlay.remove(); overlay = null; } }
+function closeView() { stopDragScroll(); if (overlay) { overlay.remove(); overlay = null; } }
+
+// Native drag disables wheel scrolling, so auto-scroll the overlay while the
+// dragged pointer sits near the top/bottom edge.
+let dragScrollY = null, dragScrollRAF = null;
+function startDragScroll() {
+  if (dragScrollRAF) return;
+  const step = () => {
+    if (!overlay || dragScrollY == null) { dragScrollRAF = null; return; }
+    const edge = 110, h = window.innerHeight;
+    if (dragScrollY < edge) overlay.scrollTop -= (edge - dragScrollY) * 1.6 + 6;
+    else if (dragScrollY > h - edge) overlay.scrollTop += (dragScrollY - (h - edge)) * 1.6 + 6;
+    dragScrollRAF = requestAnimationFrame(step);
+  };
+  dragScrollRAF = requestAnimationFrame(step);
+}
+function stopDragScroll() { if (dragScrollRAF) cancelAnimationFrame(dragScrollRAF); dragScrollRAF = null; dragScrollY = null; }
 
 async function openView() {
   if (overlay) { closeView(); return; }   // toggle
@@ -116,6 +132,10 @@ async function openView() {
   overlay.style.cssText = 'position:fixed; inset:0; z-index:2147483646; overflow:auto;' +
     'background:#080a10; padding:24px; box-sizing:border-box;';
   overlay.addEventListener('click', e => { if (e.target === overlay) closeView(); });
+  // Edge auto-scroll during a drag (drag events bubble from the chips).
+  overlay.addEventListener('dragstart', startDragScroll);
+  overlay.addEventListener('dragover', e => { dragScrollY = e.clientY; });
+  overlay.addEventListener('dragend', stopDragScroll);
 
   const page = document.createElement('div');
   page.style.cssText = 'max-width:1280px; margin:0 auto; color:#c9d1d9;';
@@ -231,11 +251,19 @@ function render(page, colonies, missions = []) {
   const flightList = [...flight.values()].filter(s => s.qty > 0).sort((a, b) => b.qty - a.qty);
   page.appendChild(shipBox(`In flight (${missions.length} mission${missions.length === 1 ? '' : 's'})`, flightList, 'None in flight.'));
 
-  // ── One card per colony: resources + ships ──
-  const grid = document.createElement('div');
-  grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px;';
-  for (const c of colonies) grid.appendChild(colonyCard(c));
-  page.appendChild(grid);
+  // ── Colony cards, grouped by kind ──
+  for (const [kind, label] of [['Planet', 'Planets'], ['Moon', 'Moons'], ['Outpost', 'Outposts']]) {
+    const group = colonies.filter(c => c.kind === kind);
+    if (!group.length) continue;
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'color:#8b949e; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; margin:18px 0 8px;';
+    lbl.textContent = `${label} (${group.length})`;
+    page.appendChild(lbl);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px;';
+    for (const c of group) grid.appendChild(colonyCard(c));
+    page.appendChild(grid);
+  }
 }
 
 // Which source→target moves are supported. Outpost/moon export only to a planet;
