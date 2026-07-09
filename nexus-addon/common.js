@@ -472,20 +472,6 @@ export function computeSeries(reports, mode, fieldGetters) {
   });
 }
 
-// Hourly series from report history. fieldGetters: { field: r => value }.
-export function computeHourlySeries(reports, fieldGetters) {
-  const map = {};
-  for (const r of reports) {
-    const hour = hourKey(r.created_at);
-    if (!map[hour]) {
-      map[hour] = { hour };
-      for (const f of Object.keys(fieldGetters)) map[hour][f] = 0;
-    }
-    for (const [f, get] of Object.entries(fieldGetters)) map[hour][f] += get(r);
-  }
-  return Object.values(map).sort((a, b) => a.hour.localeCompare(b.hour));
-}
-
 export const RESOURCE_SERIES = [
   { field: 'ore',          label: 'Ore',          color: '#f0883e' },
   { field: 'silicates',    label: 'Silicates',    color: '#56d364' },

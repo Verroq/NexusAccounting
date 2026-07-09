@@ -59,9 +59,9 @@ export let miningPage = 1;
 export function getMiningTotalsForMode(mode) {
   if (mode === 'all' && isUnfiltered() && !windowActive()) {
     return store.mining_totals || {
-      ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {},
+      ...emptyResources(),
       deliveries: 0, cycles: 0, drill_breakdowns: 0, ships_lost: 0,
-      stolen: { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} },
+      stolen: emptyResources(),
     };
   }
   return recordsForMode(store.mining_recent_reports, mode).reduce((t, r) => ({

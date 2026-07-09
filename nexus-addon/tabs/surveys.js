@@ -1,6 +1,6 @@
 // Surveys tab.
 
-import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, SCALE_OPTS, SERIES_GETTERS, appendExtraResourceCards, computeEventBreakdown, computeResourcesLost, computeSeries, filterZone, fmt, fuelForMode, getMode, inWindowRange, isUnfiltered, makeResourceLineChart, makeStatCard, recordsForMode, renderLostCards, store, windowActive, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, SCALE_OPTS, SERIES_GETTERS, appendExtraResourceCards, computeEventBreakdown, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getMode, inWindowRange, isUnfiltered, makeResourceLineChart, makeStatCard, recordsForMode, renderLostCards, store, windowActive, zoneCell } from '../common.js';
 
 export let chartResources, chartEvents, chartByEvent;
 
@@ -41,7 +41,7 @@ export function getTotalsForMode() {
 // Returns resources-lost for the current view.
 export function getResourcesLostForMode() {
   const mode = getMode();
-  if (mode === 'all' && surveyUnfiltered() && !windowActive()) return store.resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+  if (mode === 'all' && surveyUnfiltered() && !windowActive()) return store.resources_lost || emptyResources();
   return computeResourcesLost(surveyRecordsForMode(mode), store.ships || {});
 }
 

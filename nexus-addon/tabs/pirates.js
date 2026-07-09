@@ -1,6 +1,6 @@
 // Pirates tab.
 
-import { EXTRA_RES_KEYS_UI, PER_PAGE, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, store, windowActive, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, PER_PAGE, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, store, windowActive, zoneCell } from '../common.js';
 
 export let chartPirateLoot, chartPirateOutcomes;
 
@@ -25,7 +25,7 @@ export function getPirateTotalsForMode() {
 
 export function getPirateLostForMode() {
   const mode = getMode();
-  if (mode === 'all' && isUnfiltered() && !windowActive()) return store.pirate_resources_lost || { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {} };
+  if (mode === 'all' && isUnfiltered() && !windowActive()) return store.pirate_resources_lost || emptyResources();
   return computeResourcesLost(recordsForMode(store.pirate_recent_reports, mode), store.ships || {});
 }
 
