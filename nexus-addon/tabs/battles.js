@@ -4,7 +4,7 @@
 // there is no extra background aggregation or storage. Span = recent records.
 
 import {
-  PER_PAGE, fmt, makeStatCard, store, zoneCell, dayKey,
+  PER_PAGE, fmt, escapeHtml, makeStatCard, store, zoneCell, dayKey,
   computeResourcesLost, combinedLost, emptyResources,
   RESOURCE_WEIGHTS, RARE_WEIGHT, EXTRA_RES_KEYS_UI,
 } from '../common.js';
@@ -297,7 +297,7 @@ function numTd(v) {
   else { const s = document.createElement('span'); s.className = 'zero'; s.textContent = '—'; td.appendChild(s); }
   return td;
 }
-function shipHtml(x) { return `${imgHtml(x.name)}${x.qty}× ${x.name}`; }
+function shipHtml(x) { return `${imgHtml(x.name)}${x.qty}× ${escapeHtml(x.name)}`; }
 function fleetLine(label, list) {
   const items = (list || []).filter(x => x.qty);
   if (!items.length) return null;

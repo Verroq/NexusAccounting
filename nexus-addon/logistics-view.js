@@ -100,6 +100,8 @@ function fmtDur(sec) {
 }
 
 const fmt = n => Math.round(n || 0).toLocaleString();
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function jget(path) {
   const r = await fetch(path, { credentials: 'include' });
@@ -207,7 +209,7 @@ function shipBox(title, list, emptyMsg) {
   if (!list.length) chips.innerHTML = `<span style="color:#484f58;">${emptyMsg}</span>`;
   for (const s of list) {
     const chip = document.createElement('span'); chip.style.cssText = 'font-size:0.88rem;';
-    chip.innerHTML = `<b style="color:#e6edf3;">${fmt(s.qty)}</b>&times; <span style="color:#9aa4b2;">${s.name}</span>`;
+    chip.innerHTML = `<b style="color:#e6edf3;">${fmt(s.qty)}</b>&times; <span style="color:#9aa4b2;">${esc(s.name)}</span>`;
     chips.appendChild(chip);
   }
   sec.appendChild(chips);
@@ -303,7 +305,7 @@ function colonyCard(c) {
   });
   const head = document.createElement('div');
   head.style.cssText = 'display:flex; align-items:baseline; gap:8px; margin-bottom:8px;';
-  head.innerHTML = `<b style="color:#e6edf3;">${c.name}</b>` +
+  head.innerHTML = `<b style="color:#e6edf3;">${esc(c.name)}</b>` +
     `<span style="color:#8b949e; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em;">${c.kind}</span>`;
   card.appendChild(head);
 
@@ -353,7 +355,7 @@ function colonyCard(c) {
       const sp = document.createElement('span');
       const nm = (f.definition || {}).name || '#' + f.shipDefId;
       sp.style.cssText = 'display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:6px; border:1px solid transparent;';
-      sp.innerHTML = `<b style="color:#e6edf3;">${fmt(f.quantity)}</b>&times; <span style="color:#9aa4b2;">${nm}</span>`;
+      sp.innerHTML = `<b style="color:#e6edf3;">${fmt(f.quantity)}</b>&times; <span style="color:#9aa4b2;">${esc(nm)}</span>`;
       // Draggable → relocate these ships to another colony.
       const avail = (f.quantity || 0) - (f.damagedQuantity || 0);
       if (c.id != null && avail > 0) {
@@ -475,7 +477,7 @@ async function renderBuilder() {
     const planets = allColonies.filter(c => c.kind === 'Planet');
     const srcPlanet = planets.find(c => c.id === b.srcPlanetId) || planets[0];
     head.innerHTML = `<b style="color:#e6edf3;">Collect resources</b>` +
-      `<span style="color:#f0883e;">${srcPlanet ? srcPlanet.name : '?'} → ${b.outpost.name} → back</span>`;
+      `<span style="color:#f0883e;">${srcPlanet ? esc(srcPlanet.name) : '?'} → ${esc(b.outpost.name)} → back</span>`;
     // Source planet picker.
     const sel = document.createElement('select');
     sel.style.cssText = 'background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:4px 7px; border-radius:6px;';
@@ -536,7 +538,7 @@ async function renderBuilder() {
     for (const cs of cargoShips) {
       const inp = numInput(b.cargoManual[cs.shipDefId] || 0, cs.avail);
       inp.addEventListener('input', () => { b.cargoManual[cs.shipDefId] = Math.min(cs.avail, Math.max(0, parseInt(inp.value, 10) || 0)); updateSend(); });
-      cw.appendChild(fieldRow(`${cs.name} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, inp));
+      cw.appendChild(fieldRow(`${esc(cs.name)} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, inp));
     }
     if (!cargoShips.length) cw.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">No cargo ships on this planet.</span>';
     cw.appendChild(capLine);
@@ -547,8 +549,8 @@ async function renderBuilder() {
   } else if (b.mode === 'resource') {
     const rVerb = b.src.kind === 'Moon' ? 'Transfer resources' : b.target.kind === 'Moon' ? 'Send resources' : toOutpost ? 'Supply outpost' : 'Deliver resources';
     head.innerHTML = `<b style="color:#e6edf3;">${rVerb}</b>` +
-      `<span style="color:#f0883e;">${b.src.name} → ${b.target.name}</span>` +
-      `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${b.target.name} to add</span>`;
+      `<span style="color:#f0883e;">${esc(b.src.name)} → ${esc(b.target.name)}</span>` +
+      `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${esc(b.target.name)} to add</span>`;
     for (const [k, ent] of Object.entries(b.res)) {
       const r = RES_BY_K[k];
       const inp = numInput(ent.amount, ent.max);
@@ -575,7 +577,7 @@ async function renderBuilder() {
     for (const cs of cargoShips) {
       const inp = numInput(b.cargoManual[cs.shipDefId] || 0, cs.avail);
       inp.addEventListener('input', () => { b.cargoManual[cs.shipDefId] = Math.min(cs.avail, Math.max(0, parseInt(inp.value, 10) || 0)); refreshCargo(); });
-      cw.appendChild(fieldRow(`${cs.name} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, inp));
+      cw.appendChild(fieldRow(`${esc(cs.name)} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, inp));
     }
     if (!cargoShips.length) cw.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">No cargo ships on this colony.</span>';
     cw.appendChild(capLine);
@@ -586,12 +588,12 @@ async function renderBuilder() {
   } else {   // ship
     const sVerb = b.src.kind === 'Moon' ? 'Recall ships' : b.target.kind === 'Moon' ? 'Send ships' : toOutpost ? 'Deploy ships' : 'Relocate ships';
     head.innerHTML = `<b style="color:#e6edf3;">${sVerb}</b>` +
-      `<span style="color:#f0883e;">${b.src.name} → ${b.target.name}</span>` +
-      `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${b.target.name} to add</span>`;
+      `<span style="color:#f0883e;">${esc(b.src.name)} → ${esc(b.target.name)}</span>` +
+      `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${esc(b.target.name)} to add</span>`;
     for (const [id, ent] of Object.entries(b.ships)) {
       const inp = numInput(ent.qty, ent.max);
       inp.addEventListener('input', () => { ent.qty = Math.min(ent.max, Math.max(0, parseInt(inp.value, 10) || 0)); refreshFuel(); send.disabled = !getShips().length; });
-      box.appendChild(fieldRow(`${ent.name} <span style="color:#6e7681;">/ ${fmt(ent.max)}</span>`, inp,
+      box.appendChild(fieldRow(`${esc(ent.name)} <span style="color:#6e7681;">/ ${fmt(ent.max)}</span>`, inp,
         () => { delete b.ships[id]; if (!Object.keys(b.ships).length) builder = null; renderBuilder(); }));
     }
     getShips = () => Object.entries(b.ships).map(([id, e]) => ({ shipDefId: Number(id), quantity: e.qty })).filter(s => s.quantity > 0);

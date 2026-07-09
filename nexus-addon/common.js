@@ -333,6 +333,14 @@ export function fmt(n) {
   return n == null ? '0' : Number(n).toLocaleString();
 }
 
+// Escape a string for safe interpolation into an innerHTML template. Names
+// (ship/tech/colony) come from the game API or the player and must never be
+// trusted as markup.
+export function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 // ── Mode-aware data helpers ────────────────────────────────────────────────
 
 export function getMode() {
