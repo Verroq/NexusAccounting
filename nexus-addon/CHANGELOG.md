@@ -4,6 +4,15 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.1] - 2026-07-09
+
+### Fixed
+- **Quartermaster**: editing a resource amount now re-plans the transport fleet
+  to match, instead of leaving the ship counts on the first auto-plan.
+- **Excavator**: the +20% toggle now actually adds an Excavator to the launched
+  fleet (it previously only inflated the recommended capacity but never sent the
+  ship) — in both the live-search matches window and the Asteroids-tab dialog.
+
 ## [1.7.0] - 2026-07-09
 
 ### Added
