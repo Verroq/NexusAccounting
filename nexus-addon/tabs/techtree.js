@@ -1,6 +1,6 @@
 // Tech Tree tab — research from /api/research, laid out as a dependency graph.
 
-import { fmt, store, confirmDialog } from '../common.js';
+import { fmt, store, confirmDialog, escapeHtml } from '../common.js';
 import { loadAll } from '../dashboard.js';
 
 export const BRANCH_ORDER = ['military', 'science', 'economy'];
@@ -470,7 +470,7 @@ export function renderQueue() {
         ? ` <span class="tt-lab" title="needs lab L${t.requiredLabLevel}">🔒L${t.requiredLabLevel}</span>` : '';
       row.className = 'tt-queue-item' + (it.isTarget ? '' : ' dep');
       row.innerHTML = `<span class="seq">${i + 1}</span>` +
-        `<span class="nm">${t.name} L${it.level}${labTag}<br><span class="eta">${done}</span></span>`;
+        `<span class="nm">${escapeHtml(t.name)} L${it.level}${labTag}<br><span class="eta">${done}</span></span>`;
       if (isLaunchable(t, it.level)) {
         const go = document.createElement('button');
         go.className = 'go'; go.textContent = '▶';

@@ -14,8 +14,8 @@
     "notifications"
   ],
   "host_permissions": [
-    "*://*.nexuslegacy.space/*",
-    "*://nexuslegacy.space/*"
+    "https://*.nexuslegacy.space/*",
+    "https://nexuslegacy.space/*"
   ],
   "background": {
     "service_worker": "background-sw.js",
