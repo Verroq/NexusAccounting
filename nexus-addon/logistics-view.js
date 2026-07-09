@@ -555,6 +555,8 @@ async function renderBuilder() {
       const r = RES_BY_K[k];
       const inp = numInput(ent.amount, ent.max);
       inp.addEventListener('input', () => { ent.amount = Math.min(ent.max, Math.max(0, parseInt(inp.value, 10) || 0)); refreshCargo(); });
+      // Re-plan the fleet to match the new amount (on blur/enter, so focus isn't lost mid-typing).
+      inp.addEventListener('change', () => { b.cargoManual = planFleetMulti(amountsOf(), cargoShips).plan; renderBuilder(); });
       box.appendChild(fieldRow(`<img src="${IMG}/${r.icon}" width="15" height="15" style="width:15px;height:15px;"> ${r.label} <span style="color:#6e7681;">/ ${fmt(ent.max)}</span>`,
         inp, () => { delete b.res[k]; b.cargoManual = null; if (!Object.keys(b.res).length) builder = null; renderBuilder(); }));
     }
