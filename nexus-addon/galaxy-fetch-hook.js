@@ -7,6 +7,18 @@
 // and XHR since we don't know which transport the game uses.
 (function () {
   const PLANETS = /\/api\/galaxy\/systems\/\d+\/planets/;
+  // Also track which planet the page is currently showing: the SPA GETs
+  // /api/planets/{id} (the buildings/overview view is built from it). Relay the
+  // last id so building-upgrade.js can plan against the planet in view instead
+  // of asking the user to pick one.
+  const PLANET = /\/api\/planets\/(\d+)(?:[/?]|$)/;
+  let lastPlanetId = null;
+  function notePlanet(url) {
+    const m = PLANET.exec(url || '');
+    if (!m) return;
+    lastPlanetId = Number(m[1]);
+    window.postMessage({ __nxCurrentPlanet: lastPlanetId }, window.location.origin);
+  }
 
   // Buffer every field we relay, keyed by id. The content script (galaxy-fields.js)
   // attaches its `message` listener at document_idle, which can be *after* the game
@@ -33,12 +45,16 @@
     if (e.data && e.data.__nxRequestFields && buffer.size) {
       window.postMessage({ __nxFields: [...buffer.values()] }, window.location.origin);
     }
+    if (e.data && e.data.__nxRequestCurrentPlanet && lastPlanetId != null) {
+      window.postMessage({ __nxCurrentPlanet: lastPlanetId }, window.location.origin);
+    }
   });
 
   const origFetch = window.fetch;
   window.fetch = function (...args) {
     const p = origFetch.apply(this, args);
     const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+    notePlanet(url);
     if (PLANETS.test(url)) {
       p.then(r => r.clone().text()).then(relay)
         .catch(e => console.debug('[nx] planets fetch relay failed', e));
@@ -49,6 +65,7 @@
   const origOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     this.__nxUrl = url;
+    notePlanet(url);
     return origOpen.call(this, method, url, ...rest);
   };
   const origSend = XMLHttpRequest.prototype.send;
