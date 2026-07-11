@@ -4,6 +4,30 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.2] - 2026-07-12
+
+### Added
+- **Tech upgrade planner**: a 🔬 button on each research card computes the
+  cumulative research cost (ore/silicates/hydrogen/alloys + rare) to a target
+  level and hands the deficit to the Quartermaster. Research is account-global,
+  so a destination-planet picker chooses where it will run.
+- **Upgrade to-do list**: a queue beside either upgrade planner. Queue building
+  and tech steps with ➕ To-do; drag to reorder (labels recompute in order,
+  per-planet for buildings, global for tech); each card shows its planet and,
+  when clicked, stages that step's resource deficit in the Quartermaster.
+- **Deliver/Transfer switch**: planet→planet resource dispatches in the
+  Quartermaster can now be sent as a transfer (haulers stay) instead of a
+  delivery (haulers return).
+
+### Fixed
+- Date-flaky `purgeOldData` test (records fell in the same month early in the
+  month, colliding archive keys and double-counting).
+- Removed an unused variable flagged by lint.
+
+### Changed
+- CI: bumped `actions/checkout` and `actions/setup-node` to v5 (Node 20
+  deprecation).
+
 ## [1.7.1] - 2026-07-09
 
 ### Fixed
