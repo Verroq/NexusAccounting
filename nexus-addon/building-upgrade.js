@@ -66,6 +66,33 @@ async function fetchPlanet(id) {
   return r.json();
 }
 
+// The card image name carries a planet-type suffix the definition key lacks
+// (e.g. hydrogen_processor_gas_giant → hydrogen_processor). Match exact, else
+// the longest definition key that's a prefix of the image name.
+function findBuilding(d, buildingKey) {
+  const builds = d.buildings || [];
+  return builds.find(x => x?.definition?.key === buildingKey)
+    || builds.filter(x => x?.definition?.key && buildingKey.startsWith(x.definition.key + '_'))
+             .sort((a, c) => c.definition.key.length - a.definition.key.length)[0];
+}
+
+// Deficit (need − on-planet stock) to take a building from→target on a planet.
+// Exposed for the to-do list (upgrade-queue.js) to stage a delivery on click.
+window.__nxUpgradeDeficit = window.__nxUpgradeDeficit || {};
+window.__nxUpgradeDeficit.building = async (buildingKey, planetId, from, target) => {
+  const d = await fetchPlanet(planetId);
+  const pl = d.planet || d;
+  const b = findBuilding(d, buildingKey);
+  if (!b) return {};
+  const need = upgradeCost(b.definition, from, target);
+  const deficit = {};
+  for (const r of COST_RES) {
+    const short = Math.max(0, (need[r.k] || 0) - (pl[r.k] || 0));
+    if (short > 0) deficit[r.cargo] = short;
+  }
+  return deficit;
+};
+
 let panel = null;
 function closePanel() { if (panel) { panel.remove(); panel = null; } }
 
@@ -82,6 +109,7 @@ async function openPlanner(buildingKey) {
     'width:440px; max-width:92vw; max-height:88vh; overflow:auto; padding:18px 20px;';
   overlay.appendChild(box);
   document.body.appendChild(overlay);
+  if (window.__nxQueue) window.__nxQueue.mountPanel(overlay);
 
   const title = document.createElement('h2');
   title.style.cssText = 'margin:0 0 12px; font-size:1.2rem;';
@@ -139,11 +167,20 @@ async function openPlanner(buildingKey) {
   const sendBtn = document.createElement('button');
   sendBtn.textContent = 'Send deficit via Quartermaster';
   sendBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #2ea043; background:#238636; color:#fff; cursor:pointer;';
+  const addBtn = document.createElement('button');
+  addBtn.textContent = '➕ To-do';
+  addBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer; margin-right:auto;';
+  addBtn.onclick = () => {
+    if (!state || !window.__nxQueue) return;
+    window.__nxQueue.add({ kind: 'building', key: buildingKey, name: state.def.name,
+      planet: pName.textContent, planetId: currentPlanetId,
+      from: state.level, target: parseInt(lvlInp.value, 10) || state.level });
+  };
   const closeBtn = document.createElement('button');
   closeBtn.textContent = 'Close';
   closeBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer;';
   closeBtn.onclick = closePanel;
-  actions.append(closeBtn, sendBtn);
+  actions.append(addBtn, closeBtn, sendBtn);
   box.appendChild(actions);
 
   let state = null;   // { def, level, stock } for the selected planet
@@ -156,13 +193,7 @@ async function openPlanner(buildingKey) {
     catch (e) { info.textContent = `Error: ${e.message}`; return; }
     const pl = d.planet || d;
     if (pl.name) pName.textContent = pl.name;
-    // The card image name carries a planet-type suffix the definition key lacks
-    // (e.g. hydrogen_processor_gas_giant → hydrogen_processor). Match exact, else
-    // the longest definition key that's a prefix of the image name.
-    const builds = d.buildings || [];
-    const b = builds.find(x => x?.definition?.key === buildingKey)
-      || builds.filter(x => x?.definition?.key && buildingKey.startsWith(x.definition.key + '_'))
-               .sort((a, c) => c.definition.key.length - a.definition.key.length)[0];
+    const b = findBuilding(d, buildingKey);
     if (!b) { info.textContent = `“${buildingKey}” isn't built on this planet.`; lvlInp.disabled = true; return; }
     lvlInp.disabled = false;
     const def = b.definition;
@@ -235,10 +266,10 @@ function injectButtons() {
     const btn = document.createElement('button');
     btn.className = 'nx-upgrade-btn';
     btn.type = 'button';
-    btn.textContent = '⬆';
+    btn.textContent = '🏗️';
     btn.title = 'Plan upgrade resources (addon)';
-    btn.style.cssText = 'position:absolute; top:2px; right:2px; z-index:5; width:20px; height:20px; padding:0;' +
-      'line-height:18px; font-size:12px; border-radius:5px; border:1px solid #2ea043; background:#0d1117cc;' +
+    btn.style.cssText = 'position:absolute; top:1px; right:1px; z-index:5; width:26px; height:26px; padding:0;' +
+      'line-height:24px; font-size:15px; border-radius:6px; border:1px solid #2ea043; background:#0d1117cc;' +
       'color:#56d364; cursor:pointer;';
     btn.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); openPlanner(key); });
     card.appendChild(btn);
