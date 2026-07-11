@@ -259,7 +259,9 @@ test('purgeOldData drops records older than the window, keeps recent', async () 
   const now = Date.now();
   const iso = ms => new Date(ms).toISOString();
   const fresh = iso(now - 1 * 86400000);   // 1 day old — kept
-  const old = iso(now - 10 * 86400000);    // 10 days old — purged
+  const old = iso(now - 40 * 86400000);    // 40 days old — purged (>31d apart from
+                                           // fresh so it always lands in an earlier
+                                           // calendar month, distinct archive key)
   const store = makeBrowserStub({
     ships: {},
     archive_index: { survey: { months: [old.slice(0, 7), fresh.slice(0, 7)], count: 2 },

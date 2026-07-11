@@ -61,6 +61,21 @@
       "matches": ["https://s0.nexuslegacy.space/*"],
       "js": ["logistics-view.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://s0.nexuslegacy.space/*"],
+      "js": ["upgrade-queue.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://s0.nexuslegacy.space/*"],
+      "js": ["building-upgrade.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://s0.nexuslegacy.space/*"],
+      "js": ["tech-upgrade.js"],
+      "run_at": "document_idle"
     }
   ],
   "icons": {

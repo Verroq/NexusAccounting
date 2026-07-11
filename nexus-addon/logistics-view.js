@@ -13,6 +13,7 @@
 if (!window.__nxLogisticsView) {
 window.__nxLogisticsView = true;
 (function () {
+const ext = (typeof browser !== 'undefined' ? browser : chrome);
 const IMG = '/images/resources';
 // Colony resource fields (camelCase, as the planet/outpost APIs return them) →
 // label + icon filename.
@@ -197,6 +198,60 @@ async function openView() {
   }
   if (!overlay) return;
   render(page, colonies, missions);
+  applyPendingDeliver();
+}
+
+// Prefill a planet→planet resource delivery, e.g. from the building-upgrade
+// planner. `resByCargoKey` is { cargoKey: amount } (snake keys, as dispatch
+// wants). Opens the Quartermaster and stages a delivery from the planet holding
+// the most of what's needed, capped to that source's stock (user can adjust).
+let pendingDeliver = null;
+window.__nxDeliverToPlanet = async (targetPlanetId, resByCargoKey) => {
+  pendingDeliver = { targetPlanetId, resByCargoKey };
+  if (!overlay) await openView(); else applyPendingDeliver();
+};
+async function applyPendingDeliver() {
+  if (!pendingDeliver || !allColonies.length) return;
+  const { targetPlanetId, resByCargoKey } = pendingDeliver;
+  pendingDeliver = null;
+  const target = allColonies.find(c => c.id === targetPlanetId && c.kind === 'Planet');
+  if (!target) return;
+  const needByK = {};
+  for (const [cargo, amt] of Object.entries(resByCargoKey)) {
+    const r = RESOURCES.find(x => x.cargo === cargo);
+    if (r && amt > 0) needByK[r.k] = amt;
+  }
+  const needKeys = Object.keys(needByK);
+  if (!needKeys.length) return;
+
+  const cands = allColonies.filter(c => c.kind === 'Planet' && c.id !== targetPlanetId);
+  if (!cands.length) return;
+
+  // Distance target↔candidate from cached galaxy-map coords (background).
+  const sysIds = [...new Set([target.systemId, ...cands.map(c => c.systemId)].filter(x => x != null))];
+  let coords = {};
+  try { coords = (await ext.runtime.sendMessage({ type: 'GET_SYSTEM_COORDS', ids: sysIds })) || {}; } catch { coords = {}; }
+  const distTo = c => {
+    const a = coords[target.systemId], b = coords[c.systemId];
+    return (a && b) ? Math.hypot(b.x - a.x, b.y - a.y) : Infinity;
+  };
+  const sumHave = c => needKeys.reduce((s, k) => s + Math.min(needByK[k], (c.res && c.res[k]) || 0), 0);
+  const covers = c => needKeys.every(k => ((c.res && c.res[k]) || 0) >= needByK[k]);
+
+  // Prefer the NEAREST planet that fully covers the need. If none fully covers,
+  // fall back to the planet holding the most of it (tie-break by distance).
+  const full = cands.filter(covers);
+  const src = full.length
+    ? full.sort((a, b) => (distTo(a) - distTo(b)) || (sumHave(b) - sumHave(a)))[0]
+    : cands.sort((a, b) => (sumHave(b) - sumHave(a)) || (distTo(a) - distTo(b)))[0];
+  if (!src) return;
+  builder = { src, target, mode: 'resource', res: {}, ships: {}, cargoManual: null };
+  for (const [k, need] of Object.entries(needByK)) {
+    const avail = Math.floor((src.res && src.res[k]) || 0);
+    builder.res[k] = { amount: Math.min(need, avail), max: avail };
+  }
+  renderBuilder();
+  if (builderEl) builderEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // A titled box of ship chips (qty × name) — used for stationed + in-flight totals.
@@ -444,9 +499,34 @@ function numInput(value) {
   const i = document.createElement('input');
   i.type = 'text'; i.inputMode = 'numeric';
   i.value = String(value);
-  i.style.cssText = 'width:120px; background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:4px 7px; border-radius:6px; text-align:right;';
+  i.style.cssText = 'width:76px; background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:4px 7px; border-radius:6px; text-align:right;';
   i.addEventListener('input', () => { const c = i.value.replace(/[^\d]/g, ''); if (c !== i.value) i.value = c; });
   return i;
+}
+// Wrap a numInput with −/+ steppers and a Max button. Buttons set the value and
+// fire input+change so the field's existing handlers re-run. `max` (when set)
+// caps the value and enables the Max button.
+function withStepper(inp, max) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex; align-items:center; gap:4px;';
+  const mkBtn = txt => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = txt;
+    b.style.cssText = 'background:#21262d; border:1px solid #30363d; color:#e6edf3; border-radius:6px; padding:4px 8px; cursor:pointer; line-height:1;';
+    return b;
+  };
+  const commit = v => {
+    v = Math.max(0, Math.floor(v || 0));
+    if (max != null && isFinite(max)) v = Math.min(max, v);
+    inp.value = String(v);
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const cur = () => parseInt(inp.value, 10) || 0;
+  const minus = mkBtn('−'); minus.onclick = () => commit(cur() - 1);
+  const plus = mkBtn('+'); plus.onclick = () => commit(cur() + 1);
+  wrap.append(minus, inp, plus);
+  if (max != null && isFinite(max)) { const mx = mkBtn('Max'); mx.onclick = () => commit(max); wrap.append(mx); }
+  return wrap;
 }
 
 async function renderBuilder() {
@@ -519,7 +599,7 @@ async function renderBuilder() {
       b.cargoManual = planFleetMulti(collectAmounts(), cargoShips).plan;
       renderBuilder();
     });
-    box.appendChild(fieldRow('<span style="color:#9aa4b2;">Target amount (auto-plan ships)</span>', targetInp));
+    box.appendChild(fieldRow('<span style="color:#9aa4b2;">Target amount (auto-plan ships)</span>', withStepper(targetInp, availableOf())));
     const cw = document.createElement('div'); cw.style.cssText = 'border-top:1px solid #21262d; margin-top:6px; padding-top:8px;';
     cw.innerHTML = '<div style="color:#8b949e; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Transport ships</div>';
     box.appendChild(cw);
@@ -538,7 +618,7 @@ async function renderBuilder() {
     for (const cs of cargoShips) {
       const inp = numInput(b.cargoManual[cs.shipDefId] || 0, cs.avail);
       inp.addEventListener('input', () => { b.cargoManual[cs.shipDefId] = Math.min(cs.avail, Math.max(0, parseInt(inp.value, 10) || 0)); updateSend(); });
-      cw.appendChild(fieldRow(`${esc(cs.name)} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, inp));
+      cw.appendChild(fieldRow(`${esc(cs.name)} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, withStepper(inp, cs.avail)));
     }
     if (!cargoShips.length) cw.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">No cargo ships on this planet.</span>';
     cw.appendChild(capLine);
@@ -551,6 +631,41 @@ async function renderBuilder() {
     head.innerHTML = `<b style="color:#e6edf3;">${rVerb}</b>` +
       `<span style="color:#f0883e;">${esc(b.src.name)} → ${esc(b.target.name)}</span>` +
       `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${esc(b.target.name)} to add</span>`;
+    // Mission switch (planet → planet only): deliver = haulers drop cargo and
+    // return; transfer = haulers stay at the destination. Other endpoints (moon/
+    // outpost) don't take this choice.
+    if (b.src.kind === 'Planet' && b.target.kind === 'Planet') {
+      if (!b.deliverMode) b.deliverMode = 'deliver';
+      const seg = document.createElement('div');
+      seg.style.cssText = 'display:inline-flex; border:1px solid #30363d; border-radius:7px; overflow:hidden;';
+      const mk = (mode, label, title) => {
+        const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = label; btn.title = title;
+        btn.__paint = () => { btn.style.cssText = `padding:4px 12px; border:none; cursor:pointer; font-size:0.85rem; ${b.deliverMode === mode ? 'background:#1f6feb; color:#fff;' : 'background:#161b22; color:#9aa4b2;'}`; };
+        btn.__paint();
+        btn.onclick = () => { b.deliverMode = mode; seg.querySelectorAll('button').forEach(x => x.__paint()); };
+        return btn;
+      };
+      seg.append(mk('deliver', 'Deliver', 'Haulers drop the cargo and return'),
+                 mk('transfer', 'Transfer', 'Haulers stay at the destination'));
+      box.appendChild(fieldRow('<span style="color:#9aa4b2;">Mission</span>', seg));
+    }
+    // Source picker — swap which planet the resources ship from (defaults to the
+    // auto-chosen one). Changing it re-caps each amount to the new stock and
+    // re-plans ships, since a different planet has different haulers.
+    const srcOpts = allColonies.filter(c => c.id !== b.target.id && c.kind !== 'Outpost' && validCombo({ type: 'resource', src: c }, b.target));
+    if (srcOpts.length > 1) {
+      const sel = document.createElement('select');
+      sel.style.cssText = 'background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:4px 7px; border-radius:6px;';
+      for (const c of srcOpts) { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; if (c.id === b.src.id) o.selected = true; sel.appendChild(o); }
+      sel.addEventListener('change', () => {
+        const ns = srcOpts.find(c => c.id === Number(sel.value)); if (!ns) return;
+        b.src = ns;
+        for (const [rk, ent] of Object.entries(b.res)) { ent.max = Math.floor((ns.res && ns.res[rk]) || 0); ent.amount = Math.min(ent.amount, ent.max); }
+        b.cargoManual = null;
+        renderBuilder();
+      });
+      box.appendChild(fieldRow('<span style="color:#9aa4b2;">From planet</span>', sel));
+    }
     for (const [k, ent] of Object.entries(b.res)) {
       const r = RES_BY_K[k];
       const inp = numInput(ent.amount, ent.max);
@@ -558,7 +673,7 @@ async function renderBuilder() {
       // Re-plan the fleet to match the new amount (on blur/enter, so focus isn't lost mid-typing).
       inp.addEventListener('change', () => { b.cargoManual = planFleetMulti(amountsOf(), cargoShips).plan; renderBuilder(); });
       box.appendChild(fieldRow(`<img src="${IMG}/${r.icon}" width="15" height="15" style="width:15px;height:15px;"> ${r.label} <span style="color:#6e7681;">/ ${fmt(ent.max)}</span>`,
-        inp, () => { delete b.res[k]; b.cargoManual = null; if (!Object.keys(b.res).length) builder = null; renderBuilder(); }));
+        withStepper(inp, ent.max), () => { delete b.res[k]; b.cargoManual = null; if (!Object.keys(b.res).length) builder = null; renderBuilder(); }));
     }
     const cargoShips = await cargoShipsOf(b.src, Object.keys(b.res).map(k => RES_BY_K[k].cargo));
     const cw = document.createElement('div'); cw.style.cssText = 'border-top:1px solid #21262d; margin-top:10px; padding-top:8px;';
@@ -579,7 +694,7 @@ async function renderBuilder() {
     for (const cs of cargoShips) {
       const inp = numInput(b.cargoManual[cs.shipDefId] || 0, cs.avail);
       inp.addEventListener('input', () => { b.cargoManual[cs.shipDefId] = Math.min(cs.avail, Math.max(0, parseInt(inp.value, 10) || 0)); refreshCargo(); });
-      cw.appendChild(fieldRow(`${esc(cs.name)} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, inp));
+      cw.appendChild(fieldRow(`${esc(cs.name)} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, withStepper(inp, cs.avail)));
     }
     if (!cargoShips.length) cw.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">No cargo ships on this colony.</span>';
     cw.appendChild(capLine);
@@ -595,7 +710,7 @@ async function renderBuilder() {
     for (const [id, ent] of Object.entries(b.ships)) {
       const inp = numInput(ent.qty, ent.max);
       inp.addEventListener('input', () => { ent.qty = Math.min(ent.max, Math.max(0, parseInt(inp.value, 10) || 0)); refreshFuel(); send.disabled = !getShips().length; });
-      box.appendChild(fieldRow(`${esc(ent.name)} <span style="color:#6e7681;">/ ${fmt(ent.max)}</span>`, inp,
+      box.appendChild(fieldRow(`${esc(ent.name)} <span style="color:#6e7681;">/ ${fmt(ent.max)}</span>`, withStepper(inp, ent.max),
         () => { delete b.ships[id]; if (!Object.keys(b.ships).length) builder = null; renderBuilder(); }));
     }
     getShips = () => Object.entries(b.ships).map(([id, e]) => ({ shipDefId: Number(id), quantity: e.qty })).filter(s => s.quantity > 0);
@@ -633,7 +748,7 @@ async function renderBuilder() {
         ? { path: `/api/outposts/${tgt.id}/supply`, body: { sourcePlanetId: src.id, ships, resources } }
         : { path: `/api/outposts/${tgt.id}/garrison`, body: { sourcePlanetId: src.id, ships } };
     return b.mode === 'resource'   // planet → planet
-      ? { path: '/api/fleet/dispatch', body: { sourcePlanetId: src.id, targetPlanetId: tgt.id, missionType: 'deliver', ships, cargo: resources } }
+      ? { path: '/api/fleet/dispatch', body: { sourcePlanetId: src.id, targetPlanetId: tgt.id, missionType: b.deliverMode || 'deliver', ships, cargo: resources } }
       : { path: '/api/fleet/dispatch', body: { sourcePlanetId: src.id, targetPlanetId: tgt.id, missionType: 'transfer', ships, cargo: {} } };
   }
 
