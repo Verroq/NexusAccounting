@@ -2458,7 +2458,6 @@ function routeIntercepted(url, json) {
       return;
     }
     if (url.includes('/api/fleet/reports')) {   // PvP (distinct from *-reports)
-      const { ships } = await browser.storage.local.get('ships');
       await processPvpReports(json.reports || []);
       return;
     }
