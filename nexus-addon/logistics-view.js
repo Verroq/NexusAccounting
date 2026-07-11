@@ -631,6 +631,24 @@ async function renderBuilder() {
     head.innerHTML = `<b style="color:#e6edf3;">${rVerb}</b>` +
       `<span style="color:#f0883e;">${esc(b.src.name)} → ${esc(b.target.name)}</span>` +
       `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${esc(b.target.name)} to add</span>`;
+    // Mission switch (planet → planet only): deliver = haulers drop cargo and
+    // return; transfer = haulers stay at the destination. Other endpoints (moon/
+    // outpost) don't take this choice.
+    if (b.src.kind === 'Planet' && b.target.kind === 'Planet') {
+      if (!b.deliverMode) b.deliverMode = 'deliver';
+      const seg = document.createElement('div');
+      seg.style.cssText = 'display:inline-flex; border:1px solid #30363d; border-radius:7px; overflow:hidden;';
+      const mk = (mode, label, title) => {
+        const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = label; btn.title = title;
+        btn.__paint = () => { btn.style.cssText = `padding:4px 12px; border:none; cursor:pointer; font-size:0.85rem; ${b.deliverMode === mode ? 'background:#1f6feb; color:#fff;' : 'background:#161b22; color:#9aa4b2;'}`; };
+        btn.__paint();
+        btn.onclick = () => { b.deliverMode = mode; seg.querySelectorAll('button').forEach(x => x.__paint()); };
+        return btn;
+      };
+      seg.append(mk('deliver', 'Deliver', 'Haulers drop the cargo and return'),
+                 mk('transfer', 'Transfer', 'Haulers stay at the destination'));
+      box.appendChild(fieldRow('<span style="color:#9aa4b2;">Mission</span>', seg));
+    }
     // Source picker — swap which planet the resources ship from (defaults to the
     // auto-chosen one). Changing it re-caps each amount to the new stock and
     // re-plans ships, since a different planet has different haulers.
@@ -730,7 +748,7 @@ async function renderBuilder() {
         ? { path: `/api/outposts/${tgt.id}/supply`, body: { sourcePlanetId: src.id, ships, resources } }
         : { path: `/api/outposts/${tgt.id}/garrison`, body: { sourcePlanetId: src.id, ships } };
     return b.mode === 'resource'   // planet → planet
-      ? { path: '/api/fleet/dispatch', body: { sourcePlanetId: src.id, targetPlanetId: tgt.id, missionType: 'deliver', ships, cargo: resources } }
+      ? { path: '/api/fleet/dispatch', body: { sourcePlanetId: src.id, targetPlanetId: tgt.id, missionType: b.deliverMode || 'deliver', ships, cargo: resources } }
       : { path: '/api/fleet/dispatch', body: { sourcePlanetId: src.id, targetPlanetId: tgt.id, missionType: 'transfer', ships, cargo: {} } };
   }
 
