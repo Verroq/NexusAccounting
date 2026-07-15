@@ -77,23 +77,16 @@ function ownedQty(fleet, shipKey) {
   return f ? Math.max(0, (f.quantity || 0) - (f.damagedQuantity || 0)) : 0;
 }
 
-// Deficit (need − stock on planet) to build `target − from` more of a ship
-// there. Exposed for the to-do list (upgrade-queue.js) to stage a delivery on
-// click.
-window.__nxUpgradeDeficit = window.__nxUpgradeDeficit || {};
-window.__nxUpgradeDeficit.ship = async (shipKey, planetId, from, target) => {
+// Resource cost (dispatch cargo keys) to build `target − from` more of a ship
+// on a planet. Exposed for the to-do list (upgrade-queue.js), which sums this
+// across every selected item and subtracts planet stock once — not per item,
+// or a shared stock pool would get double-counted as covering each item.
+window.__nxUpgradeNeed = window.__nxUpgradeNeed || {};
+window.__nxUpgradeNeed.ship = async (shipKey, planetId, from, target) => {
   const sd = await fetchJSON(`/api/planets/${planetId}/shipyard`);
   const s = findShip(sd.ships, shipKey);
   if (!s) return {};
-  const need = buildCost(s, Math.max(0, target - from));
-  const d = await fetchJSON(`/api/planets/${planetId}`);
-  const pl = d.planet || d;
-  const deficit = {};
-  for (const [cargo, n] of Object.entries(need)) {
-    const short = Math.max(0, n - (pl[camel(cargo)] || 0));
-    if (short > 0) deficit[cargo] = short;
-  }
-  return deficit;
+  return buildCost(s, Math.max(0, target - from));
 };
 
 let panel = null;

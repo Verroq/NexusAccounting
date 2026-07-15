@@ -76,21 +76,19 @@ function findBuilding(d, buildingKey) {
              .sort((a, c) => c.definition.key.length - a.definition.key.length)[0];
 }
 
-// Deficit (need − on-planet stock) to take a building from→target on a planet.
-// Exposed for the to-do list (upgrade-queue.js) to stage a delivery on click.
-window.__nxUpgradeDeficit = window.__nxUpgradeDeficit || {};
-window.__nxUpgradeDeficit.building = async (buildingKey, planetId, from, target) => {
+// Resource cost (dispatch cargo keys) to take a building from→target on a
+// planet. Exposed for the to-do list (upgrade-queue.js), which sums this
+// across every selected item and subtracts planet stock once — not per item,
+// or a shared stock pool would get double-counted as covering each item.
+window.__nxUpgradeNeed = window.__nxUpgradeNeed || {};
+window.__nxUpgradeNeed.building = async (buildingKey, planetId, from, target) => {
   const d = await fetchPlanet(planetId);
-  const pl = d.planet || d;
   const b = findBuilding(d, buildingKey);
   if (!b) return {};
   const need = upgradeCost(b.definition, from, target);
-  const deficit = {};
-  for (const r of COST_RES) {
-    const short = Math.max(0, (need[r.k] || 0) - (pl[r.k] || 0));
-    if (short > 0) deficit[r.cargo] = short;
-  }
-  return deficit;
+  const out = {};
+  for (const r of COST_RES) { if (need[r.k]) out[r.cargo] = need[r.k]; }
+  return out;
 };
 
 let panel = null;
