@@ -1,6 +1,7 @@
-// Shared upgrade to-do list for the building- and tech-upgrade planners. Runs in
-// the same isolated world as both (all content scripts of one extension share
-// one `window`), so it just hangs an API off `window.__nxQueue`:
+// Shared upgrade to-do list for the building-, tech-, and ship-upgrade
+// planners. Runs in the same isolated world as all three (all content
+// scripts of one extension share one `window`), so it just hangs an API off
+// `window.__nxQueue`:
 //   __nxQueue.add({ kind, key, name, from, target })  — queue an item
 //   __nxQueue.mountPanel(overlay)                      — render the list beside a planner
 // The queue persists in ext.storage.local and is reorderable by drag & drop.
@@ -8,7 +9,7 @@ if (!window.__nxQueue) {
 (function () {
 const ext = (typeof browser !== 'undefined' ? browser : chrome);
 const KEY = 'nx_upgrade_queue';
-const ICON = { building: '🏗️', tech: '🔬' };
+const ICON = { building: '🏗️', tech: '🔬', ship: '🚀' };
 
 let items = [];
 let loaded = false;
@@ -34,11 +35,12 @@ function migrate(it) {
 // Resolve each card's displayed from→target from list order: per building/tech,
 // start at its base game level and let each successive card continue from the
 // previous one's target.
-// Chain identity: buildings are per-planet (Silicate Mine on planet A is a
-// separate chain from the same building on planet B), so include the planet.
-// Research is account-global — one chain per tech regardless of destination.
+// Chain identity: buildings and ships are per-planet (Silicate Mine — or a
+// shipyard build — on planet A is a separate chain from the same one on
+// planet B), so include the planet. Research is account-global — one chain
+// per tech regardless of destination.
 function chainId(it) {
-  return it.kind + ':' + it.key + (it.kind === 'building' ? ':' + (it.planet || '') : '');
+  return it.kind + ':' + it.key + (it.kind === 'building' || it.kind === 'ship' ? ':' + (it.planet || '') : '');
 }
 function chain() {
   // The starting level of a chain is shared across its cards — take the lowest
