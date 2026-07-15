@@ -52,6 +52,11 @@ let allColonies = [];  // current colonies (for the collect source-planet picker
 
 // Effective cargo capacity: base × (1 + cargo research + commander + shuttle
 // bonus), fetched once. Mirrors the Scouting tab's hauler sizing.
+// Per-ship capacity is right — confirmed in-game bulk_carrier shows 4500 =
+// 3000 × (1 + general 0.40 + commander 0.10). A real dispatch of 2 such ships
+// was rejected at "9000 > 8400" — that gap is NOT a per-ship bonus bug, still
+// unexplained (fuel reserved out of the hold for the trip? a fleet-level cap
+// distinct from ship sum?). Needs more data before touching this formula again.
 let _cargoCtx = null;
 async function cargoContext() {
   if (_cargoCtx) return _cargoCtx;
@@ -577,6 +582,7 @@ async function renderBuilder() {
   clear.onclick = () => { builder = null; renderBuilder(); };
 
   let getShips = () => [];
+  let getCargoNeed = () => 0;   // total resource units being sent (resource mode only)
   let fuelSrc, fuelSys;
 
   if (b.mode === 'collect') {
@@ -708,6 +714,7 @@ async function renderBuilder() {
     const capLine = document.createElement('div'); capLine.style.cssText = 'font-size:0.82rem; margin-top:4px;';
     const amountsOf = () => Object.fromEntries(Object.entries(b.res).map(([k, e]) => [RES_BY_K[k].cargo, e.amount]));
     const totalCargo = () => Object.values(b.res).reduce((s, e) => s + e.amount, 0);
+    getCargoNeed = () => totalCargo();
     if (b.cargoManual == null) b.cargoManual = planFleetMulti(amountsOf(), cargoShips).plan;
     const refreshCargo = () => {
       const need = totalCargo();
@@ -751,6 +758,20 @@ async function renderBuilder() {
     fuelLine.textContent = 'Fuel: …';
     const est = await fuelEstimate(fuelSrc, fuelSys, ships).catch(() => null);
     fuelLine.textContent = est ? `Fuel: ${fmt(est.fuelCost)} H · ETA ${fmtDur(est.travelTime)}${est.inRange === false ? ' · OUT OF RANGE' : ''}` : 'Fuel: —';
+    // Server-authoritative capacity check: fuel-estimate returns the fleet's
+    // real totalCargoCapacity (bonuses applied game-side), unlike our own
+    // effCap() which reverse-engineers the bonus from research effects and can
+    // drift from what the game actually enforces. Cross-check before Send is
+    // even clickable, instead of only finding out from the dispatch rejection.
+    if (est && b.mode === 'resource') {
+      const need = getCargoNeed();
+      if (need > est.totalCargoCapacity) {
+        send.disabled = true;
+        status.innerHTML = `<span style="color:#ff7b72;">Cargo hold exceeds fleet capacity: ${fmt(need)} > ${fmt(est.totalCargoCapacity)}</span>`;
+      } else if (status.textContent.startsWith('Cargo hold exceeds')) {
+        status.textContent = '';
+      }
+    }
   }
   if (b.mode === 'ship') refreshFuel();
 
