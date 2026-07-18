@@ -89,7 +89,7 @@ export async function confirmDialog(message, ships) {
 // source planet; each quantity is capped to availability. `seed` is
 // {shipDefId → wanted qty}, `avail` is {shipDefId → count on planet}. Resolves
 // to [{shipDefId, quantity}] on confirm (send once), or null on cancel.
-export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {} }) {
+export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null }) {
   const defs = await shipDefs();
   const ids = [...new Set([
     ...Object.keys(seed).map(Number),
@@ -128,6 +128,7 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
     }
     const ok = document.createElement('button');   // declared early for refresh()
     const refresh = () => { ok.disabled = !effective().length; ok.style.opacity = ok.disabled ? '0.5' : '1'; };
+    const inputs = new Map();   // shipDefId → its qty <input>, so "Optimise" can update rows in place
     for (const id of ids) {
       const def = defs[id] || {};
       const max = avail[id] || 0;
@@ -156,6 +157,7 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
       avLbl.textContent = `/ ${max}`; avLbl.style.color = '#8b949e';
       line.append(iconCell, name, inp, avLbl);
       rows.append(line);
+      inputs.set(id, inp);
     }
     box.append(rows);
 
@@ -173,6 +175,26 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
     ok.onclick = () => done(effective());
     ov.onclick = (e) => { if (e.target === ov) done(null); };
     refresh();
+    if (recShips.length) {
+      const opt = document.createElement('button');
+      opt.textContent = 'Optimise Mining Fleet';
+      opt.title = 'Set the recommended count for mining ships only — escort/combat ships untouched';
+      opt.style.cssText = 'padding:7px 16px;border-radius:6px;border:1px solid #1f6feb;background:#1f6feb;color:#fff;cursor:pointer;margin-right:auto';
+      opt.onclick = () => {
+        for (const id of miningShipIds || []) {
+          state.delete(id);
+          const inp = inputs.get(id);
+          if (inp) inp.value = '0';
+        }
+        for (const s of recShips) {
+          const q = Math.min(s.quantity, avail[s.shipDefId] || 0);
+          const inp = inputs.get(s.shipDefId);
+          if (q > 0) { state.set(s.shipDefId, q); if (inp) inp.value = String(q); }
+        }
+        refresh();
+      };
+      btns.append(opt);
+    }
     btns.append(cancel, ok);
     box.append(btns);
     ov.append(box);
