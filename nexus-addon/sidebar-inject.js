@@ -652,8 +652,9 @@ async function openFieldsPanel() {
       if (excId != null && (avail[excId] || 0) > 0) recShips.push({ shipDefId: excId, quantity: 1 });
     }
     if (!recShips.length) { window.alert('No mining recommendation for this field.'); return; }
+    const merged = fleetWithRec(recShips);   // computed first: reads escorts off shipsState before it's cleared
     shipsState.clear();
-    for (const s of fleetWithRec(recShips)) shipsState.set(s.shipDefId, s.quantity);
+    for (const s of merged) shipsState.set(s.shipDefId, s.quantity);
     buildEditor();
     renderRows();
   };
