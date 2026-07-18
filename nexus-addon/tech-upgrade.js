@@ -69,22 +69,16 @@ function findTech(research, techKey) {
                .sort((a, b) => b.key.length - a.key.length)[0];
 }
 
-// Deficit (need − stock on the destination planet) to research a tech from→target.
-// Exposed for the to-do list (upgrade-queue.js) to stage a delivery on click.
-window.__nxUpgradeDeficit = window.__nxUpgradeDeficit || {};
-window.__nxUpgradeDeficit.tech = async (techKey, planetId, from, target) => {
+// Resource cost (dispatch cargo keys) to research a tech from→target.
+// Exposed for the to-do list (upgrade-queue.js), which sums this across every
+// selected item and subtracts planet stock once — not per item, or a shared
+// stock pool would get double-counted as covering each item.
+window.__nxUpgradeNeed = window.__nxUpgradeNeed || {};
+window.__nxUpgradeNeed.tech = async (techKey, planetId, from, target) => {
   const rd = await fetchJSON(`/api/research?planetId=${planetId}`);
   const t = findTech(rd.research || [], techKey);
   if (!t) return {};
-  const need = upgradeCost(t, from, target);
-  const d = await fetchJSON(`/api/planets/${planetId}`);
-  const pl = d.planet || d;
-  const deficit = {};
-  for (const [cargo, n] of Object.entries(need)) {
-    const short = Math.max(0, n - (pl[camel(cargo)] || 0));
-    if (short > 0) deficit[cargo] = short;
-  }
-  return deficit;
+  return upgradeCost(t, from, target);
 };
 
 // Planet the page happens to be showing (relayed by galaxy-fetch-hook.js) — used

@@ -32,6 +32,18 @@ const RESOURCES = [
   { k: 'antimatter',  cargo: 'antimatter',   label: 'Antimatter',  icon: 'antimatter.webp' },
 ];
 const RES_BY_K = Object.fromEntries(RESOURCES.map(r => [r.k, r]));
+const BASE4 = new Set(['ore', 'silicates', 'hydrogen', 'alloys']);
+// Storage cap for one resource on a colony. Planets carry a per-resource cap
+// for the base four (`oreStorage`, …); moons share one `storage` cap across
+// the base four instead; outposts share one `basicStorage` across the base
+// four. All three share one `rareResourceStorage`/`rareStorage` cap across the
+// other six (rare) resources.
+function storageCap(c, k) {
+  if (!c.res) return null;
+  if (c.kind === 'Outpost') return BASE4.has(k) ? (c.res.basicStorage ?? null) : (c.res.rareStorage ?? null);
+  if (c.kind === 'Moon') return BASE4.has(k) ? (c.res.storage ?? null) : (c.res.rareResourceStorage ?? null);
+  return BASE4.has(k) ? (c.res[`${k}Storage`] ?? null) : (c.res.rareResourceStorage ?? null);
+}
 
 let dragItem = null;   // { src, resKey } while a resource chip is being dragged
 let builder = null;    // staged transfer being configured in the top card
@@ -40,6 +52,11 @@ let allColonies = [];  // current colonies (for the collect source-planet picker
 
 // Effective cargo capacity: base × (1 + cargo research + commander + shuttle
 // bonus), fetched once. Mirrors the Scouting tab's hauler sizing.
+// Per-ship capacity is right — confirmed in-game bulk_carrier shows 4500 =
+// 3000 × (1 + general 0.40 + commander 0.10). A real dispatch of 2 such ships
+// was rejected at "9000 > 8400" — that gap is NOT a per-ship bonus bug, still
+// unexplained (fuel reserved out of the hold for the trip? a fleet-level cap
+// distinct from ship sum?). Needs more data before touching this formula again.
 let _cargoCtx = null;
 async function cargoContext() {
   if (_cargoCtx) return _cargoCtx;
@@ -362,6 +379,18 @@ function colonyCard(c) {
   head.style.cssText = 'display:flex; align-items:baseline; gap:8px; margin-bottom:8px;';
   head.innerHTML = `<b style="color:#e6edf3;">${esc(c.name)}</b>` +
     `<span style="color:#8b949e; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em;">${c.kind}</span>`;
+  // Outposts extract exactly one resource at a time — whichever `{k}Rate`
+  // field is nonzero (mirrors its asteroid field's fieldType).
+  if (c.kind === 'Outpost' && c.res) {
+    const mining = RESOURCES.find(r => (c.res[`${r.k}Rate`] || 0) > 0);
+    if (mining) {
+      const badge = document.createElement('span');
+      badge.style.cssText = 'display:inline-flex; align-items:center; gap:4px; margin-left:auto; color:#8b949e; font-size:0.75rem;';
+      badge.title = `Mining ${mining.label}`;
+      badge.innerHTML = `<img src="${IMG}/${mining.icon}" width="13" height="13" style="width:13px;height:13px;">${fmt(c.res[`${mining.k}Rate`])}/h`;
+      head.appendChild(badge);
+    }
+  }
   card.appendChild(head);
 
   // Resources
@@ -370,10 +399,12 @@ function colonyCard(c) {
   for (const r of RESOURCES) {
     const v = c.res ? c.res[r.k] : 0;
     if (!v) continue;
+    const cap = storageCap(c, r.k);
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; align-items:center; gap:6px; padding:3px 5px; border-radius:6px; border:1px solid transparent;';
     row.innerHTML = `<img src="${IMG}/${r.icon}" width="15" height="15" style="width:15px;height:15px;" alt="">` +
-      `<span style="color:#9aa4b2; flex:1;">${r.label}</span><span style="color:#e6edf3;">${fmt(v)}</span>`;
+      `<span style="color:#9aa4b2; flex:1;">${r.label}</span>` +
+      `<span style="color:#e6edf3;">${fmt(v)}${cap ? `<span style="color:#6e7681;"> / ${fmt(cap)}</span>` : ''}</span>`;
     // Draggable: planet resources → deliver/supply anywhere; outpost resources →
     // drop on a planet to collect them there.
     if (c.id != null) {
@@ -551,6 +582,7 @@ async function renderBuilder() {
   clear.onclick = () => { builder = null; renderBuilder(); };
 
   let getShips = () => [];
+  let getCargoNeed = () => 0;   // total resource units being sent (resource mode only)
   let fuelSrc, fuelSys;
 
   if (b.mode === 'collect') {
@@ -682,6 +714,7 @@ async function renderBuilder() {
     const capLine = document.createElement('div'); capLine.style.cssText = 'font-size:0.82rem; margin-top:4px;';
     const amountsOf = () => Object.fromEntries(Object.entries(b.res).map(([k, e]) => [RES_BY_K[k].cargo, e.amount]));
     const totalCargo = () => Object.values(b.res).reduce((s, e) => s + e.amount, 0);
+    getCargoNeed = () => totalCargo();
     if (b.cargoManual == null) b.cargoManual = planFleetMulti(amountsOf(), cargoShips).plan;
     const refreshCargo = () => {
       const need = totalCargo();
@@ -725,6 +758,20 @@ async function renderBuilder() {
     fuelLine.textContent = 'Fuel: …';
     const est = await fuelEstimate(fuelSrc, fuelSys, ships).catch(() => null);
     fuelLine.textContent = est ? `Fuel: ${fmt(est.fuelCost)} H · ETA ${fmtDur(est.travelTime)}${est.inRange === false ? ' · OUT OF RANGE' : ''}` : 'Fuel: —';
+    // Server-authoritative capacity check: fuel-estimate returns the fleet's
+    // real totalCargoCapacity (bonuses applied game-side), unlike our own
+    // effCap() which reverse-engineers the bonus from research effects and can
+    // drift from what the game actually enforces. Cross-check before Send is
+    // even clickable, instead of only finding out from the dispatch rejection.
+    if (est && b.mode === 'resource') {
+      const need = getCargoNeed();
+      if (need > est.totalCargoCapacity) {
+        send.disabled = true;
+        status.innerHTML = `<span style="color:#ff7b72;">Cargo hold exceeds fleet capacity: ${fmt(need)} > ${fmt(est.totalCargoCapacity)}</span>`;
+      } else if (status.textContent.startsWith('Cargo hold exceeds')) {
+        status.textContent = '';
+      }
+    }
   }
   if (b.mode === 'ship') refreshFuel();
 

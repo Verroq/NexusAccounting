@@ -76,6 +76,11 @@
       "matches": ["https://s0.nexuslegacy.space/*"],
       "js": ["tech-upgrade.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://s0.nexuslegacy.space/*"],
+      "js": ["ship-upgrade.js"],
+      "run_at": "document_idle"
     }
   ],
   "icons": {

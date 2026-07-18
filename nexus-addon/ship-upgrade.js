@@ -1,32 +1,34 @@
-// Injects an "⬆ upgrade" button onto every building card (.entity-image holding a
-// /buildings/…webp image) on the game page. Clicking opens a planner: pick the
-// planet, pick a target level, and it computes the total ore/silicates/hydrogen/
-// alloys needed to get there — then hands the deficit to the Quartermaster to
+// Injects a "🚀 build" button onto every ship card (.entity-image holding a
+// /api/images/ships/…webp image) on the game shipyard page. Clicking opens a
+// planner: pick a quantity to build and it computes the total ore/silicates/
+// hydrogen/alloys/rare cost — then hands the deficit to the Quartermaster to
 // send from another planet.
 //
-// Cost model (reverse-engineered from /api/planets/{id} building.definition and
-// calibrated against real in-game costs — ore mine 18→19 and alloy foundry
-// 12→13): each level L→L+1 multiplies the base cost by
-//     costFactor^min(L,9) · highLevelFactor^max(0,L-9)
-// i.e. levels below 10 use costFactor (1.4), level 10+ use highLevelFactor (1.5),
-// per resource. Alloys apply only from definition.alloysFromLevel. costDoubleAfter
-// is 0 on every building seen, so it's ignored.
+// Cost model: flat per-unit (no level scaling, unlike buildings/tech) — ship
+// def fields costOre/costSilicates/costHydrogen/costAlloys + rareCosts, the
+// same shape buildShipCatalog() in background.js stores. qty × unit cost.
+//
+// Ships are per-planet like buildings (built at the shipyard of the planet in
+// view, funded by that planet's stock) — reuses building-upgrade.js's "planet
+// in view" pattern rather than tech's destination picker.
 //
 // IIFE + re-run guard: Firefox can inject a content script twice into one
 // isolated world; top-level consts would then throw "redeclaration of const".
-if (!window.__nxBuildingUpgrade) {
-window.__nxBuildingUpgrade = true;
+if (!window.__nxShipUpgrade) {
+window.__nxShipUpgrade = true;
 (function () {
 const IMG = '/images/resources';
-// Cost resources: colony/stock field (camelCase) · dispatch cargo key (snake) ·
-// building-definition base-cost field · label · icon.
-const COST_RES = [
-  { k: 'ore',       cargo: 'ore',       base: 'baseCostOre',       label: 'Ore',       icon: 'ore.webp' },
-  { k: 'silicates', cargo: 'silicates', base: 'baseCostSilicates', label: 'Silicates', icon: 'silicates.webp' },
-  { k: 'hydrogen',  cargo: 'hydrogen',  base: 'baseCostHydrogen',  label: 'Hydrogen',  icon: 'hydrogen.webp' },
-  { k: 'alloys',    cargo: 'alloys',    base: 'baseCostAlloys',    label: 'Alloys',    icon: 'alloys.webp' },
+// snake cargo key (dispatch + rareCosts keys) → camelCase planet stock field.
+const camel = k => k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+// The four base cost resources: ship-def field · dispatch cargo key.
+const BASE_RES = [
+  { field: 'costOre',       cargo: 'ore' },
+  { field: 'costSilicates', cargo: 'silicates' },
+  { field: 'costHydrogen',  cargo: 'hydrogen' },
+  { field: 'costAlloys',    cargo: 'alloys' },
 ];
 const fmt = n => Math.round(n || 0).toLocaleString();
+const labelOf = cargo => cargo.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 // The planet currently in view, learned from the page's own /api/planets/{id}
 // GET (relayed by galaxy-fetch-hook.js, MAIN world). Ask for a replay on load in
@@ -38,63 +40,59 @@ window.addEventListener('message', e => {
 });
 window.postMessage({ __nxRequestCurrentPlanet: true }, window.location.origin);
 
-// Cumulative cost to go from `fromLevel` to `toLevel` (exclusive→inclusive of the
-// upgrades). Rounds each level as the game appears to (±1 vs observed).
-function upgradeCost(def, fromLevel, toLevel) {
-  const tot = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0 };
-  for (let L = fromLevel; L < toLevel; L++) {   // the L→L+1 upgrade
-    const m = Math.pow(def.costFactor || 1.4, Math.min(L, 9)) *
-              Math.pow(def.highLevelFactor || 1.5, Math.max(0, L - 9));
-    for (const r of COST_RES) {
-      if (r.k === 'alloys' && (L + 1) < (def.alloysFromLevel || 0)) continue;
-      tot[r.k] += Math.round((def[r.base] || 0) * m);
-    }
+// Total cost to build `qty` more of a ship. Returns { cargoKey: amount }.
+function buildCost(def, qty) {
+  const tot = {};
+  if (qty <= 0) return tot;
+  for (const r of BASE_RES) {
+    const v = Math.round((def[r.field] || 0) * qty);
+    if (v) tot[r.cargo] = (tot[r.cargo] || 0) + v;
+  }
+  for (const [k, v] of Object.entries(def.rareCosts || {})) {
+    if (v) tot[k] = (tot[k] || 0) + Math.round(v * qty);
   }
   return tot;
 }
 
-// Building key from the card image, e.g. /api/images/buildings/terran/ore_mine.webp
+// Ship key from the card image, e.g. /api/images/ships/terran/interceptor.webp
 function keyFromCard(card) {
-  const img = card.querySelector('img[src*="/buildings/"]');
-  const m = img && img.src.match(/\/buildings\/[^/]+\/([a-z0-9_]+)\.webp/i);
+  const img = card.querySelector('img[src*="/ships/"]');
+  const m = img && img.src.match(/\/ships\/[^/]+\/([a-z0-9_]+)\.webp/i);
   return m ? m[1] : null;
 }
 
-async function fetchPlanet(id) {
-  const r = await fetch(`/api/planets/${id}`, { credentials: 'include' });
-  if (!r.ok) throw new Error(`planet ${id} → ${r.status}`);
+async function fetchJSON(path) {
+  const r = await fetch(path, { credentials: 'include' });
+  if (!r.ok) throw new Error(`${path} → ${r.status}`);
   return r.json();
 }
 
-// The card image name carries a planet-type suffix the definition key lacks
-// (e.g. hydrogen_processor_gas_giant → hydrogen_processor). Match exact, else
-// the longest definition key that's a prefix of the image name.
-function findBuilding(d, buildingKey) {
-  const builds = d.buildings || [];
-  return builds.find(x => x?.definition?.key === buildingKey)
-    || builds.filter(x => x?.definition?.key && buildingKey.startsWith(x.definition.key + '_'))
-             .sort((a, c) => c.definition.key.length - a.definition.key.length)[0];
+function findShip(ships, shipKey) {
+  return (ships || []).find(s => s.key === shipKey);
 }
 
-// Resource cost (dispatch cargo keys) to take a building from→target on a
-// planet. Exposed for the to-do list (upgrade-queue.js), which sums this
+// Owned (undamaged) quantity of a ship on a planet, keyed by ship def key.
+function ownedQty(fleet, shipKey) {
+  const f = (fleet || []).find(x => x.definition?.key === shipKey);
+  return f ? Math.max(0, (f.quantity || 0) - (f.damagedQuantity || 0)) : 0;
+}
+
+// Resource cost (dispatch cargo keys) to build `target − from` more of a ship
+// on a planet. Exposed for the to-do list (upgrade-queue.js), which sums this
 // across every selected item and subtracts planet stock once — not per item,
 // or a shared stock pool would get double-counted as covering each item.
 window.__nxUpgradeNeed = window.__nxUpgradeNeed || {};
-window.__nxUpgradeNeed.building = async (buildingKey, planetId, from, target) => {
-  const d = await fetchPlanet(planetId);
-  const b = findBuilding(d, buildingKey);
-  if (!b) return {};
-  const need = upgradeCost(b.definition, from, target);
-  const out = {};
-  for (const r of COST_RES) { if (need[r.k]) out[r.cargo] = need[r.k]; }
-  return out;
+window.__nxUpgradeNeed.ship = async (shipKey, planetId, from, target) => {
+  const sd = await fetchJSON(`/api/planets/${planetId}/shipyard`);
+  const s = findShip(sd.ships, shipKey);
+  if (!s) return {};
+  return buildCost(s, Math.max(0, target - from));
 };
 
 let panel = null;
 function closePanel() { if (panel) { panel.remove(); panel = null; } }
 
-async function openPlanner(buildingKey) {
+async function openPlanner(shipKey) {
   closePanel();
   const overlay = document.createElement('div');
   panel = overlay;
@@ -103,7 +101,7 @@ async function openPlanner(buildingKey) {
   overlay.addEventListener('click', e => { if (e.target === overlay) closePanel(); });
 
   const box = document.createElement('div');
-  box.style.cssText = 'background:#12161f; color:#e6edf3; border:1px solid #2ea043; border-radius:10px;' +
+  box.style.cssText = 'background:#12161f; color:#e6edf3; border:1px solid #d29922; border-radius:10px;' +
     'width:440px; max-width:92vw; max-height:88vh; overflow:auto; padding:18px 20px;';
   overlay.appendChild(box);
   document.body.appendChild(overlay);
@@ -111,11 +109,11 @@ async function openPlanner(buildingKey) {
 
   const title = document.createElement('h2');
   title.style.cssText = 'margin:0 0 12px; font-size:1.2rem;';
-  title.textContent = 'Building upgrade planner';
+  title.textContent = 'Shipyard build planner';
   box.appendChild(title);
 
   if (currentPlanetId == null) {
-    box.innerHTML += '<div style="color:#ff7b72;">Open a planet’s buildings first.</div>';
+    box.innerHTML += '<div style="color:#ff7b72;">Open a planet’s shipyard first.</div>';
     return;
   }
 
@@ -139,22 +137,21 @@ async function openPlanner(buildingKey) {
   info.style.cssText = 'color:#8b949e; margin:4px 0 10px; min-height:18px;';
   box.appendChild(info);
 
-  const lvlRow = row('Target level');
-  const lvlInp = document.createElement('input');
-  lvlInp.type = 'text'; lvlInp.inputMode = 'numeric';   // text = no spinner arrows
-  lvlInp.style.cssText = 'width:56px; background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:5px 8px; border-radius:6px; text-align:right;';
-  lvlInp.addEventListener('input', () => { const c = lvlInp.value.replace(/[^\d]/g, ''); if (c !== lvlInp.value) lvlInp.value = c; });
+  const qtyRow = row('Build qty');
+  const qtyInp = document.createElement('input');
+  qtyInp.type = 'text'; qtyInp.inputMode = 'numeric';   // text = no spinner arrows
+  qtyInp.style.cssText = 'width:56px; background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:5px 8px; border-radius:6px; text-align:right;';
+  qtyInp.addEventListener('input', () => { const c = qtyInp.value.replace(/[^\d]/g, ''); if (c !== qtyInp.value) qtyInp.value = c; });
   const stepBtn = txt => {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = txt;
     b.style.cssText = 'background:#21262d; border:1px solid #30363d; color:#e6edf3; border-radius:6px; padding:5px 9px; cursor:pointer; line-height:1;';
     return b;
   };
-  const setLvl = v => { lvlInp.value = String(v); recompute(); };
-  const minus = stepBtn('−'); minus.onclick = () => setLvl((parseInt(lvlInp.value, 10) || 0) - 1);
-  const plus = stepBtn('+'); plus.onclick = () => setLvl((parseInt(lvlInp.value, 10) || 0) + 1);
-  const maxBtn = stepBtn('Max'); maxBtn.onclick = () => setLvl(state ? state.def.maxLevel : lvlInp.value);
-  lvlRow.append(minus, lvlInp, plus, maxBtn);
-  const lvlHint = document.createElement('span'); lvlHint.style.cssText = 'color:#6e7681;'; lvlRow.appendChild(lvlHint);
+  const setQty = v => { qtyInp.value = String(Math.max(1, v)); recompute(); };
+  const minus = stepBtn('−'); minus.onclick = () => setQty((parseInt(qtyInp.value, 10) || 1) - 1);
+  const plus = stepBtn('+'); plus.onclick = () => setQty((parseInt(qtyInp.value, 10) || 1) + 1);
+  qtyRow.append(minus, qtyInp, plus);
+  const qtyHint = document.createElement('span'); qtyHint.style.cssText = 'color:#6e7681;'; qtyRow.appendChild(qtyHint);
 
   const table = document.createElement('div');
   table.style.cssText = 'margin:12px 0; border-top:1px solid #21262d; padding-top:10px;';
@@ -164,15 +161,16 @@ async function openPlanner(buildingKey) {
   actions.style.cssText = 'display:flex; gap:10px; justify-content:flex-end; margin-top:14px;';
   const sendBtn = document.createElement('button');
   sendBtn.textContent = 'Send deficit via Quartermaster';
-  sendBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #2ea043; background:#238636; color:#fff; cursor:pointer;';
+  sendBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #d29922; background:#9e6a03; color:#fff; cursor:pointer;';
   const addBtn = document.createElement('button');
   addBtn.textContent = '➕ To-do';
   addBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer; margin-right:auto;';
   addBtn.onclick = () => {
     if (!state || !window.__nxQueue) return;
-    window.__nxQueue.add({ kind: 'building', key: buildingKey, name: state.def.name,
+    const qty = parseInt(qtyInp.value, 10) || 1;
+    window.__nxQueue.add({ kind: 'ship', key: shipKey, name: state.def.name,
       planet: pName.textContent, planetId: currentPlanetId,
-      from: state.level, target: parseInt(lvlInp.value, 10) || state.level });
+      from: state.owned, target: state.owned + qty });
   };
   const closeBtn = document.createElement('button');
   closeBtn.textContent = 'Close';
@@ -181,36 +179,39 @@ async function openPlanner(buildingKey) {
   actions.append(addBtn, closeBtn, sendBtn);
   box.appendChild(actions);
 
-  let state = null;   // { def, level, stock } for the selected planet
+  let state = null;   // { def, owned, stock } for the selected planet
 
   async function loadPlanet() {
     state = null; table.textContent = ''; sendBtn.disabled = true;
     info.textContent = 'Loading…';
-    let d;
-    try { d = await fetchPlanet(currentPlanetId); }
-    catch (e) { info.textContent = `Error: ${e.message}`; return; }
-    const pl = d.planet || d;
+    let sd, fd, pd;
+    try {
+      [sd, fd, pd] = await Promise.all([
+        fetchJSON(`/api/planets/${currentPlanetId}/shipyard`),
+        fetchJSON(`/api/planets/${currentPlanetId}/fleet`),
+        fetchJSON(`/api/planets/${currentPlanetId}`),
+      ]);
+    } catch (e) { info.textContent = `Error: ${e.message}`; return; }
+    const pl = pd.planet || pd;
     if (pl.name) pName.textContent = pl.name;
-    const b = findBuilding(d, buildingKey);
-    if (!b) { info.textContent = `“${buildingKey}” isn't built on this planet.`; lvlInp.disabled = true; return; }
-    lvlInp.disabled = false;
-    const def = b.definition;
-    const stock = Object.fromEntries(COST_RES.map(r => [r.k, pl[r.k] || 0]));
-    state = { def, level: b.level || 0, stock };
-    info.textContent = `${def.name} · current level ${state.level} · max ${def.maxLevel}`;
-    lvlInp.max = String(def.maxLevel);
-    lvlInp.value = String(Math.min(def.maxLevel, state.level + 1));
-    lvlHint.textContent = `(from ${state.level})`;
+    const def = findShip(sd.ships, shipKey);
+    if (!def) { info.textContent = `“${shipKey}” isn't buildable on this planet.`; qtyInp.disabled = true; return; }
+    qtyInp.disabled = false;
+    const owned = ownedQty(fd.fleet, shipKey);
+    state = { def, owned, stock: pl };
+    info.textContent = `${def.name} · owned ${owned}`;
+    qtyInp.value = '1';
+    qtyHint.textContent = `(owned ${owned})`;
     recompute();
   }
 
   function recompute() {
     table.textContent = '';
     if (!state) return;
-    let target = parseInt(lvlInp.value, 10) || 0;
-    target = Math.max(state.level + 1, Math.min(state.def.maxLevel, target));
-    lvlInp.value = String(target);
-    const need = upgradeCost(state.def, state.level, target);
+    let qty = parseInt(qtyInp.value, 10) || 0;
+    qty = Math.max(1, qty);
+    qtyInp.value = String(qty);
+    const need = buildCost(state.def, qty);
 
     // Fixed numeric columns so Need/On planet/Deficit align; a vertical rule
     // before each number column and a rule under each row keep them readable.
@@ -225,15 +226,15 @@ async function openPlanner(buildingKey) {
     table.appendChild(head);
 
     const deficit = {};
-    for (const r of COST_RES) {
-      const n = need[r.k]; if (!n) continue;
-      const have = state.stock[r.k] || 0;
+    for (const [cargo, n] of Object.entries(need)) {
+      if (!n) continue;
+      const have = state.stock[camel(cargo)] || 0;
       const short = Math.max(0, n - have);
-      deficit[r.cargo] = short;
+      deficit[cargo] = short;
       const line = document.createElement('div');
       line.style.cssText = cols + ' border-bottom:1px solid #161b22;';
       line.innerHTML =
-        `<div style="display:flex; align-items:center; gap:6px; padding:5px 0;"><img src="${IMG}/${r.icon}" width="15" height="15" style="width:15px;height:15px;"> ${r.label}</div>` +
+        `<div style="display:flex; align-items:center; gap:6px; padding:5px 0;"><img src="${IMG}/${cargo}.webp" width="15" height="15" style="width:15px;height:15px;"> ${labelOf(cargo)}</div>` +
         `<div style="${numCell}">${fmt(n)}</div>` +
         `<div style="${numCell} color:#8b949e;">${fmt(have)}</div>` +
         `<div style="${numCell} color:${short > 0 ? '#ff7b72' : '#56d364'};">${short > 0 ? fmt(short) : '—'}</div>`;
@@ -249,26 +250,26 @@ async function openPlanner(buildingKey) {
     };
   }
 
-  lvlInp.addEventListener('input', recompute);
+  qtyInp.addEventListener('input', recompute);
   await loadPlanet();
 }
 
-// ── Inject the button onto building cards ───────────────────────────────────
+// ── Inject the button onto ship cards ────────────────────────────────────────
 function injectButtons() {
   document.querySelectorAll('div.entity-image').forEach(card => {
-    if (card.querySelector('.nx-upgrade-btn')) return;
-    if (!card.querySelector('img[src*="/buildings/"]')) return;
+    if (card.querySelector('.nx-ship-btn')) return;
+    if (!card.querySelector('img[src*="/ships/"]')) return;
     const key = keyFromCard(card);
     if (!key) return;
     if (getComputedStyle(card).position === 'static') card.style.position = 'relative';
     const btn = document.createElement('button');
-    btn.className = 'nx-upgrade-btn';
+    btn.className = 'nx-ship-btn';
     btn.type = 'button';
-    btn.textContent = '🏗️';
-    btn.title = 'Plan upgrade resources (addon)';
+    btn.textContent = '🚀';
+    btn.title = 'Plan build resources (addon)';
     btn.style.cssText = 'position:absolute; top:1px; right:1px; z-index:5; width:26px; height:26px; padding:0;' +
-      'line-height:24px; font-size:15px; border-radius:6px; border:1px solid #2ea043; background:#0d1117cc;' +
-      'color:#56d364; cursor:pointer;';
+      'line-height:24px; font-size:15px; border-radius:6px; border:1px solid #d29922; background:#0d1117cc;' +
+      'color:#e3b341; cursor:pointer;';
     btn.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); openPlanner(key); });
     card.appendChild(btn);
   });
