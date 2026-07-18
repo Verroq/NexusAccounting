@@ -455,7 +455,6 @@ async function sendMineMission(f) {
     title: `Mine ${f.name}`,
     subtitle: `To: ${f.name} (${f.system})\nFrom: ${planet ? planet.name : planetId}`,
     avail, seed,
-    nonOptimisedIds: rec && rec.shipDefId != null ? [rec.shipDefId] : [],
   });
   if (!ships || !ships.length) return;   // cancelled or emptied
 

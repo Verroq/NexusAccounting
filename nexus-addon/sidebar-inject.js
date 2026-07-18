@@ -485,6 +485,9 @@ async function openFieldsPanel() {
   const body = document.createElement('div');
   body.style.cssText = 'overflow:auto;padding:10px 14px';
 
+  // Row picked via the radio column, for the "Optimise Mining Fleet" button.
+  let selectedMatchId = null;
+
   function renderRows() {
     body.textContent = '';
     if (!matches.length) { body.textContent = 'No current matches.'; body.style.color = '#8b949e'; return; }
@@ -492,7 +495,7 @@ async function openFieldsPanel() {
     const table = document.createElement('table');
     table.style.cssText = 'width:100%;border-collapse:collapse';
     table.innerHTML = `<thead><tr style="text-align:left;color:#8b949e;font-size:0.8rem">
-      <th style="padding:4px 6px"></th><th style="padding:4px 6px">Fuel (System)</th>
+      <th style="padding:4px 6px"></th><th style="padding:4px 6px"></th><th style="padding:4px 6px">Fuel (System)</th>
       <th style="padding:4px 6px">Type</th><th style="padding:4px 6px;text-align:right">Mult</th>
       <th style="padding:4px 6px;text-align:right">Left %</th>
       <th style="padding:4px 6px">Recommended</th></tr></thead>`;
@@ -501,11 +504,21 @@ async function openFieldsPanel() {
       const tr = document.createElement('tr');
       tr.style.borderTop = '1px solid #2a3147';
 
-      // Fleet for this field: its recommendation (capped to the planet), else
-      // whatever's in the shared editor. "Modify the fleet based on the calc."
+      const selTd = document.createElement('td');
+      selTd.style.cssText = 'padding:4px 6px';
+      const selInp = document.createElement('input');
+      selInp.type = 'radio'; selInp.name = 'nx-ls-row-select';
+      selInp.checked = selectedMatchId === m.id;
+      selInp.addEventListener('change', () => { selectedMatchId = m.id; paintOptBtn(); });
+      selTd.appendChild(selInp);
+
+      // Fleet for this field: the user's chosen template by default (editable
+      // in the shared editor); fall back to the calculated recommendation only
+      // when the template has nothing sendable (e.g. none selected).
       const rec = recommend(m, excavator);
       const recShips = recShipsFor(m);
-      const ships = recShips.length ? fleetWithRec(recShips) : effectiveShips();
+      const tplShips = effectiveShips();
+      const ships = tplShips.length ? tplShips : fleetWithRec(recShips);
       const canMine = !!(planetId && ships.length);
       const mineTip = !planetId ? 'Live search has no source planet set.'
         : !ships.length ? 'No recommendation and no ships set in the editor.'
@@ -522,17 +535,13 @@ async function openFieldsPanel() {
         : 'background:#30363d;border:1px solid #30363d;color:#8b949e;border-radius:6px;cursor:not-allowed;padding:2px 8px;font-size:0.95rem';
       mineBtn.onclick = async () => {
         if (!canMine) return;
-        // Non-optimised option: all available units of the recommended ship.
-        const recId = recShips[0] && recShips[0].shipDefId;
-        const shipsMax = (recId != null && (avail[recId] || 0) > recShips[0].quantity)
-          ? fleetWithRec([{ shipDefId: recId, quantity: avail[recId] || 0 }]) : null;
         const short = ships.some(s => (avail[s.shipDefId] || 0) < s.quantity);
         const r = await lsConfirm(
           `Send fleet?\nTo: ${m.name} (${m.system})\nFrom: ${planetName}` +
           (short ? '\n\n⚠ Some ships are short on this planet; sending what is available.' : ''),
-          ships, shipDefs, shipsMax ? 'Send non-optimised fleet' : undefined);
+          ships, shipDefs);
         if (!r) return;
-        const sendShips = r === 'alt' && shipsMax ? shipsMax : ships;
+        const sendShips = ships;
         // Reflect the sent fleet in the shared editor (escorts kept, miners swapped).
         shipsState.clear();
         for (const s of sendShips) shipsState.set(s.shipDefId, s.quantity);
@@ -556,7 +565,7 @@ async function openFieldsPanel() {
       }
 
       const cell = (txt, extra = '') => { const td = document.createElement('td'); td.style.cssText = `padding:4px 6px;${extra}`; td.textContent = txt; return td; };
-      tr.append(mineTd, fuelTd,
+      tr.append(selTd, mineTd, fuelTd,
         cell(m.type, `color:${TYPE_COLOR[m.type] || '#e6e8ee'}`),
         cell(m.mult != null ? `×${m.mult}` : '—', 'text-align:right'),
         cell(m.leftPct != null ? `${m.leftPct}%` : '—', 'text-align:right'),
@@ -620,7 +629,39 @@ async function openFieldsPanel() {
     }
     paintToggle();
   };
-  footer.append(note, toggleBtn);
+
+  // Sets the editor to the recommended ship count for the row picked via the
+  // radio column (escorts kept, miner swapped in — same merge as the pickaxe).
+  const optBtn = document.createElement('button');
+  optBtn.textContent = 'Optimise Mining Fleet';
+  optBtn.title = 'Set the editor to the recommended ship count for the selected row';
+  const paintOptBtn = () => {
+    const has = selectedMatchId != null;
+    optBtn.disabled = !has;
+    optBtn.style.cssText = has
+      ? 'background:#1f6feb;border:1px solid #1f6feb;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer'
+      : 'background:#30363d;border:1px solid #30363d;color:#8b949e;padding:6px 12px;border-radius:6px;cursor:not-allowed';
+  };
+  paintOptBtn();
+  optBtn.onclick = () => {
+    const m = matches.find(x => x.id === selectedMatchId);
+    if (!m) return;
+    const recShips = recShipsFor(m).slice();
+    if (excavator) {
+      const excId = nameToId['Excavator'];
+      if (excId != null && (avail[excId] || 0) > 0) recShips.push({ shipDefId: excId, quantity: 1 });
+    }
+    if (!recShips.length) { window.alert('No mining recommendation for this field.'); return; }
+    shipsState.clear();
+    for (const s of fleetWithRec(recShips)) shipsState.set(s.shipDefId, s.quantity);
+    buildEditor();
+    renderRows();
+  };
+
+  const btnGroup = document.createElement('div');
+  btnGroup.style.cssText = 'display:flex;gap:8px;';
+  btnGroup.append(optBtn, toggleBtn);
+  footer.append(note, btnGroup);
 
   panel.append(header, pickWrap, editorWrap, body, footer);
   document.body.append(panel);

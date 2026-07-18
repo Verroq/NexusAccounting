@@ -89,7 +89,7 @@ export async function confirmDialog(message, ships) {
 // source planet; each quantity is capped to availability. `seed` is
 // {shipDefId → wanted qty}, `avail` is {shipDefId → count on planet}. Resolves
 // to [{shipDefId, quantity}] on confirm (send once), or null on cancel.
-export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, nonOptimisedIds = [] }) {
+export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {} }) {
   const defs = await shipDefs();
   const ids = [...new Set([
     ...Object.keys(seed).map(Number),
@@ -173,19 +173,7 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
     ok.onclick = () => done(effective());
     ov.onclick = (e) => { if (e.target === ov) done(null); };
     refresh();
-    btns.append(cancel);
-    // Escape hatch: send all available units of the recommended ship(s), above
-    // the optimal count. Shown only when there are extra units to send.
-    const maxIds = nonOptimisedIds.filter(id => (avail[id] || 0) > (state.get(id) || 0));
-    if (maxIds.length) {
-      const alt = document.createElement('button');
-      alt.textContent = 'Send non-optimised fleet';
-      alt.title = 'Send all available units of the recommended ship, more than needed';
-      alt.style.cssText = 'padding:7px 16px;border-radius:6px;border:1px solid #db6d28;background:#bd561d;color:#fff;cursor:pointer';
-      alt.onclick = () => { for (const id of maxIds) state.set(id, avail[id] || 0); done(effective()); };
-      btns.append(alt);
-    }
-    btns.append(ok);
+    btns.append(cancel, ok);
     box.append(btns);
     ov.append(box);
     document.body.append(ov);
