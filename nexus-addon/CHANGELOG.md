@@ -4,6 +4,38 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.3] - 2026-07-19
+
+### Added
+- **Shipyard build planner** (`ship-upgrade.js`): a 🚀 button on each ship card
+  computes the flat per-unit build cost (ore/silicates/hydrogen/alloys +
+  rare) for a chosen quantity, then hands the deficit off to the
+  Quartermaster or the shared to-do queue — same UX as the building/tech
+  planners, but ships are per-planet.
+- **Multi-select resource summary** in the upgrade to-do list: left-click
+  toggles an item into a selection instead of delivering it immediately; the
+  panel sums resource need across every selected item and subtracts the
+  destination planet's stock once, then offers a single Send via
+  Quartermaster. Restricted to one planet at a time.
+- **Storage caps + outpost mining indicator** in the Quartermaster: each
+  resource on a colony card now shows its storage cap; outposts are badged
+  with what they're currently mining (icon + rate/h).
+- **Server-side capacity check** before Quartermaster dispatch: cross-checks
+  the intended resource total against the game's own bonus-adjusted fleet
+  capacity (from `/fleet/fuel-estimate`) and disables Send with an explicit
+  message if it's over, instead of surfacing a dispatch error after the fact.
+- **Optimise Mining Fleet**: the live-search matches window and the
+  Asteroids-tab fleet dialog both seed a mining send from the user's chosen
+  template by default now. A new "Optimise Mining Fleet" button (next to the
+  live-search Start/Stop toggle, and inside the Asteroids-tab dialog) swaps
+  just the mining ships (Mining Vessel/Gas Collector/Ice Drill/Excavator) to
+  the recommended count, leaving escort/combat ships untouched. Adds an
+  Excavator when the +20% checkbox is checked.
+
+### Removed
+- The "Send non-optimised fleet" escape-hatch button from both fleet-confirm
+  dialogs — redundant now that templates are the default.
+
 ## [1.7.2] - 2026-07-12
 
 ### Added

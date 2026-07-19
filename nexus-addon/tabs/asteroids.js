@@ -439,23 +439,24 @@ async function sendMineMission(f) {
   if (av.error) { status.textContent = `Error: ${av.error}`; return; }
   const avail = av.available || {};
 
-  // Seed the editor from the selected template, but let the recommendation drive
-  // the mining ships — keep the template's escort/combat ships as-is.
-  const rec = recommend(f);
+  // Seed the editor straight from the selected template — the "Optimise Mining
+  // Fleet" button in the dialog is what swaps in the recommended mining ships.
   const tpl = afTemplates.find(t => String(t.id) === document.getElementById('af-template-select').value);
   const seed = {};
-  for (const [id, q] of Object.entries((tpl && tpl.ships) || {})) {
-    const def = afAllShips.find(d => d.shipDefId === Number(id));
-    if (rec && def && MINING_SHIPS.has(def.name)) continue;   // recommendation replaces mining ships
-    seed[Number(id)] = q;
+  for (const [id, q] of Object.entries((tpl && tpl.ships) || {})) seed[Number(id)] = q;
+
+  const rec = recommend(f);
+  const recShips = rec && rec.shipDefId != null ? [{ shipDefId: rec.shipDefId, quantity: rec.count }] : [];
+  if (afExcavator()) {
+    const exc = afAllShips.find(d => d.name === 'Excavator');
+    if (exc && (avail[exc.shipDefId] || 0) > 0) recShips.push({ shipDefId: exc.shipDefId, quantity: 1 });
   }
-  if (rec && rec.shipDefId != null) seed[rec.shipDefId] = rec.count;
+  const miningShipIds = new Set(afAllShips.filter(d => MINING_SHIPS.has(d.name)).map(d => d.shipDefId));
 
   const ships = await editFleetDialog({
     title: `Mine ${f.name}`,
     subtitle: `To: ${f.name} (${f.system})\nFrom: ${planet ? planet.name : planetId}`,
-    avail, seed,
-    nonOptimisedIds: rec && rec.shipDefId != null ? [rec.shipDefId] : [],
+    avail, seed, recShips, miningShipIds,
   });
   if (!ships || !ships.length) return;   // cancelled or emptied
 
