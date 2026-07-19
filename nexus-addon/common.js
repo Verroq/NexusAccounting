@@ -343,6 +343,68 @@ export function fmt(n) {
   return n == null ? '0' : Number(n).toLocaleString();
 }
 
+// ── In-flight mission progress bars ─────────────────────────────────────────
+// Shared by any tab that lists fleets in transit (Scouting, Expeditions, …).
+
+export function fmtCountdown(ms) {
+  if (ms <= 0) return 'expired';
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const pad = n => String(n).padStart(2, '0');
+  if (h) return `${h}h ${pad(m)}m ${pad(sec)}s`;
+  if (m) return `${m}m ${pad(sec)}s`;
+  return `${sec}s`;
+}
+
+const MISSION_WORK_LABEL = { survey: 'Surveying', investigate: 'Investigating',
+  collect_debris: 'Collecting', collect_salvage: 'Collecting', expedition: 'Exploring' };
+
+// Where a fleet is in its round trip: outbound (departs→arrives), on-site work
+// (arrives→returnDeparts), or returning (returnDeparts→returnArrives). Returns
+// the active leg's label, colour, 0..1 fraction, and ETA (ms) to that leg's end.
+export function missionProgress(m) {
+  const g = k => (m[k] ? new Date(m[k]).getTime() : null);
+  const now = Date.now();
+  const dep = g('departsAt') ?? g('createdAt'), arr = g('arrivesAt');
+  const rdep = g('returnDepartsAt'), rarr = g('returnArrivesAt');
+  const work = MISSION_WORK_LABEL[m.missionType] || 'Working';
+  const stages = [];
+  if (dep && arr) stages.push(['En route', '#58a6ff', dep, arr]);
+  if (arr && rdep) stages.push([work, '#f0883e', arr, rdep]);
+  if (rdep && rarr) stages.push(['Returning', '#56d364', rdep, rarr]);
+  for (const [label, color, s, e] of stages) {
+    if (now < e) return { label, color, frac: now <= s ? 0 : Math.min(1, (now - s) / (e - s)), eta: e - now };
+  }
+  return { label: 'Arriving…', color: '#8b949e', frac: 1, eta: 0 };
+}
+
+// Compact inline progress bar for a table cell or transit-list row. Returns
+// { el, upd }; caller registers `upd` somewhere it gets called every second.
+export function makeMissionBar(m) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:5px; min-width:120px;';
+  const track = document.createElement('div');
+  track.style.cssText = 'height:6px; border-radius:4px; background:#21262d; overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%; border-radius:4px; transition:width 0.5s linear;';
+  track.appendChild(fill);
+  const cap = document.createElement('div');
+  cap.style.cssText = 'display:flex; justify-content:space-between; gap:6px; font-size:0.7rem; margin-top:2px;';
+  const ph = document.createElement('span'), et = document.createElement('span');
+  et.style.cssText = 'color:#8b949e; font-variant-numeric:tabular-nums;';
+  cap.append(ph, et);
+  wrap.append(track, cap);
+  const upd = () => {
+    const p = missionProgress(m);
+    fill.style.width = `${(p.frac * 100).toFixed(1)}%`;
+    fill.style.background = p.color;
+    ph.textContent = p.label; ph.style.color = p.color;
+    et.textContent = p.eta > 0 ? fmtCountdown(p.eta) : '—';
+  };
+  upd();
+  return { el: wrap, upd };
+}
+
 // Escape a string for safe interpolation into an innerHTML template. Names
 // (ship/tech/colony) come from the game API or the player and must never be
 // trusted as markup.

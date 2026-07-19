@@ -2,7 +2,7 @@
 // both kinds share one background store (exp_*), tagged per-record by `kind`.
 
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartExpeditions, chartExpComp;
 
@@ -63,7 +63,16 @@ async function initExpeditionLaunch() {
 
   applyPresetToControls();
   updateExpeditionAvail();
-  refreshActiveExpeditionCount();
+  refreshExpeditionMissions();
+
+  // Tick progress bars every second, refetch missions every 30s — both only
+  // while the tab is visible (mirrors the Scouting tab's transit list).
+  let eTick = 0;
+  setInterval(() => {
+    if (document.getElementById('expeditions-content').style.display === 'none') return;
+    for (const upd of eTicks) upd();
+    if (++eTick % 30 === 0) refreshExpeditionMissions();
+  }, 1000);
 
   document.getElementById('e-launch-planet').addEventListener('change', e => {
     rememberSelection('e-launch-planet', e.target.value);
@@ -171,14 +180,49 @@ async function updateExpeditionAvail() {
   renderAvailStrip(box, eAllShips, av.available, 'No ships on this planet.');
 }
 
-// "X/2 expeditions active" — informational; the send itself is what the game
-// actually enforces the cap on, this just saves a guaranteed-to-fail attempt.
-async function refreshActiveExpeditionCount() {
+// In-flight expedition fleets, refreshed alongside the "X/2 active" count —
+// the send itself is what the game actually enforces the cap on, this just
+// saves a guaranteed-to-fail attempt.
+let eMissions = [];
+let eTicks = [];   // progress-bar updaters for the current renderExpeditionTransit()
+
+async function refreshExpeditionMissions() {
   const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
-  const el = document.getElementById('e-launch-active');
-  if (!el || mi.error) return;
-  const n = (mi.missions || []).filter(m => m.missionType === 'expedition').length;
-  el.textContent = `${n}/2 expeditions active`;
+  if (mi.error) return;
+  eMissions = (mi.missions || []).filter(m => m.missionType === 'expedition');
+  const activeEl = document.getElementById('e-launch-active');
+  if (activeEl) activeEl.textContent = `${eMissions.length}/2 expeditions active`;
+  renderExpeditionTransit();
+}
+
+function renderExpeditionTransit() {
+  const box = document.getElementById('e-transit-list');
+  if (!box) return;
+  box.textContent = '';
+  eTicks = [];
+  document.getElementById('e-transit-count').textContent = `${eMissions.length} in flight`;
+  if (!eMissions.length) {
+    const d = document.createElement('div');
+    d.style.cssText = 'color:#484f58; padding:4px 0;';
+    d.textContent = 'No expeditions in transit.';
+    box.appendChild(d);
+    return;
+  }
+  for (const m of eMissions) {
+    const target = m.targetSystemName || m.targetPlanetName || (m.zone ? `${m.zone} (depth ${m.depth ?? '?'})` : `#${m.id}`);
+    const row = document.createElement('div');
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex; align-items:baseline; gap:8px; font-size:0.85rem; margin-bottom:3px;';
+    const name = document.createElement('span');
+    name.style.color = '#e6edf3';
+    name.textContent = target;
+    head.appendChild(name);
+    const bar = makeMissionBar(m);
+    bar.el.style.marginTop = '0';
+    row.append(head, bar.el);
+    box.appendChild(row);
+    eTicks.push(bar.upd);
+  }
 }
 
 async function launchExpedition() {
@@ -206,7 +250,8 @@ async function launchExpedition() {
   if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
   status.textContent = 'Expedition launched ✓';
   updateExpeditionAvail();
-  refreshActiveExpeditionCount();
+  refreshExpeditionMissions();
+  setTimeout(refreshExpeditionMissions, 2000);   // retry for post-POST API lag
 }
 
 // Expedition-kind records for the current view + zone filter.

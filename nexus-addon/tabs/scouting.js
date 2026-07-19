@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, clearAvailStrip, confirmDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
+import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -36,33 +36,6 @@ function findMission(type, systemId) {
   return scMissions.find(m => m.missionType === type && m.targetSystemId === systemId);
 }
 
-// Compact inline progress bar for a table cell. Returns { el, upd }; caller
-// registers `upd` in the right scTicks bucket so it advances each second.
-function makeMissionBar(m) {
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'margin-top:5px; min-width:120px;';
-  const track = document.createElement('div');
-  track.style.cssText = 'height:6px; border-radius:4px; background:#21262d; overflow:hidden;';
-  const fill = document.createElement('div');
-  fill.style.cssText = 'height:100%; border-radius:4px; transition:width 0.5s linear;';
-  track.appendChild(fill);
-  const cap = document.createElement('div');
-  cap.style.cssText = 'display:flex; justify-content:space-between; gap:6px; font-size:0.7rem; margin-top:2px;';
-  const ph = document.createElement('span'), et = document.createElement('span');
-  et.style.cssText = 'color:#8b949e; font-variant-numeric:tabular-nums;';
-  cap.append(ph, et);
-  wrap.append(track, cap);
-  const upd = () => {
-    const p = missionProgress(m);
-    fill.style.width = `${(p.frac * 100).toFixed(1)}%`;
-    fill.style.background = p.color;
-    ph.textContent = p.label; ph.style.color = p.color;
-    et.textContent = p.eta > 0 ? fmtCountdown(p.eta) : '—';
-  };
-  upd();
-  return { el: wrap, upd };
-}
-
 // A table cell holding the in-flight progress bar for this row's fleet (or a
 // muted dash when idle). Registers the bar's ticker in the given scTicks bucket.
 function progressCell(type, systemId, bucket) {
@@ -79,26 +52,6 @@ function progressCell(type, systemId, bucket) {
     td.style.cssText += ' color:#484f58; text-align:center;';
   }
   return td;
-}
-
-// Where a fleet is in its round trip: outbound (departs→arrives), on-site work
-// (arrives→returnDeparts), or returning (returnDeparts→returnArrives). Returns
-// the active leg's label, colour, 0..1 fraction, and ETA (ms) to that leg's end.
-function missionProgress(m) {
-  const g = k => (m[k] ? new Date(m[k]).getTime() : null);
-  const now = Date.now();
-  const dep = g('departsAt') ?? g('createdAt'), arr = g('arrivesAt');
-  const rdep = g('returnDepartsAt'), rarr = g('returnArrivesAt');
-  const work = { survey: 'Surveying', investigate: 'Investigating',
-    collect_debris: 'Collecting', collect_salvage: 'Collecting' }[m.missionType] || 'Working';
-  const stages = [];
-  if (dep && arr) stages.push(['En route', '#58a6ff', dep, arr]);
-  if (arr && rdep) stages.push([work, '#f0883e', arr, rdep]);
-  if (rdep && rarr) stages.push(['Returning', '#56d364', rdep, rarr]);
-  for (const [label, color, s, e] of stages) {
-    if (now < e) return { label, color, frac: now <= s ? 0 : Math.min(1, (now - s) / (e - s)), eta: e - now };
-  }
-  return { label: 'Arriving…', color: '#8b949e', frac: 1, eta: 0 };
 }
 
 // Scanning (survey) fleets have no table of their own, so list them here.
@@ -338,16 +291,6 @@ async function launchScan() {
   status.textContent = `Probe sent to ${target.name} ✓`;
   loadActiveSurveys();
   updateAvail();
-}
-
-function fmtCountdown(ms) {
-  if (ms <= 0) return 'expired';
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  const pad = n => String(n).padStart(2, '0');
-  if (h) return `${h}h ${pad(m)}m ${pad(sec)}s`;
-  if (m) return `${m}m ${pad(sec)}s`;
-  return `${sec}s`;
 }
 
 async function loadActiveSurveys() {
