@@ -1,11 +1,187 @@
 // Expeditions tab. Wormhole runs have their own tab (tabs/wormholes.js) —
 // both kinds share one background store (exp_*), tagged per-record by `kind`.
 
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { loadFleetTemplates } from './fleets.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartExpeditions, chartExpComp;
 
 export let expPage = 1;
+
+// ── Launch expedition ───────────────────────────────────────────────────────
+// POST /api/fleet/expedition { sourcePlanetId, ships, zone, depth }, routed
+// through the game tab like every other mission dispatch (background.js's
+// gamePost). "Scout Rift" is a known-broken combo per the player, left out.
+const EXPEDITION_PRESETS = {
+  balanced:       { label: 'Balanced (Rift)',      zone: 'rift', depth: 2, ships: [['stealth_ship', 1], ['scout', 10], ['freighter', 5]] },
+  loot_run:       { label: 'Loot Run (Dead)',       zone: 'dead', depth: 2, ships: [['stealth_ship', 2], ['scout', 10], ['hacker_ship', 1], ['freighter', 4]] },
+  combat_rift:    { label: 'Combat Rift (Rift)',    zone: 'rift', depth: 3, ships: [['scout', 5]] },
+  deep_dead_dive: { label: 'Deep Dead Dive (Dead)', zone: 'dead', depth: 3, ships: [['stealth_ship', 5], ['scout', 2], ['hacker_ship', 3]] },
+  lean_dead_run:  { label: 'Lean Dead Run (Dead)',  zone: 'dead', depth: 1, ships: [['stealth_ship', 2], ['scout', 2], ['hacker_ship', 1]] },
+};
+
+let eLaunchInited = false;
+let ePlanets = [];    // [{ id, name, isHomeworld }]
+let eTemplates = [];
+let eAllShips = [];   // every ship def: [{ shipDefId, key, name, imageUrl }]
+
+async function initExpeditionLaunch() {
+  if (eLaunchInited) return;
+  eLaunchInited = true;
+
+  const [planets, ships] = await Promise.all([
+    browser.runtime.sendMessage({ type: 'GET_PLANETS' }),
+    browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
+  ]);
+  ePlanets = planets.planets || [];
+  eAllShips = ships.ships || [];
+
+  const pSel = document.getElementById('e-launch-planet');
+  pSel.textContent = '';
+  for (const p of ePlanets) {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.name;
+    if (p.isHomeworld) o.selected = true;
+    pSel.appendChild(o);
+  }
+  const saved = await rememberedSelections();
+  if (saved['e-launch-planet'] && ePlanets.some(p => String(p.id) === saved['e-launch-planet'])) {
+    pSel.value = saved['e-launch-planet'];
+  }
+  if (saved['e-launch-preset']) document.getElementById('e-launch-preset').value = saved['e-launch-preset'];
+  if (saved['e-launch-zone']) document.getElementById('e-launch-zone').value = saved['e-launch-zone'];
+
+  await refreshExpeditionTemplates();
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.fleet_templates) refreshExpeditionTemplates();
+  });
+
+  applyPresetToControls();
+  updateExpeditionAvail();
+  refreshActiveExpeditionCount();
+
+  document.getElementById('e-launch-planet').addEventListener('change', e => {
+    rememberSelection('e-launch-planet', e.target.value);
+    updateExpeditionAvail();
+  });
+  document.getElementById('e-launch-preset').addEventListener('change', e => {
+    rememberSelection('e-launch-preset', e.target.value);
+    applyPresetToControls();
+    updateExpeditionAvail();
+  });
+  document.getElementById('e-launch-template').addEventListener('change', e => {
+    rememberSelection('e-launch-template', e.target.value);
+    updateExpeditionAvail();
+  });
+  document.getElementById('e-launch-zone').addEventListener('change', e => rememberSelection('e-launch-zone', e.target.value));
+  document.getElementById('e-launch-btn').addEventListener('click', launchExpedition);
+}
+
+async function refreshExpeditionTemplates() {
+  eTemplates = await loadFleetTemplates();
+  eTemplates.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const sel = document.getElementById('e-launch-template');
+  const saved = await rememberedSelections();
+  const want = saved['e-launch-template'] || sel.value;
+  sel.textContent = '';
+  if (!eTemplates.length) {
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = '— none (create in Fleet Templates) —';
+    sel.appendChild(o);
+  } else {
+    for (const t of eTemplates) {
+      const o = document.createElement('option');
+      o.value = t.id; o.textContent = t.name;
+      sel.appendChild(o);
+    }
+    if (want && eTemplates.some(t => String(t.id) === want)) sel.value = want;
+  }
+  updateExpeditionAvail();
+}
+
+// A preset fills zone/depth (still editable) and hides the template picker,
+// which only applies to "Custom".
+function applyPresetToControls() {
+  const presetKey = document.getElementById('e-launch-preset').value;
+  const preset = EXPEDITION_PRESETS[presetKey];
+  document.getElementById('e-launch-template-row').style.display = preset ? 'none' : '';
+  if (preset) {
+    document.getElementById('e-launch-zone').value = preset.zone;
+    document.getElementById('e-launch-depth').value = preset.depth;
+  }
+}
+
+// Resolve the currently selected preset/template to ships, capped to what the
+// planet actually has. Returns { ships, short, name } or { error }.
+async function resolveExpeditionShips(planetId) {
+  const presetKey = document.getElementById('e-launch-preset').value;
+  const preset = EXPEDITION_PRESETS[presetKey];
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  if (av.error) return { error: av.error };
+
+  let wanted, name;
+  if (preset) {
+    wanted = preset.ships
+      .map(([key, quantity]) => ({ shipDefId: (eAllShips.find(s => s.key === key) || {}).shipDefId, quantity }))
+      .filter(s => s.shipDefId != null);
+    name = preset.label;
+  } else {
+    const tpl = eTemplates.find(t => String(t.id) === document.getElementById('e-launch-template').value);
+    if (!tpl) return { error: 'No fleet template selected — create one in Fleet Templates.' };
+    wanted = Object.entries(tpl.ships || {}).map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }));
+    name = tpl.name;
+  }
+  wanted = wanted.filter(s => s.quantity > 0);
+  if (!wanted.length) return { error: `"${name}" has no ships.` };
+
+  const ships = wanted
+    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
+    .filter(s => s.quantity > 0);
+  if (!ships.length) return { error: `None of "${name}"'s ships are on this planet.` };
+  return { ships, short: wanted.some(s => (av.available[s.shipDefId] || 0) < s.quantity), name };
+}
+
+async function updateExpeditionAvail() {
+  const box = document.getElementById('e-launch-avail');
+  const planetId = Number(document.getElementById('e-launch-planet').value);
+  if (!planetId || !eAllShips.length) { clearAvailStrip(box); return; }
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  if (av.error) { clearAvailStrip(box, av.error); return; }
+  renderAvailStrip(box, eAllShips, av.available, 'No ships on this planet.');
+}
+
+// "X/2 expeditions active" — informational; the send itself is what the game
+// actually enforces the cap on, this just saves a guaranteed-to-fail attempt.
+async function refreshActiveExpeditionCount() {
+  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
+  const el = document.getElementById('e-launch-active');
+  if (!el || mi.error) return;
+  const n = (mi.missions || []).filter(m => m.missionType === 'expedition').length;
+  el.textContent = `${n}/2 expeditions active`;
+}
+
+async function launchExpedition() {
+  const status = document.getElementById('e-launch-status');
+  const planetId = Number(document.getElementById('e-launch-planet').value);
+  const planet = ePlanets.find(p => p.id === planetId);
+  const zone = document.getElementById('e-launch-zone').value;
+  const depth = Math.max(1, parseInt(document.getElementById('e-launch-depth').value, 10) || 1);
+
+  const r = await resolveExpeditionShips(planetId);
+  if (r.error) { status.textContent = r.error; return; }
+  if (!await confirmDialog(`Launch expedition?\n\nFrom: ${planet ? planet.name : planetId}\n` +
+    `Zone: ${zone} · Depth: ${depth}\nFleet: ${r.name}` +
+    (r.short ? '\n\n⚠ Some ships are short; sending what is available.' : ''), r.ships)) return;
+
+  status.textContent = 'Launching…';
+  const res = await browser.runtime.sendMessage({
+    type: 'SEND_EXPEDITION', sourcePlanetId: planetId, ships: r.ships, zone, depth,
+  });
+  if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
+  status.textContent = 'Expedition launched ✓';
+  updateExpeditionAvail();
+  refreshActiveExpeditionCount();
+}
 
 // Expedition-kind records for the current view + zone filter.
 export function expRecordsForMode(mode) {
@@ -38,6 +214,7 @@ export function getExpSeriesForMode(mode) {
 }
 
 export function renderExpeditionsTab() {
+  initExpeditionLaunch();
   const mode = getMode();
   const periodLabel = periodLabelFor(mode);
   const t = getExpTotalsForMode(mode);
