@@ -244,6 +244,11 @@ browser.runtime.onMessage.addListener(msg => {
       sourcePlanetId: msg.sourcePlanetId, ships: msg.ships, zone: msg.zone, depth: msg.depth,
     });
   }
+  if (msg.type === 'SEND_XENO_SURVEY') {
+    return gamePost('/api/fleet/xeno-survey', {
+      sourcePlanetId: msg.sourcePlanetId, targetMoonId: msg.targetMoonId, ships: msg.ships,
+    });
+  }
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
   if (msg.type === 'PURGE_OLD') return enqueue(() => purgeOldData(msg.days ?? 3)).then(() => ({ ok: true }));
