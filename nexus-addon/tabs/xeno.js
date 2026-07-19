@@ -6,15 +6,36 @@
 //
 // Eligibility (the game exposes no moon cooldown/survey-state field anywhere,
 // so this is a best-effort proxy): moonType 'ancient' AND unowned
-// (userId == null), and not already targeted by an in-flight xeno_survey
-// (checked via GET_MISSIONS' cargo._targetMoonId) so the scan doesn't
-// re-target a moon already inbound.
+// (userId == null), not already targeted by an in-flight xeno_survey (checked
+// via GET_MISSIONS' cargo._targetMoonId), and not surveyed by us within the
+// last 48h (tracked locally in storage — the game gives no way to read this
+// back, so it's lost if storage is cleared/reset).
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
 import { clearAvailStrip, confirmDialog, fmtCountdown, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
 
 const XENO_CACHE_TTL = 24 * 3600 * 1000;   // moon ownership rarely changes
+const XENO_COOLDOWN_MS = 48 * 3600 * 1000; // local cooldown after we survey a moon
+
+// moonId → { at, name, systemName } — when we launched a survey there and
+// where, for both the eligibility check and the cooldown table. Pruned to
+// entries still within the cooldown window whenever loaded.
+async function loadSurveyedMoons() {
+  const { xeno_surveyed_moons } = await browser.storage.local.get('xeno_surveyed_moons');
+  const now = Date.now();
+  const kept = {};
+  for (const [id, entry] of Object.entries(xeno_surveyed_moons || {})) {
+    if (now - entry.at < XENO_COOLDOWN_MS) kept[id] = entry;
+  }
+  return kept;
+}
+
+async function markMoonSurveyed(moonId, name, systemName) {
+  const surveyed = await loadSurveyedMoons();
+  surveyed[moonId] = { at: Date.now(), name, systemName };
+  await browser.storage.local.set({ xeno_surveyed_moons: surveyed });
+}
 
 let inited = false;
 let xnPlanets = [];
@@ -63,11 +84,13 @@ export async function initXenoTab() {
   setInterval(() => {
     if (document.getElementById('xeno-content').style.display === 'none') return;
     for (const upd of xnTicks) upd();
+    renderCooldownTable();   // re-render each tick so "time left" counts down / expired rows drop
   }, 1000);
 
   status.textContent = '';
   updateAvail();
   refreshMissions();
+  renderCooldownTable();
 }
 
 async function refreshTemplates() {
@@ -172,10 +195,37 @@ function renderTransit() {
   }
 }
 
+// Moons still within our local 48h cooldown, soonest-expiring first.
+async function renderCooldownTable() {
+  const tbody = document.getElementById('xn-cooldown-tbody');
+  if (!tbody) return;
+  const surveyed = await loadSurveyedMoons();
+  const rows = Object.entries(surveyed)
+    .map(([id, entry]) => ({ id, ...entry, endsAt: entry.at + XENO_COOLDOWN_MS }))
+    .sort((a, b) => a.endsAt - b.endsAt);
+  document.getElementById('xn-cooldown-count').textContent = `${rows.length} on cooldown`;
+  tbody.textContent = '';
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 3; td.style.color = '#484f58';
+    td.textContent = 'No moons on cooldown.';
+    tr.appendChild(td); tbody.appendChild(tr);
+    return;
+  }
+  const now = Date.now();
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    const cells = [r.name || `#${r.id}`, r.systemName || '—', fmtCountdown(r.endsAt - now)];
+    cells.forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); });
+    tbody.appendChild(tr);
+  }
+}
+
 // The nearest unowned Ancient moon not already targeted by an in-flight ruins
 // survey, scanning outward system-by-system from `src` (reuses finder.js's
 // shared per-system cache). Returns { moon, system, distance } or null.
-async function findNearestAncientMoon(src, srcSystemId, targetedMoonIds, onProgress) {
+async function findNearestAncientMoon(src, srcSystemId, targetedMoonIds, surveyedMoons, onProgress) {
   const map = await loadMap();
   const targets = map.systems
     .filter(s => s.id !== srcSystemId && (s.visibility === 'full' || s.visibility === 'partial'))
@@ -195,7 +245,7 @@ async function findNearestAncientMoon(src, srcSystemId, targetedMoonIds, onProgr
         data = await getSystemPlanets(sys.id, cache, XENO_CACHE_TTL);
       } catch { scanned++; continue; }
       const moon = (data.moons || []).find(m =>
-        m.moonType === 'ancient' && m.userId == null && !targetedMoonIds.has(m.id));
+        m.moonType === 'ancient' && m.userId == null && !targetedMoonIds.has(m.id) && !(m.id in surveyedMoons));
       scanned++;
       if (moon) return { moon, system: sys, distance: Math.round(d) };
       if (scanned % 10 === 0) onProgress(scanned, targets.length);
@@ -229,7 +279,10 @@ async function launchRuinsSurvey() {
   const src = map.byId[planet.systemId];
   if (!src) { status.textContent = 'Source system not on the map.'; return; }
 
-  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
+  const [mi, surveyedMoons] = await Promise.all([
+    browser.runtime.sendMessage({ type: 'GET_MISSIONS' }),
+    loadSurveyedMoons(),
+  ]);
   const targetedMoonIds = new Set((mi.missions || [])
     .filter(m => m.missionType === 'xeno_survey')
     .map(m => m.cargo && m.cargo._targetMoonId)
@@ -240,7 +293,7 @@ async function launchRuinsSurvey() {
   status.textContent = 'Scanning for the nearest Ancient moon…';
   let found;
   try {
-    found = await findNearestAncientMoon(src, planet.systemId, targetedMoonIds,
+    found = await findNearestAncientMoon(src, planet.systemId, targetedMoonIds, surveyedMoons,
       (scanned, total) => { status.textContent = `Scanning… ${scanned}/${total} systems.`; });
   } finally {
     xnRunning = false;
@@ -260,6 +313,8 @@ async function launchRuinsSurvey() {
     type: 'SEND_XENO_SURVEY', sourcePlanetId: planetId, targetMoonId: found.moon.id, ships: r.ships,
   });
   if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
+  await markMoonSurveyed(found.moon.id, found.moon.name, found.system.name || `#${found.system.id}`);
+  renderCooldownTable();
   status.textContent = `Fleet sent to ${found.moon.name} ✓`;
   updateAvail();
   refreshMissions();
