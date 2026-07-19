@@ -2,7 +2,7 @@
 // both kinds share one background store (exp_*), tagged per-record by `kind`.
 
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartExpeditions, chartExpComp;
 
@@ -18,6 +18,11 @@ const EXPEDITION_PRESETS = {
   combat_rift:    { label: 'Combat Rift (Rift)',    zone: 'rift', depth: 3, ships: [['scout', 5]] },
   deep_dead_dive: { label: 'Deep Dead Dive (Dead)', zone: 'dead', depth: 3, ships: [['stealth_ship', 5], ['scout', 2], ['hacker_ship', 3]] },
   lean_dead_run:  { label: 'Lean Dead Run (Dead)',  zone: 'dead', depth: 1, ships: [['stealth_ship', 2], ['scout', 2], ['hacker_ship', 1]] },
+};
+// Valid depth range per zone — Rift starts at 2, both cap at 4.
+const DEPTH_RANGE = {
+  dead: [1, 4],
+  rift: [2, 4],
 };
 
 let eLaunchInited = false;
@@ -73,7 +78,11 @@ async function initExpeditionLaunch() {
     rememberSelection('e-launch-template', e.target.value);
     updateExpeditionAvail();
   });
-  document.getElementById('e-launch-zone').addEventListener('change', e => rememberSelection('e-launch-zone', e.target.value));
+  document.getElementById('e-launch-zone').addEventListener('change', e => {
+    rememberSelection('e-launch-zone', e.target.value);
+    applyDepthRange();
+  });
+  document.getElementById('e-launch-depth').addEventListener('change', applyDepthRange);
   document.getElementById('e-launch-btn').addEventListener('click', launchExpedition);
 }
 
@@ -109,6 +118,17 @@ function applyPresetToControls() {
     document.getElementById('e-launch-zone').value = preset.zone;
     document.getElementById('e-launch-depth').value = preset.depth;
   }
+  applyDepthRange();
+}
+
+// Clamp the depth input to the selected zone's valid range (Rift: 2-4, Dead: 1-4).
+function applyDepthRange() {
+  const zone = document.getElementById('e-launch-zone').value;
+  const depthInp = document.getElementById('e-launch-depth');
+  const [min, max] = DEPTH_RANGE[zone] || [1, 4];
+  depthInp.min = String(min); depthInp.max = String(max);
+  const v = parseInt(depthInp.value, 10) || min;
+  depthInp.value = String(Math.min(max, Math.max(min, v)));
 }
 
 // Resolve the currently selected preset/template to ships, capped to what the
@@ -134,11 +154,12 @@ async function resolveExpeditionShips(planetId) {
   wanted = wanted.filter(s => s.quantity > 0);
   if (!wanted.length) return { error: `"${name}" has no ships.` };
 
+  const seed = Object.fromEntries(wanted.map(s => [s.shipDefId, s.quantity]));
   const ships = wanted
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
     .filter(s => s.quantity > 0);
   if (!ships.length) return { error: `None of "${name}"'s ships are on this planet.` };
-  return { ships, short: wanted.some(s => (av.available[s.shipDefId] || 0) < s.quantity), name };
+  return { ships, seed, avail: av.available, name };
 }
 
 async function updateExpeditionAvail() {
@@ -165,17 +186,22 @@ async function launchExpedition() {
   const planetId = Number(document.getElementById('e-launch-planet').value);
   const planet = ePlanets.find(p => p.id === planetId);
   const zone = document.getElementById('e-launch-zone').value;
-  const depth = Math.max(1, parseInt(document.getElementById('e-launch-depth').value, 10) || 1);
+  const [depthMin, depthMax] = DEPTH_RANGE[zone] || [1, 4];
+  const depth = Math.min(depthMax, Math.max(depthMin, parseInt(document.getElementById('e-launch-depth').value, 10) || depthMin));
 
   const r = await resolveExpeditionShips(planetId);
   if (r.error) { status.textContent = r.error; return; }
-  if (!await confirmDialog(`Launch expedition?\n\nFrom: ${planet ? planet.name : planetId}\n` +
-    `Zone: ${zone} · Depth: ${depth}\nFleet: ${r.name}` +
-    (r.short ? '\n\n⚠ Some ships are short; sending what is available.' : ''), r.ships)) return;
+
+  const ships = await editFleetDialog({
+    title: 'Launch expedition',
+    subtitle: `From: ${planet ? planet.name : planetId}\nZone: ${zone} · Depth: ${depth}\nFleet: ${r.name}`,
+    avail: r.avail, seed: r.seed,
+  });
+  if (!ships || !ships.length) return;   // cancelled or emptied
 
   status.textContent = 'Launching…';
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_EXPEDITION', sourcePlanetId: planetId, ships: r.ships, zone, depth,
+    type: 'SEND_EXPEDITION', sourcePlanetId: planetId, ships, zone, depth,
   });
   if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
   status.textContent = 'Expedition launched ✓';
