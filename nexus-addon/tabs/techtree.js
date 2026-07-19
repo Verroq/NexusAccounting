@@ -163,19 +163,19 @@ export async function launchResearch(t, level) {
 }
 
 // ── Lab building cost/time ───────────────────────────────────────────────────
-// The game doesn't expose per-level building costs, so we derive them from the
-// research_lab definition. ASSUMPTION (retune if numbers drift from in-game):
-//   cost(L)  = baseCost × Π factor(l), l=2..L, factor(l)= l<=costDoubleAfter
-//              ? costFactor : highLevelFactor
+// Same formula as building-upgrade.js's upgradeCost, confirmed against the
+// game's own previewUpgradeCost (see that file's header comment): the L→L+1
+// step costs baseCost × costFactor^min(L,9) × highLevelFactor^max(0,L-9),
+// flat-doubled once L > costDoubleAfter.
 //   time(L)  = baseBuildTime × buildTimeFactor^(L-1) / buildSpeedMult (seconds)
 export function buildCostAt(def, field, L) {
   const base = def?.[`baseCost${field}`] || 0;
   if (!base) return 0;
-  const cf = def.costFactor || 1, hf = def.highLevelFactor || cf;
-  const cd = def.costDoubleAfter ?? Infinity;
-  let mult = 1;
-  for (let l = 2; l <= L; l++) mult *= (l <= cd ? cf : hf);
-  return Math.round(base * mult);
+  const from = L - 1;   // the (L-1)→L step
+  let m = Math.pow(def.costFactor || 1.4, Math.min(from, 9)) *
+          Math.pow(def.highLevelFactor || 1.5, Math.max(0, from - 9));
+  if (def.costDoubleAfter && from > def.costDoubleAfter) m *= 2;
+  return Math.round(base * m);
 }
 export function buildTimeAt(def, L, buildSpeedMult) {
   const t = (def?.baseBuildTime || 0) * Math.pow(def?.buildTimeFactor || 1, L - 1);
