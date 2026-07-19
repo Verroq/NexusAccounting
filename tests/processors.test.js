@@ -301,7 +301,7 @@ test('combat losses valued by ship key (shipsDestroyed) or defId', async () => {
     id: 9, createdAt: '2026-06-14T10:00:00Z', status: 'completed', wormholeId: 1,
     totalLoot: { ore: 5 }, totalShipsLost: [{ shipDefId: 21, quantity: 3 }],
   }], ships, {}, {}, {});
-  assert.equal(s2.exp_resources_lost.destroyed.ore, 300);          // freighter 100 × 3
+  assert.equal(s2.wormhole_resources_lost.destroyed.ore, 300);     // freighter 100 × 3
 });
 
 test('debris collection: returning collect_debris cargo recorded once', async () => {
