@@ -16,6 +16,7 @@
     <button class="tab" data-tab="battles">Battles</button>
     <button class="tab" data-tab="debris">Debris</button>
     <button class="tab" data-tab="expeditions">Expeditions</button>
+    <button class="tab" data-tab="wormholes">Wormhole</button>
     <button class="tab" data-tab="finder">Galaxy Scout</button>
     <button class="tab" data-tab="asteroids">Asteroids Fields</button>
     <button class="tab" data-tab="fleets">Fleet Templates</button>
@@ -359,18 +360,8 @@
   </div>
 
   <div id="expeditions-content" style="display:none;">
-    <div class="controls" style="margin-top:0;">
-      <label for="wclass-select">Wormhole class:</label>
-      <select id="wclass-select" title="Filter expeditions and wormhole runs by wormhole class.">
-        <option value="all">All classes</option>
-      </select>
-    </div>
-
-    <div class="section-label">Loot collected — expeditions &amp; wormhole runs</div>
+    <div class="section-label">Loot collected — expeditions</div>
     <div class="stats" id="e-stats-collected"></div>
-
-    <div class="section-label">Ships lost to encounters (build cost)</div>
-    <div class="stats" id="e-stats-lost"></div>
 
     <div class="charts">
       <div class="chart-box">
@@ -396,8 +387,6 @@
         <thead id="e-reports-head">
           <tr>
             <th class="sortable" data-key="created_at">Date</th>
-            <th class="sortable" data-key="kind">Kind</th>
-            <th class="sortable" data-key="wclass">Class</th>
             <th class="sortable" data-key="location">Location</th>
             <th class="sortable" data-key="zone">Zone</th>
             <th class="sortable" data-key="event">Event</th>
@@ -414,6 +403,65 @@
           </tr>
         </thead>
         <tbody id="e-reports-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="wormholes-content" style="display:none;">
+    <div class="controls" style="margin-top:0;">
+      <label for="wclass-select">Wormhole class:</label>
+      <select id="wclass-select" title="Filter wormhole runs by wormhole class.">
+        <option value="all">All classes</option>
+      </select>
+    </div>
+
+    <div class="section-label">Loot collected — wormhole runs</div>
+    <div class="stats" id="w-stats-collected"></div>
+
+    <div class="section-label">Ships lost to encounters (build cost)</div>
+    <div class="stats" id="w-stats-lost"></div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h2>Loot per period</h2>
+        <canvas id="chart-wormholes"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Loot composition</h2>
+        <canvas id="chart-wormholes-comp"></canvas>
+      </div>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Recent Runs</h2>
+        <div class="pagination">
+          <button id="w-btn-prev">← Prev</button>
+          <span id="w-page-info">Page 1</span>
+          <button id="w-btn-next">Next →</button>
+        </div>
+      </div>
+      <table>
+        <thead id="w-reports-head">
+          <tr>
+            <th class="sortable" data-key="created_at">Date</th>
+            <th class="sortable" data-key="wclass">Class</th>
+            <th class="sortable" data-key="location">Location</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="event">Event</th>
+            <th class="sortable" data-key="ore">Ore</th>
+            <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
+            <th class="sortable" data-key="ships_lost">Ships lost</th>
+          </tr>
+        </thead>
+        <tbody id="w-reports-tbody"></tbody>
       </table>
     </div>
   </div>

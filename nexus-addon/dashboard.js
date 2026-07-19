@@ -8,6 +8,7 @@ import { activeTab, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, in
 import { renderBattlesTab } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
+import { renderWormholesTab, setWhPage } from './tabs/wormholes.js';
 import { initAsteroidsTab } from './tabs/asteroids.js';
 import { renderFleetsTab } from './tabs/fleets.js';
 import { initScoutingTab } from './tabs/scouting.js';
@@ -107,6 +108,10 @@ export function renderAll() {
     renderExpeditionsTab();
     return;
   }
+  if (activeTab === 'wormholes') {
+    renderWormholesTab();
+    return;
+  }
   if (activeTab === 'finder') {
     initFinderTab();
     return;
@@ -159,6 +164,7 @@ export const TAB_CONTENT = {
   battles: 'battles-content',
   debris: 'debris-content',
   expeditions: 'expeditions-content',
+  wormholes: 'wormholes-content',
   finder: 'finder-content',
   asteroids: 'asteroids-content',
   fleets: 'fleets-content',
@@ -217,6 +223,7 @@ export function onViewChange() {
   setPirateCurrentPage(1);
   setMiningPage(1);
   setExpPage(1);
+  setWhPage(1);
   renderAll();
 }
 
