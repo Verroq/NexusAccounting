@@ -29,7 +29,8 @@ export async function loadAll() {
     'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports',
     'debris_fields', 'debris_last_check',
     'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
-    'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'stats_drift',
+    'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
+    'expedition_resources_lost', 'wormhole_resources_lost', 'stats_drift',
     'pvp_recent_reports',
     'research', 'research_speed_mult', 'active_research', 'fuel_log',
   ]));
@@ -348,8 +349,10 @@ export function validateBackupData(data) {
     'spy_reports', 'camp_scout_reports', 'debris_fields',
   ];
   const objects = [
-    'totals', 'pirate_totals', 'mining_totals', 'exp_totals', 'ships',
+    'totals', 'pirate_totals', 'mining_totals', 'exp_totals',
+    'expedition_totals', 'wormhole_totals', 'ships',
     'resources_lost', 'pirate_resources_lost', 'mining_resources_lost',
+    'expedition_resources_lost', 'wormhole_resources_lost',
     'pirate_debris_total', 'archive_index',
   ];
   for (const k of arrays) {

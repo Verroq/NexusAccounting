@@ -93,11 +93,7 @@ export function renderWormholesTab() {
     );
   }
 
-  // ponytail: build-cost of ships lost isn't tracked per-kind in the background
-  // store (exp_resources_lost mixes expeditions + wormholes) — shown here since
-  // wormhole encounters are the dominant source; split it out if expeditions
-  // turn out to lose ships in practice too.
-  const lost = store.exp_resources_lost || { destroyed: {}, repair: {} };
+  const lost = store.wormhole_resources_lost || { destroyed: {}, repair: {} };
   fillResourceCards('w-stats-lost', lost.destroyed, '');
 
   if (chartWormholes) chartWormholes.destroy();
