@@ -274,20 +274,21 @@ function injectButtons() {
   document.querySelectorAll('div.entity-image').forEach(card => {
     if (!card.querySelector('img[src*="/buildings/"]')) return;
     const row = findNearbyRow(card, '.building-action-area');
-    if (!row) return;
-    if (row.previousElementSibling && row.previousElementSibling.classList.contains('nx-upgrade-btn')) return;
+    if (!row || row.querySelector('.nx-upgrade-btn')) return;
     const key = keyFromCard(card);
     if (!key) return;
+    if (getComputedStyle(row).position === 'static') row.style.position = 'relative';
     const btn = document.createElement('button');
     btn.className = 'nx-upgrade-btn';
     btn.type = 'button';
     btn.textContent = '🏗️';
     btn.title = 'Plan upgrade resources (addon)';
-    btn.style.cssText = 'width:26px; height:26px; padding:0; margin-bottom:4px; display:block;' +
+    btn.style.cssText = 'position:absolute; top:50%; left:0; transform:translateY(-50%);' +
+      'width:26px; height:26px; padding:0;' +
       'line-height:24px; font-size:16px; border-radius:6px; border:1px solid #2ea043; background:#0d1117cc;' +
       'color:#56d364; cursor:pointer;';
     btn.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); openPlanner(key); });
-    row.parentElement.insertBefore(btn, row);
+    row.appendChild(btn);
   });
 }
 
