@@ -53,7 +53,6 @@ let afSort = { key: 'distance', dir: 1 };
 let afPage = 1;
 const AF_PER_PAGE = 25;
 const MINING_DURATION = 600;   // seconds; fixed for asteroid mining missions
-const ASTEROID_CACHE_TTL = 15 * 60 * 1000;   // fields drain fast — refetch after 15 min
 let afTemplates = [];        // fleet templates, managed in the Fleets tab
 let afMap = null;            // { byId: {id→{x,y,sectorId,visibility}}, systems: [...] }, cached
 const sectorSystems = {};   // sectorId → systems[] (name/zone/planetCount), cached
@@ -132,7 +131,7 @@ export async function initAsteroidsTab() {
   // Live-search controls.
   document.getElementById('ls-search').addEventListener('click', toggleLiveSearch);
   document.getElementById('ls-planet').addEventListener('change', saveLiveSearchIfOn);
-  for (const id of ['ls-mult-min', 'ls-qty-min', 'ls-left-min', 'ls-near', 'ls-cache-ttl']) {
+  for (const id of ['ls-mult-min', 'ls-qty-min', 'ls-left-min', 'ls-near']) {
     document.getElementById(id).addEventListener('input', e => {
       if (parseFloat(e.target.value) < 0) e.target.value = '';   // positive only
       saveLiveSearchIfOn();
@@ -252,7 +251,6 @@ function readLsConfig() {
     qtyMin: num('ls-qty-min'),
     leftMin: num('ls-left-min'),
     near: Math.max(1, Math.min(500, parseInt(document.getElementById('ls-near').value, 10) || 25)),
-    cacheTtlMin: Math.max(0, Math.min(1440, parseInt(document.getElementById('ls-cache-ttl').value, 10) || 30)),
     types: [...lsTypeFilter],
     zones: [...lsZoneFilter],
   };
@@ -290,7 +288,6 @@ async function loadLiveSearch() {
     document.getElementById('ls-qty-min').value = cfg.qtyMin ?? '';
     document.getElementById('ls-left-min').value = cfg.leftMin ?? '';
     document.getElementById('ls-near').value = cfg.near ?? 25;
-    document.getElementById('ls-cache-ttl').value = cfg.cacheTtlMin ?? 30;
     lsTypeFilter.clear(); (cfg.types || []).forEach(t => lsTypeFilter.add(t));
     lsZoneFilter.clear(); (cfg.zones || []).forEach(z => lsZoneFilter.add(z));
     lsRunning = !!cfg.enabled;
@@ -330,7 +327,7 @@ async function scan() {
   const cache = planet_scan_cache || {};
 
   // Use user-configured cache TTL for asteroid fields (in milliseconds)
-  const cacheTtlMs = (parseInt(document.getElementById('ls-cache-ttl').value, 10) || 30) * 60 * 1000;
+  const cacheTtlMs = (parseInt(document.getElementById('af-cache-ttl').value, 10) || 30) * 60 * 1000;
 
   afRunning = true;
   btn.textContent = 'Stop';

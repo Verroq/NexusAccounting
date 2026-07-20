@@ -57,8 +57,6 @@ const LS_REQ_DELAY_MS = 40;            // polite spacing between API calls
 const LS_ABORT_AFTER_ERRORS = 6;       // bail the scan after this many consecutive API failures
 const lsSectorCache = new Map();       // sectorId → { at, systems }, reused across scans
 const LS_SECTOR_TTL = 15 * 60 * 1000;
-const LS_FIELD_CACHE = new Map();      // systemId → { data, at, ttl }, cached asteroid fields per system
-const LS_DEFAULT_CACHE_TTL_MIN = 30;   // default field cache TTL in minutes
 
 async function setLiveSearch(config) {
   await browser.storage.local.set({ live_search: config });
@@ -771,9 +769,11 @@ async function gamePost(path, body) {
   if (!(body.ships || []).length) return { error: 'No ships selected.' };
   const token = await getToken();
   try {
-    const tabs = await browser.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
+    // Use native API (chrome for Chrome, browser for Firefox via polyfill)
+    const api = typeof chrome !== 'undefined' && chrome.tabs ? chrome : browser;
+    const tabs = await api.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
     if (!tabs.length) return { error: 'Open the Nexus Legacy game in a tab first.' };
-    return await browser.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
+    return await api.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
   } catch (e) {
     return { error: e.message };
   }

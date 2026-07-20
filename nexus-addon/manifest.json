@@ -19,9 +19,6 @@
   ],
   "background": {
     "service_worker": "background-sw.js",
-    "scripts": [
-      "background-sw.js"
-    ],
     "type": "module"
   },
   "action": {
@@ -33,7 +30,7 @@
   "content_scripts": [
     {
       "matches": ["https://s0.nexuslegacy.space/*"],
-      "js": ["sidebar-inject.js"],
+      "js": ["browser-polyfill.js", "sidebar-inject.js"],
       "run_at": "document_idle"
     },
     {
@@ -54,32 +51,32 @@
     },
     {
       "matches": ["https://s0.nexuslegacy.space/*"],
-      "js": ["guide-view.js"],
+      "js": ["browser-polyfill.js", "guide-view.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://s0.nexuslegacy.space/*"],
-      "js": ["logistics-view.js"],
+      "js": ["browser-polyfill.js", "logistics-view.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://s0.nexuslegacy.space/*"],
-      "js": ["upgrade-queue.js"],
+      "js": ["browser-polyfill.js", "upgrade-queue.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://s0.nexuslegacy.space/*"],
-      "js": ["building-upgrade.js"],
+      "js": ["browser-polyfill.js", "building-upgrade.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://s0.nexuslegacy.space/*"],
-      "js": ["tech-upgrade.js"],
+      "js": ["browser-polyfill.js", "tech-upgrade.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://s0.nexuslegacy.space/*"],
-      "js": ["ship-upgrade.js"],
+      "js": ["browser-polyfill.js", "ship-upgrade.js"],
       "run_at": "document_idle"
     }
   ],
