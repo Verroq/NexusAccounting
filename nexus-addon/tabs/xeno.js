@@ -14,7 +14,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fmtCountdown, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fmtCountdown, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell } from '../common.js';
 
 const XENO_CACHE_TTL = 24 * 3600 * 1000;   // moon ownership rarely changes
 const XENO_COOLDOWN_MS = 48 * 3600 * 1000; // local cooldown after we survey a moon
@@ -108,8 +108,8 @@ export function renderXenoTab() {
     );
   }
 
-  const lost = store.xeno_resources_lost || { destroyed: {}, repair: {} };
-  fillResourceCards('xn-stats-lost', lost.destroyed, '');
+  const lost = computeRawLossCost(xnRecordsForMode(mode), store.ships || {});
+  fillResourceCards('xn-stats-lost', lost, '');
 
   if (chartXeno) chartXeno.destroy();
   chartXeno = makeResourceLineChart('chart-xeno', getXnSeriesForMode(mode),

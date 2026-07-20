@@ -1,7 +1,7 @@
 // Global tab: totals aggregated across every source, honouring the View,
 // Zone and Window selectors.
 
-import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, combinedLost, computeResourcesLost, computeSeries, dayKey, emptyResources, fmt, fuelForMode, getLabelKey, getMode, getWindowRange, getZone, makeResourceDoughnut, windowActive, makeResourceLineChart, makeStatCard, periodLabelFor, renderNetCards, resourceVal, store } from '../common.js';
+import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, combinedLost, computeRawLossCost, computeResourcesLost, computeSeries, dayKey, emptyResources, fmt, fuelForMode, getLabelKey, getMode, getWindowRange, getZone, makeResourceDoughnut, windowActive, makeResourceLineChart, makeStatCard, periodLabelFor, renderNetCards, resourceVal, store } from '../common.js';
 
 export let chartGlobal, chartGlobalPeriod, chartGlobalSrc;
 
@@ -31,7 +31,7 @@ export function globalRecords() {
   add('Pirates', store.pirate_recent_reports);
   add('Mining', store.mining_recent_reports);
   const normExp = r => {
-    const o = { created_at: r.created_at, zone: r.zone, ships_lost_detail: r.ships_lost_detail };
+    const o = { created_at: r.created_at, zone: r.zone, ships_destroyed_raw: r.ships_destroyed_raw };
     for (const k of GLOBAL_RES_KEYS) o[k] = (r.loot && r.loot[k]) || 0;
     return o;
   };
@@ -108,6 +108,11 @@ export function renderGlobalTab() {
     const recs = items.map(w => w.r);
     collected = sumResources(recs);
     lost = computeResourcesLost(recs, ships);
+    // Expeditions/Wormhole/Xeno store losses as ships_destroyed_raw arrays,
+    // not the shipDefId→qty map computeResourcesLost reads — merge those in.
+    const rawLost = computeRawLossCost(recs, ships);
+    for (const k of ['ore', 'silicates', 'hydrogen', 'alloys']) lost.destroyed[k] += rawLost[k];
+    for (const [k, v] of Object.entries(rawLost.rare)) lost.destroyed.rare[k] = (lost.destroyed.rare[k] || 0) + v;
     ops = recs.length;
     bySrc = {};
     for (const w of items) bySrc[w.src] = (bySrc[w.src] || 0) + weightedValue(w.r);

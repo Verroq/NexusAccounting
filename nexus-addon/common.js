@@ -663,6 +663,29 @@ export function computeResourcesLost(reports, ships) {
   return out;
 }
 
+// Ship-loss build cost from raw ships_destroyed_raw arrays
+// ([{shipDefId,quantity}] or [{key,lost}]) — the shape expeditions/wormholes/
+// xeno store per-record, as opposed to computeResourcesLost's shipDefId→qty
+// map. Ships destroyed outright (no repair concept for these encounters).
+export function computeRawLossCost(reports, ships) {
+  const out = emptyResources();
+  const byKey = {};
+  for (const s of Object.values(ships || {})) if (s && s.key) byKey[s.key] = s;
+  for (const r of reports) {
+    for (const i of (r.ships_destroyed_raw || [])) {
+      const ship = i.shipDefId != null ? ships[i.shipDefId] : byKey[i.key];
+      if (!ship) continue;
+      const q = i.quantity ?? i.lost ?? 1;
+      out.ore += q * (ship.costOre || 0);
+      out.silicates += q * (ship.costSilicates || 0);
+      out.hydrogen += q * (ship.costHydrogen || 0);
+      out.alloys += q * (ship.costAlloys || 0);
+      for (const [k, v] of Object.entries(ship.rareCosts || {})) out.rare[k] = (out.rare[k] || 0) + q * v;
+    }
+  }
+  return out;
+}
+
 // Per-resource destroyed + repair, for net calculations.
 export function combinedLost(lost) {
   const d = lost.destroyed || {}, r = lost.repair || {};
