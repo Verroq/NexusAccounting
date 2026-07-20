@@ -14,7 +14,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fmtCountdown, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fmtCountdown, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell } from '../common.js';
 
 const XENO_CACHE_TTL = 24 * 3600 * 1000;   // moon ownership rarely changes
 const XENO_COOLDOWN_MS = 48 * 3600 * 1000; // local cooldown after we survey a moon
@@ -97,11 +97,9 @@ export function renderXenoTab() {
     p.textContent = 'No ruins survey reports recorded yet.';
     el.appendChild(p);
   } else {
-    el.append(
-      makeStatCard(`Ore${periodLabel}`, fmt(t.ore), 'ore'),
-      makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
-      makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
-    );
+    // No ore/silicates/hydrogen card here — ruins-survey loot is always
+    // precursor fragments + artifacts (both in EXTRA_RESOURCES), never the
+    // core resources.
     appendExtraResourceCards(el, t, periodLabel);
     el.append(
       makeStatCard(`Surveys${periodLabel}`, fmt(t.missions), 'missions'),
@@ -132,20 +130,8 @@ export function renderXnReportTable() {
     const tr = document.createElement('tr');
     const tdDate = document.createElement('td');
     tdDate.textContent = new Date(r.created_at).toLocaleString();
-    const tdLoc = document.createElement('td');
-    tdLoc.textContent = r.location || '—';
-    const tdEvent = document.createElement('td');
-    tdEvent.textContent = r.event ? String(r.event).replace(/_/g, ' ') : '—';
     const loot = r.loot || {};
-    const tdOre = zeroCell(loot.ore); tdOre.className = 'ore';
-    const tdSil = zeroCell(loot.silicates); tdSil.className = 'silicates';
-    const tdHyd = zeroCell(loot.hydrogen); tdHyd.className = 'hydrogen';
-    const tdAll = zeroCell(loot.alloys); tdAll.className = 'alloys';
-    tr.append(tdDate, tdLoc, zoneCell(r.zone), tdEvent,
-              tdOre, tdSil, tdHyd, tdAll,
-              zeroCell(loot.cryo_ice), zeroCell(loot.quantum_dust), zeroCell(loot.plasma_core),
-              zeroCell(loot.dark_matter), zeroCell(loot.antimatter),
-              zeroCell(r.ships_lost));
+    tr.append(tdDate, zeroCell(loot.precursor_fragments), zeroCell(loot.artifact));
     return tr;
   });
 }

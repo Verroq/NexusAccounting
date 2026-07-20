@@ -16,7 +16,11 @@ const RESEARCH_PATH = '/api/research';
 const MINING_PATH = '/api/fleet/mining-reports';
 const EXPEDITION_PATH = '/api/fleet/expedition-reports';
 const WORMHOLE_PATH = '/api/fleet/wormhole-runs';
-const CYBER_PATH = '/api/fleet/cyber-reports';   // xeno_survey (ruins survey) results
+// xeno_survey (ruins survey) results aren't a fleet report — they arrive as a
+// system message with subject "Xeno Survey Complete", body text like "Your
+// science team finished the xeno survey. 0 fragments recovered, plus an
+// artifact for your collection." No structured loot/moon/zone data at all.
+const XENO_MESSAGES_PATH = '/api/messages/system';
 const SYSTEM_DEBRIS_PATH = '/api/fleet/system-debris';
 const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
@@ -1823,15 +1827,32 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
   return added;
 }
 
-// Ruins survey (xeno_survey) results. Report shape is unconfirmed — no survey
-// had completed as of writing, so this reuses extractLoot/extractShipsLost's
-// tolerant fallbacks (same approach taken for expeditions before that shape
-// was confirmed either). Revisit field names once a real report comes in.
-async function processXenoReports(reports, ships, zones = {}) {
-  if (!(reports || []).length) return 0;
+// Ruins survey (xeno_survey) results arrive as a system message, not a fleet
+// report: subject "Xeno Survey Complete", body e.g. "Your science team
+// finished the xeno survey. 0 fragments recovered, plus an artifact for your
+// collection." No structured loot, and no moon/system/ships-lost data at all
+// — location/zone/ships_lost are unknowable from this feed.
+const XENO_FRAGMENTS_RE = /(\d+)\s*fragments?\s*recovered/i;
+const XENO_ARTIFACT_RE = /plus\s+(\d+|an?)\s*artifacts?/i;
+
+function parseXenoMessage(body) {
+  const loot = {};
+  const frag = XENO_FRAGMENTS_RE.exec(body || '');
+  if (frag && +frag[1]) loot.precursor_fragments = +frag[1];
+  const art = XENO_ARTIFACT_RE.exec(body || '');
+  if (art) {
+    const n = /^an?$/i.test(art[1]) ? 1 : +art[1];
+    if (n) loot.artifact = n;
+  }
+  return loot;
+}
+
+async function processXenoReports(messages) {
+  const xenoMsgs = (messages || []).filter(m => m.subject === 'Xeno Survey Complete');
+  if (!xenoMsgs.length) return 0;
 
   const stored = await browser.storage.local.get([
-    'xeno_seen_ids', 'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'xeno_resources_lost', 'records_cap',
+    'xeno_seen_ids', 'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'records_cap',
   ]);
   const recordsCap = stored.records_cap ?? 5000;
 
@@ -1839,46 +1860,34 @@ async function processXenoReports(reports, ships, zones = {}) {
   const totals = stored.xeno_totals || {
     ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0,
   };
-  const lost = stored.xeno_resources_lost?.destroyed ? stored.xeno_resources_lost : emptyLost();
   const dailyMap = {};
   for (const d of (stored.xeno_daily || [])) dailyMap[d.day] = { ...d };
   const recent = [...(stored.xeno_recent_reports || [])];
 
   let added = 0;
-  for (const r of reports) {
-    const uid = `xeno-${r.id}`;
-    if (seen.has(uid) || !r.createdAt) continue;
-    if (r.status && r.status !== 'completed') continue;
+  for (const m of xenoMsgs) {
+    const uid = `xeno-${m.id}`;
+    if (seen.has(uid) || !m.createdAt) continue;
     seen.add(uid);
     added++;
-    const loot = extractLoot(r);
-    const destroyedArr = r.totalShipsLost || r.shipsDestroyed || r.shipsLost || [];
-    const nLost = extractShipsLost(r);
+    const loot = parseXenoMessage(m.body);
 
     addResources(totals, loot);
-    addLossCost(destroyedArr, ships, lost.destroyed, 1);
     totals.missions += 1;
-    totals.ships_lost += nLost;
 
-    const day = r.createdAt.slice(0, 10);
+    const day = m.createdAt.slice(0, 10);
     if (!dailyMap[day]) dailyMap[day] = { day, ore: 0, silicates: 0, hydrogen: 0, missions: 0, ships_lost: 0 };
-    dailyMap[day].ore += loot.ore || 0;
-    dailyMap[day].silicates += loot.silicates || 0;
-    dailyMap[day].hydrogen += loot.hydrogen || 0;
     dailyMap[day].missions += 1;
-    dailyMap[day].ships_lost += nLost;
 
     recent.unshift({
       id: uid,
-      created_at: r.createdAt,
-      moon_id: r.targetMoonId ?? r.moonId ?? null,
-      event: r.eventType || r.outcome || r.result || r.status || null,
-      location: r.moonName || r.targetMoonName || r.systemName || r.locationName || r.targetName ||
-        (r.targetMoonId != null ? `Moon #${r.targetMoonId}` : '—'),
-      zone: r.securityZone || resolveZone(r.systemName || systemFromLocation(r.locationName), zones),
+      created_at: m.createdAt,
+      event: 'ruins_survey_complete',
+      location: '—',
+      zone: null,
       loot,
-      ships_lost: nLost,
-      ships_destroyed_raw: destroyedArr,
+      ships_lost: 0,
+      ships_destroyed_raw: [],
     });
   }
 
@@ -1887,7 +1896,6 @@ async function processXenoReports(reports, ships, zones = {}) {
     await browser.storage.local.set({
       xeno_seen_ids: [...seen],
       xeno_totals: totals,
-      xeno_resources_lost: lost,
       xeno_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
       xeno_recent_reports: recent.slice(0, recordsCap),
     });
@@ -2475,7 +2483,7 @@ async function scrape() {
   try {
     const planetId = await getHomePlanetId(token);
     const [shipyardData, reportData, pirateData, spyData, campScoutData,
-           miningData, expeditionData, wormholeData, cyberData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
+           miningData, expeditionData, wormholeData, xenoMessagesData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
       apiFetch(`/api/planets/${planetId}/shipyard`, token).catch(() => null),   // 403s while ships are on patrol — fall back to cached catalog
       apiFetch(REPORTS_PATH, token),
       apiFetch(PIRATES_PATH, token),
@@ -2484,7 +2492,7 @@ async function scrape() {
       apiFetch(MINING_PATH, token).catch(() => ({ reports: [] })),
       apiFetch(EXPEDITION_PATH, token).catch(() => ({ reports: [] })),
       apiFetch(WORMHOLE_PATH, token).catch(() => ({ runs: [] })),
-      apiFetch(CYBER_PATH, token).catch(() => ({ reports: [] })),
+      apiFetch(`${XENO_MESSAGES_PATH}?page=1`, token).catch(() => ({ notifications: [] })),
       apiFetch(SYSTEM_DEBRIS_PATH, token).catch(() => ({ debris: [] })),
       apiFetch(MISSIONS_PATH, token).catch(() => ({ missions: [] })),
       apiFetch(RESEARCH_PATH, token).catch(() => ({ research: [] })),
@@ -2514,7 +2522,7 @@ async function scrape() {
       const nPirates = await processPirateReports(pirateData.reports || [], ships, campZones);
       const nMining = await processMiningReports(miningData.reports || [], ships, zones);
       await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships, zones, wormholeZones, wormholeClasses || {});
-      await processXenoReports(cyberData.reports || [], ships, zones);
+      await processXenoReports(xenoMessagesData.notifications || []);
       await processSystemDebris(systemDebrisData.debris || [], zones);
       await processMissions(missionsData.missions || [], zoneById || {}, ships);
       await browser.storage.local.set({
@@ -2554,7 +2562,7 @@ const WATCHED_URLS = [
   `${GAME_URL}/api/fleet/mining-reports*`,
   `${GAME_URL}/api/fleet/expedition-reports*`,
   `${GAME_URL}/api/fleet/wormhole-runs*`,
-  `${GAME_URL}/api/fleet/cyber-reports*`,
+  `${GAME_URL}/api/messages/system*`,
   `${GAME_URL}/api/fleet/system-debris*`,
   `${GAME_URL}/api/fleet/missions*`,
   `${GAME_URL}/api/research*`,
@@ -2605,6 +2613,10 @@ function routeIntercepted(url, json) {
       await processCampScoutReports(json.reports || []);
       return;
     }
+    if (url.includes('/messages/system')) {
+      await processXenoReports(json.notifications || []);
+      return;
+    }
     if (url.includes('/api/fleet/reports')) {   // PvP (distinct from *-reports)
       await processPvpReports(json.reports || []);
       return;
@@ -2639,7 +2651,6 @@ function routeIntercepted(url, json) {
     else if (url.includes('/mining-reports')) n = await processMiningReports(json.reports || [], ships, zones);
     else if (url.includes('/expedition-reports')) n = await processExpeditionReports(json.reports || [], [], ships, zones, wz, wc);
     else if (url.includes('/wormhole-runs')) n = await processExpeditionReports([], json.runs || [], ships, zones, wz, wc);
-    else if (url.includes('/cyber-reports')) n = await processXenoReports(json.reports || [], ships, zones);
     if (n) console.log(`[NexusAccounting] Realtime: ${n} new reports from ${url}`);
   });
 }
