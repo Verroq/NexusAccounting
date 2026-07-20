@@ -89,7 +89,7 @@ export async function confirmDialog(message, ships) {
 // source planet; each quantity is capped to availability. `seed` is
 // {shipDefId → wanted qty}, `avail` is {shipDefId → count on planet}. Resolves
 // to [{shipDefId, quantity}] on confirm (send once), or null on cancel.
-export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null }) {
+export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2 }) {
   const defs = await shipDefs();
   const ids = [...new Set([
     ...Object.keys(seed).map(Number),
@@ -180,13 +180,46 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
       opt.textContent = 'Optimise Mining Fleet';
       opt.title = 'Set the recommended count for mining ships only — escort/combat ships untouched';
       opt.style.cssText = 'padding:7px 16px;border-radius:6px;border:1px solid #1f6feb;background:#1f6feb;color:#fff;cursor:pointer;margin-right:auto';
+
+      // Excavator checkbox — shown only when an Excavator is available on the planet.
+      let excavatorChecked = localStorage.getItem('nx-af-excavator') === '1';
+      const excavatorDef = excavatorShipDefId != null && (avail[excavatorShipDefId] || 0) > 0
+        ? { shipDefId: excavatorShipDefId, avail: avail[excavatorShipDefId] } : null;
+      if (excavatorDef) {
+        const excRow = document.createElement('div');
+        excRow.style.cssText = 'margin-right:auto;display:inline-flex;align-items:center;gap:5px;font-size:0.85rem;color:#8b949e;cursor:pointer';
+        excRow.title = 'Include an Excavator: +20% fleet extraction capacity in the recommendation';
+        const excChk = document.createElement('input');
+        excChk.type = 'checkbox';
+        excChk.checked = excavatorChecked;
+        excChk.addEventListener('change', () => {
+          excavatorChecked = excChk.checked;
+          localStorage.setItem('nx-af-excavator', excavatorChecked ? '1' : '0');
+        });
+        excRow.append(excChk, document.createTextNode('Excavator +20%'));
+        btns.append(excRow);
+      }
+
       opt.onclick = () => {
         for (const id of miningShipIds || []) {
           state.delete(id);
           const inp = inputs.get(id);
           if (inp) inp.value = '0';
         }
-        for (const s of recShips) {
+        
+        let ships = [...recShips];
+        // If excavator is checked: reduce ship counts by the bonus factor (fewer ships needed)
+        // and add the excavator itself.
+        if (excavatorDef && excavatorChecked) {
+          ships = ships.map(s => ({
+            ...s,
+            quantity: Math.ceil(s.quantity / excavatorBonus)
+          }));
+          const q = Math.min(1, excavatorDef.avail);
+          if (q > 0) ships.push({ shipDefId: excavatorDef.shipDefId, quantity: q });
+        }
+        
+        for (const s of ships) {
           const q = Math.min(s.quantity, avail[s.shipDefId] || 0);
           const inp = inputs.get(s.shipDefId);
           if (q > 0) { state.set(s.shipDefId, q); if (inp) inp.value = String(q); }

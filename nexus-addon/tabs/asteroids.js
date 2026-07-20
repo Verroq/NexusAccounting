@@ -30,7 +30,7 @@ const REC_SHIP = {
 };
 const REC_CYCLES = 10;   // ships to clear the field in this many mining cycles
 const EXCAVATOR_BONUS = 1.2;   // +20% fleet extraction capacity when an Excavator is present
-const afExcavator = () => document.getElementById('af-excavator').checked;
+const afExcavator = () => false;  // Excavator toggle moved to the fleet dialog
 // Mining ships the recommendation manages; other template ships (escort/combat)
 // are left untouched when seeding the launch fleet.
 const MINING_SHIPS = new Set([...Object.values(REC_SHIP).map(s => s[0]), 'Excavator']);
@@ -108,9 +108,6 @@ export async function initAsteroidsTab() {
   pSel.addEventListener('change', () => { rememberSelection('af-planet', pSel.value); setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
   document.getElementById('af-scan').addEventListener('click', scan);
   document.getElementById('af-template-select').addEventListener('change', e => { rememberSelection('af-template-select', e.target.value); computeFuel(); });
-  const excChk = document.getElementById('af-excavator');
-  excChk.checked = localStorage.getItem('nx-af-excavator') === '1';
-  excChk.addEventListener('change', () => { localStorage.setItem('nx-af-excavator', excChk.checked ? '1' : '0'); renderAsteroids(); });
   document.getElementById('af-results-head').addEventListener('click', e => {
     const th = e.target.closest('th.sortable');
     if (!th) return;
@@ -395,12 +392,13 @@ function distance(f) {
 
 // Recommended fleet to clear a field in REC_CYCLES cycles:
 //   ships = ceil( remaining / (rate * cycles * richness) )
+// With excavator: rate is boosted +20%, so fewer ships needed.
 // Returns { count, name, shipDefId } or null when it can't be computed.
-function recommend(f) {
+function recommend(f, withExcavatorBonus = false) {
   const spec = REC_SHIP[f.type];
   if (!spec || !f.remaining || !f.mult) return null;
   const [name, rate] = spec;
-  const cap = rate * (afExcavator() ? EXCAVATOR_BONUS : 1);
+  const cap = rate * (withExcavatorBonus ? EXCAVATOR_BONUS : 1);
   const count = Math.ceil(f.remaining / (cap * REC_CYCLES * f.mult));
   const def = afAllShips.find(d => d.name === name);
   return { count, name, shipDefId: def ? def.shipDefId : null };
@@ -449,16 +447,15 @@ async function sendMineMission(f) {
 
   const rec = recommend(f);
   const recShips = rec && rec.shipDefId != null ? [{ shipDefId: rec.shipDefId, quantity: rec.count }] : [];
-  if (afExcavator()) {
-    const exc = afAllShips.find(d => d.name === 'Excavator');
-    if (exc && (avail[exc.shipDefId] || 0) > 0) recShips.push({ shipDefId: exc.shipDefId, quantity: 1 });
-  }
+  const exc = afAllShips.find(d => d.name === 'Excavator');
   const miningShipIds = new Set(afAllShips.filter(d => MINING_SHIPS.has(d.name)).map(d => d.shipDefId));
 
   const ships = await editFleetDialog({
     title: `Mine ${f.name}`,
     subtitle: `To: ${f.name} (${f.system})\nFrom: ${planet ? planet.name : planetId}`,
     avail, seed, recShips, miningShipIds,
+    excavatorShipDefId: exc ? exc.shipDefId : null,
+    excavatorBonus: EXCAVATOR_BONUS,
   });
   if (!ships || !ships.length) return;   // cancelled or emptied
 
