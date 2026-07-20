@@ -256,14 +256,26 @@ async function openPlanner(buildingKey) {
   await loadPlanet();
 }
 
+// ── Find the action-area that lives near a given card, walking up a few
+// ancestor levels since the row is a sibling of the card's header, not the
+// card itself. ───────────────────────────────────────────────────────────
+function findNearbyRow(card, rowSelector, maxLevels = 3) {
+  let el = card.parentElement;
+  for (let i = 0; i < maxLevels && el; i++) {
+    const row = el.querySelector(rowSelector);
+    if (row) return row;
+    el = el.parentElement;
+  }
+  return null;
+}
+
 // ── Inject the button onto building cards ───────────────────────────────────
 function injectButtons() {
   document.querySelectorAll('div.entity-image').forEach(card => {
     if (!card.querySelector('img[src*="/buildings/"]')) return;
-    const headerText = card.parentElement && card.parentElement.querySelector('.building-header-text');
-    if (!headerText || headerText.querySelector('.nx-upgrade-btn')) return;
-    const h4 = headerText.querySelector('h4.building-name');
-    if (!h4) return;
+    const row = findNearbyRow(card, '.building-action-area');
+    if (!row) return;
+    if (row.previousElementSibling && row.previousElementSibling.classList.contains('nx-upgrade-btn')) return;
     const key = keyFromCard(card);
     if (!key) return;
     const btn = document.createElement('button');
@@ -271,11 +283,11 @@ function injectButtons() {
     btn.type = 'button';
     btn.textContent = '🏗️';
     btn.title = 'Plan upgrade resources (addon)';
-    btn.style.cssText = 'width:22px; height:22px; padding:0; margin:0 6px; vertical-align:middle;' +
-      'line-height:20px; font-size:13px; border-radius:6px; border:1px solid #2ea043; background:#0d1117cc;' +
+    btn.style.cssText = 'width:26px; height:26px; padding:0; margin-bottom:4px; display:block;' +
+      'line-height:24px; font-size:16px; border-radius:6px; border:1px solid #2ea043; background:#0d1117cc;' +
       'color:#56d364; cursor:pointer;';
     btn.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); openPlanner(key); });
-    h4.insertAdjacentElement('afterend', btn);
+    row.parentElement.insertBefore(btn, row);
   });
 }
 

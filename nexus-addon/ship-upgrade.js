@@ -254,14 +254,25 @@ async function openPlanner(shipKey) {
   await loadPlanet();
 }
 
+// ── Find the build-row that lives near a given card, walking up a few
+// ancestor levels since the row is a sibling of the card's header, not the
+// card itself. ───────────────────────────────────────────────────────────
+function findNearbyRow(card, rowSelector, maxLevels = 3) {
+  let el = card.parentElement;
+  for (let i = 0; i < maxLevels && el; i++) {
+    const row = el.querySelector(rowSelector);
+    if (row) return row;
+    el = el.parentElement;
+  }
+  return null;
+}
+
 // ── Inject the button onto ship cards ────────────────────────────────────────
 function injectButtons() {
   document.querySelectorAll('div.entity-image').forEach(card => {
     if (!card.querySelector('img[src*="/ships/"]')) return;
-    const headerText = card.parentElement && card.parentElement.querySelector('.ship-header-text');
-    if (!headerText || headerText.querySelector('.nx-ship-btn')) return;
-    const h4 = headerText.querySelector('h4.ship-name');
-    if (!h4) return;
+    const row = findNearbyRow(card, '.ship-build-row');
+    if (!row || row.querySelector('.nx-ship-btn')) return;
     const key = keyFromCard(card);
     if (!key) return;
     const btn = document.createElement('button');
@@ -269,11 +280,11 @@ function injectButtons() {
     btn.type = 'button';
     btn.textContent = '🚀';
     btn.title = 'Plan build resources (addon)';
-    btn.style.cssText = 'width:22px; height:22px; padding:0; margin:0 6px; vertical-align:middle;' +
-      'line-height:20px; font-size:13px; border-radius:6px; border:1px solid #d29922; background:#0d1117cc;' +
+    btn.style.cssText = 'width:26px; height:26px; padding:0; margin-left:8px; vertical-align:middle;' +
+      'line-height:24px; font-size:16px; border-radius:6px; border:1px solid #d29922; background:#0d1117cc;' +
       'color:#e3b341; cursor:pointer;';
     btn.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); openPlanner(key); });
-    h4.insertAdjacentElement('afterend', btn);
+    row.appendChild(btn);
   });
 }
 
