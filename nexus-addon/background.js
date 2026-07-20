@@ -263,6 +263,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
   if (msg.type === 'GET_ARM_SECTORS') return apiGet(`/api/galaxy/arms/${msg.armId}/sectors`);
   if (msg.type === 'GET_SECTOR_SYSTEMS') return apiGet(`/api/galaxy/sectors/${msg.sectorId}/systems`);
+  if (msg.type === 'GET_PLAYER_ALLIANCE_TAG') return getPlayerAllianceTag(msg.name);
   if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me');
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
@@ -398,6 +399,16 @@ async function getPlayerRanks(name) {
     if (e) out[cat] = e.rank;
   }
   return out;
+}
+
+// A player's current alliance tag by exact username (asteroid field outpost
+// owners), via the same leaderboard search endpoint.
+async function getPlayerAllianceTag(name) {
+  if (!name) return { tag: null };
+  const data = await apiGet(`/api/rankings/players?category=military&search=${encodeURIComponent(name)}`);
+  if (data.error) return data;
+  const e = (data.leaderboard || []).find(x => x.username === name);
+  return { tag: e ? (e.allianceTag || null) : null };
 }
 
 function jwtRace(token) {
