@@ -53,11 +53,12 @@ browser.alarms.onAlarm.addListener(alarm => {
 // matches the saved filter. Mirrors tabs/asteroids.js scan(), API-only.
 const LS_ALARM = 'nexus-livesearch';
 const LS_INTERVAL_MIN = 5;
-const LS_MAX_SYSTEMS = 150;            // cap so a background scan finishes inside the SW budget
 const LS_REQ_DELAY_MS = 40;            // polite spacing between API calls
 const LS_ABORT_AFTER_ERRORS = 6;       // bail the scan after this many consecutive API failures
 const lsSectorCache = new Map();       // sectorId → { at, systems }, reused across scans
 const LS_SECTOR_TTL = 15 * 60 * 1000;
+const LS_FIELD_CACHE = new Map();      // systemId → { data, at, ttl }, cached asteroid fields per system
+const LS_DEFAULT_CACHE_TTL_MIN = 30;   // default field cache TTL in minutes
 
 async function setLiveSearch(config) {
   await browser.storage.local.set({ live_search: config });
@@ -83,7 +84,7 @@ async function stopLiveSearch() {
 async function lsSectorSystems(sectorId, token) {
   const hit = lsSectorCache.get(sectorId);
   if (hit && Date.now() - hit.at < LS_SECTOR_TTL) return hit.systems;
-  const systems = (await apiFetch(`/api/galaxy/sectors/${sectorId}/systems`, token)).systems || [];
+  const systems = (await apiFetch(`/api/galaxy/sectors/${sectorId}/systems`, token, { polite: true })).systems || [];
   lsSectorCache.set(sectorId, { at: Date.now(), systems });
   return systems;
 }
@@ -108,11 +109,11 @@ async function liveSearchScan() {
     const planets = (await getPlanets()).planets || [];
     const planet = planets.find(p => p.id === cfg.planetId);
     if (!planet || planet.systemId == null) return;
-    const map = await apiFetch('/api/galaxy/map', token);
+    const map = await apiFetch('/api/galaxy/map', token, { polite: true });
     const src = (map.systems || []).find(s => s.id === planet.systemId);
     if (!src) return;
 
-    const want = Math.max(1, Math.min(LS_MAX_SYSTEMS, cfg.near || 25));
+    const want = Math.max(1, Math.min(500, cfg.near || 25));
     const targets = (map.systems || [])
       .filter(s => s.id !== src.id && (s.visibility === 'full' || s.visibility === 'partial'))
       .map(s => ({ s, d: Math.hypot(s.x - src.x, s.y - src.y) }))
@@ -129,7 +130,7 @@ async function liveSearchScan() {
       const meta = sector.find(s => s.id === sys.id);
       if (!meta || !meta.planetCount) { errStreak = 0; continue; }
       let data;
-      try { data = await apiFetch(`/api/galaxy/systems/${sys.id}/planets`, token); }
+      try { data = await apiFetch(`/api/galaxy/systems/${sys.id}/planets`, token, { polite: true }); }
       catch { if (++errStreak >= LS_ABORT_AFTER_ERRORS) break; continue; }
       errStreak = 0;
       for (const f of (data.asteroidFields || [])) {
@@ -429,6 +430,19 @@ async function apiGet(path) {
   }
 }
 
+// ── Error Handling ────────────────────────────────────────────────────────────
+
+/**
+ * Typed API error with status code for better error handling and logging.
+ */
+class NexusAPIError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.name = 'NexusAPIError';
+    this.status = status;
+  }
+}
+
 // ── Auth ───────────────────────────────────────────────────────────────────
 
 // Find the nexus_token cookie. It can live outside the default store — a
@@ -495,34 +509,89 @@ function updateRateLimit(headers) {
 // Wait while low on budget and the window hasn't reset, then reserve one slot
 // optimistically (corrected by the next response header) so parallel callers
 // don't all slip through before any response updates the count.
-async function rateLimitGate() {
-  while (rlRemaining <= RL_MIN_REMAINING && Date.now() < rlResetAt) {
+// polite: if true, uses larger buffer (40) for background scans; if false, uses smaller buffer (5).
+async function rateLimitGate(polite = false) {
+  const buffer = polite ? 40 : 5;
+  while (rlRemaining <= buffer && Date.now() < rlResetAt) {
     await new Promise(res => setTimeout(res, Math.min(Math.max(rlResetAt - Date.now(), 0) + 100, 2000)));
   }
   rlRemaining--;
 }
 
-async function apiFetch(path, token) {
-  // Retry on 429 (rate limit), honouring Retry-After, then exponential backoff.
-  for (let attempt = 0; ; attempt++) {
-    await rateLimitGate();
+// Enhanced API fetch with robust error handling, retry logic, and optional polite mode.
+// options: { polite?: boolean } - if true, uses larger rate-limit buffer for background ops
+async function apiFetch(path, token, options = {}) {
+  const { polite = false } = options;
+  let lastError = null;
+  let delayMs = 1000;
+  const maxAttempts = 4;
+
+  // Retry on 429 (rate limit), 5xx errors, or network issues with exponential backoff.
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await rateLimitGate(polite);
     let r;
     try {
       r = await fetch(`${GAME_URL}${path}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch (e) {
-      throw new Error(`API ${path} → ${e.message}`, { cause: e });   // network/CORS/blocked
+      // Network error (fetch failed entirely)
+      if (attempt < maxAttempts) {
+        lastError = e;
+        await new Promise(res => setTimeout(res, delayMs));
+        delayMs *= 2; // exponential backoff
+        continue;
+      }
+      throw new NexusAPIError(0, `API ${path} → network error: ${e.message}`);
     }
+
     updateRateLimit(r.headers);
-    if (r.status === 429 && attempt < 4) {
-      const ra = parseFloat(r.headers.get('Retry-After'));
-      await new Promise(res => setTimeout(res, Number.isFinite(ra) ? ra * 1000 : 500 * 2 ** attempt));
+
+    // Handle success
+    if (r.ok) {
+      // Parse JSON or empty response; fallback to empty object on empty body
+      try {
+        const text = await r.text();
+        return text ? JSON.parse(text) : {};
+      } catch (e) {
+        throw new NexusAPIError(r.status, `API ${path} → failed to parse response: ${e.message}`);
+      }
+    }
+
+    // Handle 401 Unauthorized — dispatch global auth event
+    if (r.status === 401) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('nexus:auth-failed'));
+      }
+      const msg = `API ${path} → ${r.status} Unauthorized. Please log in to Nexus Legacy.`;
+      throw new NexusAPIError(401, msg);
+    }
+
+    // Parse error message from response
+    let errorMsg = `${r.statusText || 'Request failed with status ' + r.status}`;
+    try {
+      const errorText = await r.text();
+      if (errorText) {
+        const errorData = JSON.parse(errorText);
+        errorMsg = errorData.message || errorData.error || errorMsg;
+      }
+    } catch { /* fallback to default errorMsg */ }
+
+    // Retry on 429 or 5xx errors
+    if ((r.status === 429 || r.status >= 500) && attempt < maxAttempts) {
+      lastError = new NexusAPIError(r.status, `API ${path} → ${errorMsg}`);
+      const retryAfter = parseFloat(r.headers.get('Retry-After'));
+      const waitTime = Number.isFinite(retryAfter) ? retryAfter * 1000 : delayMs;
+      await new Promise(res => setTimeout(res, waitTime));
+      delayMs *= 2; // exponential backoff
       continue;
     }
-    if (!r.ok) throw new Error(`API ${path} → ${r.status}`);
-    return r.json();
+
+    // Non-retryable error
+    throw new NexusAPIError(r.status, `API ${path} → ${errorMsg}`);
   }
+
+  throw lastError || new NexusAPIError(0, `API ${path} → fetch failed after ${maxAttempts} attempts`);
 }
 
 // Home planet id, discovered once via /api/planets and cached.
