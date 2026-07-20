@@ -4,6 +4,44 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.4] - 2026-07-20
+
+### Added
+- **Xeno tab**: automatic ancient-moon ruins surveys — picks the nearest
+  unowned Ancient moon not already targeted (reusing Finder's shared scan
+  cache) and launches a xeno-survey there. Includes a transit list, a
+  "Moons on cooldown" table (48h per moon), and loot/loss graphs wired into
+  the Global tab.
+- **Expeditions** split out into its own tab: a launch panel with known-
+  working fleet/zone/depth presets or a Fleet Template, zone/depth
+  constrained to valid ranges, an editable fleet dialog before send, and a
+  transit list mirroring Scouting.
+- **Wormhole** is now its own tab too; Global's source-share breakdown
+  splits Expedition vs. Wormhole gains/losses instead of folding them
+  together.
+- **Outpost column** on the Asteroids tab: fields with a built outpost now
+  show the controlling player and their alliance tag (`player [ALLIANCE]`),
+  resolved via the leaderboard search endpoint and cached per player.
+- **"Already mining" row highlight**: the Asteroids tab and the live-search
+  results panel both turn a field's row green when you already control it
+  or have an active mine mission en route, updated optimistically the
+  instant a send succeeds instead of waiting on the next missions poll.
+- GitHub issue templates (bug report / feature request).
+
+### Fixed
+- Techtree/building upgrade cost formula: `costDoubleAfter` was compounding
+  per level instead of a flat 2x once past the threshold, undercounting
+  cost for the Research Lab and other buildings past that point.
+- `xeno_survey` results actually arrive as a system message, not a fleet
+  report — `/api/fleet/cyber-reports` was the wrong endpoint and was
+  always empty.
+- Expeditions/Wormhole/Xeno's "Ships lost (build cost)" card ignored the
+  View/Window/Zone filters (read the all-time aggregate instead of the
+  filtered records); same gap fixed in the Global tab's filtered view.
+- Build/upgrade buttons on ship/tech/building cards no longer overlap the
+  entity image — moved to the card's bottom row, pinned to the left edge,
+  enlarged 20%.
+
 ## [1.7.3] - 2026-07-19
 
 ### Added
