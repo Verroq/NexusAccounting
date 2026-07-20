@@ -150,6 +150,7 @@ async function liveSearchScan() {
             remaining: f.remainingResources ?? null,
             leftPct: f.totalResources ? Math.round((f.remainingResources / f.totalResources) * 100) : null,
             zone,
+            controllerName: f.controllerName || null,
           });
         }
       }

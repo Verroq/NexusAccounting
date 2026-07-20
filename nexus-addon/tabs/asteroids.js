@@ -487,7 +487,11 @@ async function sendMineMission(f) {
     miningDuration: MINING_DURATION,
   });
   status.textContent = res.error ? `Send failed: ${res.error}` : `Fleet sent to ${f.name} ✓`;
-  if (!res.error) { refreshSlots(); updateAfAvail(); }
+  if (!res.error) {
+    afMiningFieldIds.add(f.fieldId);   // optimistic — GET_MISSIONS can lag right after the send
+    renderAsteroids();
+    refreshSlots(); updateAfAvail();
+  }
 }
 
 // "used/max fleet slots" and in-flight mine missions — both come from the

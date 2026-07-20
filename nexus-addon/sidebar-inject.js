@@ -346,6 +346,22 @@ async function openFieldsPanel() {
   let tpl = templates.find(t => String(t.id) === String((template_selections || {})['af-template-select'])) || templates[0] || null;
   let excavator = localStorage.getItem('nx-ls-excavator') === '1';   // +20% capacity toggle
 
+  // "Already mining" row highlight: fields we already control, or with an
+  // active mine mission en route. Mirrors the Asteroids tab's criteria.
+  const me = await ext.runtime.sendMessage({ type: 'GET_AUTH_ME' });
+  const myUsername = (me && !me.error && me.user) ? me.user.username : null;
+  let miningFieldIds = new Set();
+  async function refreshMiningFieldIds() {
+    const mi = await ext.runtime.sendMessage({ type: 'GET_MISSIONS' });
+    miningFieldIds = new Set(
+      (mi.missions || []).filter(m => m.missionType === 'mine' && m.targetFieldId != null).map(m => m.targetFieldId));
+  }
+  await refreshMiningFieldIds();
+  const miningRefreshTimer = setInterval(() => {
+    if (!panel.isConnected) { clearInterval(miningRefreshTimer); return; }
+    refreshMiningFieldIds().then(renderRows);
+  }, 10000);
+
   // Recommended fleet for a match, capped to planet availability: [{shipDefId, quantity}].
   function recShipsFor(m) {
     const r = recommend(m, excavator);
@@ -503,6 +519,9 @@ async function openFieldsPanel() {
     for (const m of matches) {
       const tr = document.createElement('tr');
       tr.style.borderTop = '1px solid #2a3147';
+      if ((myUsername && m.controllerName === myUsername) || miningFieldIds.has(m.id)) {
+        tr.style.background = 'rgba(63,185,80,0.15)';   // already mining / claimed by us
+      }
 
       const selTd = document.createElement('td');
       selTd.style.cssText = 'padding:4px 6px';
@@ -551,7 +570,12 @@ async function openFieldsPanel() {
           type: 'SEND_MINE', sourcePlanetId: planetId, targetFieldId: m.id, ships: sendShips, miningDuration: 600,
         });
         if (res && res.error) { mineBtn.textContent = '⛏'; mineBtn.disabled = false; window.alert(`Send failed: ${res.error}`); }
-        else { mineBtn.textContent = '✓'; mineBtn.style.cssText = 'background:#1f6feb;border:1px solid #1f6feb;color:#fff;border-radius:6px;padding:2px 8px;font-size:0.95rem'; }
+        else {
+          mineBtn.textContent = '✓'; mineBtn.style.cssText = 'background:#1f6feb;border:1px solid #1f6feb;color:#fff;border-radius:6px;padding:2px 8px;font-size:0.95rem';
+          miningFieldIds.add(m.id);   // optimistic — GET_MISSIONS can lag right after the send
+          renderRows();
+          refreshMiningFieldIds().then(renderRows);
+        }
       };
       mineTd.appendChild(mineBtn);
 
