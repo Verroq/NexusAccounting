@@ -268,21 +268,23 @@ async function openPlanner(techKey) {
 // ── Inject the button onto technology cards ──────────────────────────────────
 function injectButtons() {
   document.querySelectorAll('div.entity-image').forEach(card => {
-    if (card.querySelector('.nx-tech-btn')) return;
     if (!card.querySelector('img[src*="/research/"]')) return;
+    const headerText = card.parentElement && card.parentElement.querySelector('.research-header-text');
+    if (!headerText || headerText.querySelector('.nx-tech-btn')) return;
+    const h4 = headerText.querySelector('h4.research-name');
+    if (!h4) return;
     const key = keyFromCard(card);
     if (!key) return;
-    if (getComputedStyle(card).position === 'static') card.style.position = 'relative';
     const btn = document.createElement('button');
     btn.className = 'nx-tech-btn';
     btn.type = 'button';
     btn.textContent = '🔬';
     btn.title = 'Plan research resources (addon)';
-    btn.style.cssText = 'position:absolute; top:1px; right:1px; z-index:5; width:26px; height:26px; padding:0;' +
-      'line-height:24px; font-size:15px; border-radius:6px; border:1px solid #1f6feb; background:#0d1117cc;' +
+    btn.style.cssText = 'width:22px; height:22px; padding:0; margin:0 6px; vertical-align:middle;' +
+      'line-height:20px; font-size:13px; border-radius:6px; border:1px solid #1f6feb; background:#0d1117cc;' +
       'color:#58a6ff; cursor:pointer;';
     btn.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); openPlanner(key); });
-    card.appendChild(btn);
+    h4.insertAdjacentElement('afterend', btn);
   });
 }
 
