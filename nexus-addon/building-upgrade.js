@@ -256,24 +256,39 @@ async function openPlanner(buildingKey) {
   await loadPlanet();
 }
 
+// ── Find the action-area that lives near a given card, walking up a few
+// ancestor levels since the row is a sibling of the card's header, not the
+// card itself. ───────────────────────────────────────────────────────────
+function findNearbyRow(card, rowSelector, maxLevels = 3) {
+  let el = card.parentElement;
+  for (let i = 0; i < maxLevels && el; i++) {
+    const row = el.querySelector(rowSelector);
+    if (row) return row;
+    el = el.parentElement;
+  }
+  return null;
+}
+
 // ── Inject the button onto building cards ───────────────────────────────────
 function injectButtons() {
   document.querySelectorAll('div.entity-image').forEach(card => {
-    if (card.querySelector('.nx-upgrade-btn')) return;
     if (!card.querySelector('img[src*="/buildings/"]')) return;
+    const row = findNearbyRow(card, '.building-action-area');
+    if (!row || row.querySelector('.nx-upgrade-btn')) return;
     const key = keyFromCard(card);
     if (!key) return;
-    if (getComputedStyle(card).position === 'static') card.style.position = 'relative';
+    if (getComputedStyle(row).position === 'static') row.style.position = 'relative';
     const btn = document.createElement('button');
     btn.className = 'nx-upgrade-btn';
     btn.type = 'button';
     btn.textContent = '🏗️';
     btn.title = 'Plan upgrade resources (addon)';
-    btn.style.cssText = 'position:absolute; top:1px; right:1px; z-index:5; width:26px; height:26px; padding:0;' +
-      'line-height:24px; font-size:15px; border-radius:6px; border:1px solid #2ea043; background:#0d1117cc;' +
+    btn.style.cssText = 'position:absolute; top:50%; left:0; transform:translateY(-50%);' +
+      'width:26px; height:26px; padding:0;' +
+      'line-height:24px; font-size:16px; border-radius:6px; border:1px solid #2ea043; background:#0d1117cc;' +
       'color:#56d364; cursor:pointer;';
     btn.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); openPlanner(key); });
-    card.appendChild(btn);
+    row.appendChild(btn);
   });
 }
 
