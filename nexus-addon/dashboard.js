@@ -8,6 +8,7 @@ import { activeTab, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, in
 import { renderBattlesTab } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
+import { renderWormholesTab, setWhPage } from './tabs/wormholes.js';
 import { initAsteroidsTab } from './tabs/asteroids.js';
 import { renderFleetsTab } from './tabs/fleets.js';
 import { initScoutingTab } from './tabs/scouting.js';
@@ -28,7 +29,8 @@ export async function loadAll() {
     'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports',
     'debris_fields', 'debris_last_check',
     'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
-    'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'stats_drift',
+    'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
+    'expedition_resources_lost', 'wormhole_resources_lost', 'stats_drift',
     'pvp_recent_reports',
     'research', 'research_speed_mult', 'active_research', 'fuel_log',
   ]));
@@ -107,6 +109,10 @@ export function renderAll() {
     renderExpeditionsTab();
     return;
   }
+  if (activeTab === 'wormholes') {
+    renderWormholesTab();
+    return;
+  }
   if (activeTab === 'finder') {
     initFinderTab();
     return;
@@ -159,6 +165,7 @@ export const TAB_CONTENT = {
   battles: 'battles-content',
   debris: 'debris-content',
   expeditions: 'expeditions-content',
+  wormholes: 'wormholes-content',
   finder: 'finder-content',
   asteroids: 'asteroids-content',
   fleets: 'fleets-content',
@@ -217,6 +224,7 @@ export function onViewChange() {
   setPirateCurrentPage(1);
   setMiningPage(1);
   setExpPage(1);
+  setWhPage(1);
   renderAll();
 }
 
@@ -341,8 +349,10 @@ export function validateBackupData(data) {
     'spy_reports', 'camp_scout_reports', 'debris_fields',
   ];
   const objects = [
-    'totals', 'pirate_totals', 'mining_totals', 'exp_totals', 'ships',
+    'totals', 'pirate_totals', 'mining_totals', 'exp_totals',
+    'expedition_totals', 'wormhole_totals', 'ships',
     'resources_lost', 'pirate_resources_lost', 'mining_resources_lost',
+    'expedition_resources_lost', 'wormhole_resources_lost',
     'pirate_debris_total', 'archive_index',
   ];
   for (const k of arrays) {

@@ -21,7 +21,7 @@ const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes; add a MIGRATIONS entry for it.
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 10;
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
@@ -237,6 +237,11 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'COLLECT_SALVAGE') {
     return gamePost('/api/fleet/collect-salvage', {
       sourcePlanetId: msg.sourcePlanetId, reportId: msg.reportId, ships: msg.ships,
+    });
+  }
+  if (msg.type === 'SEND_EXPEDITION') {
+    return gamePost('/api/fleet/expedition', {
+      sourcePlanetId: msg.sourcePlanetId, ships: msg.ships, zone: msg.zone, depth: msg.depth,
     });
   }
   if (msg.type === 'GET_PLANETS') return getPlanets();
@@ -1716,15 +1721,20 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
   if (!items.length) return 0;
 
   const stored = await browser.storage.local.get([
-    'exp_seen_ids', 'exp_totals', 'exp_daily', 'exp_recent_reports', 'exp_resources_lost', 'records_cap',
+    'exp_seen_ids', 'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
+    'expedition_resources_lost', 'wormhole_resources_lost', 'records_cap',
   ]);
   const recordsCap = stored.records_cap ?? 5000;
 
+  const emptyTotals = () => ({ ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 });
   const seen = new Set(stored.exp_seen_ids || []);
-  const totals = stored.exp_totals || {
-    ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0,
-  };
-  const lost = stored.exp_resources_lost?.destroyed ? stored.exp_resources_lost : emptyLost();
+  const totals = stored.exp_totals || emptyTotals();   // combined, kept for the drift check + overall ops count
+  const expTotals = stored.expedition_totals || emptyTotals();
+  const whTotals = stored.wormhole_totals || emptyTotals();
+  // Ships lost tracked separately per kind (both real: pirate_ambush/fleet_lost
+  // expedition events do destroy ships, not just wormhole encounters).
+  const expLost = stored.expedition_resources_lost?.destroyed ? stored.expedition_resources_lost : emptyLost();
+  const whLost = stored.wormhole_resources_lost?.destroyed ? stored.wormhole_resources_lost : emptyLost();
   const dailyMap = {};
   for (const d of (stored.exp_daily || [])) dailyMap[d.day] = { ...d };
   const recent = [...(stored.exp_recent_reports || [])];
@@ -1741,10 +1751,14 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
     const destroyedArr = r.totalShipsLost || r.shipsDestroyed || r.shipsLost || [];
     const nLost = extractShipsLost(r);
 
+    const kindTotals = kind === 'wormhole' ? whTotals : expTotals;
     addResources(totals, loot);
-    addLossCost(destroyedArr, ships, lost.destroyed, 1);   // encounters destroy ships outright
+    addResources(kindTotals, loot);
+    addLossCost(destroyedArr, ships, (kind === 'wormhole' ? whLost : expLost).destroyed, 1);
     totals.missions += 1;
     totals.ships_lost += nLost;
+    kindTotals.missions += 1;
+    kindTotals.ships_lost += nLost;
 
     const day = r.createdAt.slice(0, 10);
     if (!dailyMap[day]) dailyMap[day] = { day, ore: 0, silicates: 0, hydrogen: 0, missions: 0, ships_lost: 0 };
@@ -1790,7 +1804,10 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
     await browser.storage.local.set({
       exp_seen_ids: [...seen],
       exp_totals: totals,
-      exp_resources_lost: lost,
+      expedition_totals: expTotals,
+      wormhole_totals: whTotals,
+      expedition_resources_lost: expLost,
+      wormhole_resources_lost: whLost,
       exp_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
       exp_recent_reports: recent.slice(0, recordsCap),
       last_scrape: new Date().toISOString(),
@@ -2110,14 +2127,22 @@ async function rebuildAggregates() {
 
   // Expeditions (full loot map per record — fully rebuildable)
   {
-    const totals = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0, fuel: 0 };
-    const lost = emptyLost();
+    const emptyTotals = () => ({ ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0, fuel: 0 });
+    const totals = emptyTotals();
+    const expTotals = emptyTotals();
+    const whTotals = emptyTotals();
+    const expLost = emptyLost();
+    const whLost = emptyLost();
     const daily = {};
     for (const r of expRecords) {
+      const kindTotals = r.kind === 'wormhole' ? whTotals : expTotals;
       addResources(totals, r.loot || {});
-      addLossCost(r.ships_destroyed_raw, ships, lost.destroyed, 1);
+      addResources(kindTotals, r.loot || {});
+      addLossCost(r.ships_destroyed_raw, ships, (r.kind === 'wormhole' ? whLost : expLost).destroyed, 1);
       totals.missions += 1;
       totals.ships_lost += r.ships_lost || 0;
+      kindTotals.missions += 1;
+      kindTotals.ships_lost += r.ships_lost || 0;
 
       const day = r.created_at.slice(0, 10);
       if (!daily[day]) daily[day] = { day, ore: 0, silicates: 0, hydrogen: 0, missions: 0, ships_lost: 0 };
@@ -2128,7 +2153,10 @@ async function rebuildAggregates() {
       daily[day].ships_lost += r.ships_lost || 0;
     }
     out.exp_totals = totals;
-    out.exp_resources_lost = lost;
+    out.expedition_totals = expTotals;
+    out.wormhole_totals = whTotals;
+    out.expedition_resources_lost = expLost;
+    out.wormhole_resources_lost = whLost;
     out.exp_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
   }
 
@@ -2286,6 +2314,20 @@ const MIGRATIONS = {
   // debris/defenses). Clear them so they re-ingest from the detail endpoint.
   8: async () => {
     await browser.storage.local.remove(['pvp_seen_ids', 'pvp_recent_reports']);
+  },
+  // v9: exp_resources_lost (combined expedition+wormhole ship-loss cost) split
+  // into expedition_resources_lost/wormhole_resources_lost, per-kind — real
+  // expedition events (pirate_ambush, fleet_lost) destroy ships too, not just
+  // wormhole encounters. Rebuild recomputes both from the archives.
+  9: async () => {
+    await browser.storage.local.remove('exp_resources_lost');
+    await rebuildAggregates();
+  },
+  // v10: expedition_totals/wormhole_totals (per-kind gain totals, for the
+  // Global tab's source-share split) added alongside the combined exp_totals.
+  // Rebuild backfills them for reports already marked seen.
+  10: async () => {
+    await rebuildAggregates();
   },
 };
 

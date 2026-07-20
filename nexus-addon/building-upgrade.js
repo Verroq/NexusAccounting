@@ -10,7 +10,9 @@
 //     costFactor^min(L,9) · highLevelFactor^max(0,L-9)
 // i.e. levels below 10 use costFactor (1.4), level 10+ use highLevelFactor (1.5),
 // per resource. Alloys apply only from definition.alloysFromLevel. costDoubleAfter
-// is 0 on every building seen, so it's ignored.
+// (nonzero on some buildings, e.g. Research Lab = 7) flat-doubles the cost for
+// every level past it — confirmed against live previewUpgradeCost at L=6 (1×),
+// L=8 and L=10 (both exactly 2×, not compounding further).
 //
 // IIFE + re-run guard: Firefox can inject a content script twice into one
 // isolated world; top-level consts would then throw "redeclaration of const".
@@ -43,8 +45,9 @@ window.postMessage({ __nxRequestCurrentPlanet: true }, window.location.origin);
 function upgradeCost(def, fromLevel, toLevel) {
   const tot = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0 };
   for (let L = fromLevel; L < toLevel; L++) {   // the L→L+1 upgrade
-    const m = Math.pow(def.costFactor || 1.4, Math.min(L, 9)) *
-              Math.pow(def.highLevelFactor || 1.5, Math.max(0, L - 9));
+    let m = Math.pow(def.costFactor || 1.4, Math.min(L, 9)) *
+            Math.pow(def.highLevelFactor || 1.5, Math.max(0, L - 9));
+    if (def.costDoubleAfter && L > def.costDoubleAfter) m *= 2;
     for (const r of COST_RES) {
       if (r.k === 'alloys' && (L + 1) < (def.alloysFromLevel || 0)) continue;
       tot[r.k] += Math.round((def[r.base] || 0) * m);
