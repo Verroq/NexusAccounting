@@ -12,6 +12,7 @@ import { renderWormholesTab, setWhPage } from './tabs/wormholes.js';
 import { initAsteroidsTab } from './tabs/asteroids.js';
 import { renderFleetsTab } from './tabs/fleets.js';
 import { initScoutingTab } from './tabs/scouting.js';
+import { initXenoTab, renderXenoTab, setXnReportPage } from './tabs/xeno.js';
 import { initFinderTab } from './tabs/finder.js';
 import { initMarketTab } from './tabs/market.js';
 import { renderGlobalTab } from './tabs/global.js';
@@ -31,6 +32,7 @@ export async function loadAll() {
     'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
     'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
     'expedition_resources_lost', 'wormhole_resources_lost', 'stats_drift',
+    'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'xeno_resources_lost',
     'pvp_recent_reports',
     'research', 'research_speed_mult', 'active_research', 'fuel_log',
   ]));
@@ -51,7 +53,8 @@ export async function updateStorageFooter() {
   const reports = (idx.survey?.count || all.recent_reports?.length || 0) +
     (idx.pirate?.count || all.pirate_recent_reports?.length || 0) +
     (idx.mining?.count || all.mining_recent_reports?.length || 0) +
-    (idx.exp?.count || all.exp_recent_reports?.length || 0);
+    (idx.exp?.count || all.exp_recent_reports?.length || 0) +
+    (idx.xeno?.count || all.xeno_recent_reports?.length || 0);
   let bytes = 0;
   try { bytes = JSON.stringify(all).length; } catch { /* ignore */ }
   const size = bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
@@ -129,6 +132,11 @@ export function renderAll() {
     initScoutingTab();
     return;
   }
+  if (activeTab === 'xeno') {
+    initXenoTab();
+    renderXenoTab();
+    return;
+  }
   if (activeTab === 'market') {
     initMarketTab();
     return;
@@ -170,6 +178,7 @@ export const TAB_CONTENT = {
   asteroids: 'asteroids-content',
   fleets: 'fleets-content',
   scouting: 'scouting-content',
+  xeno: 'xeno-content',
   market: 'market-content',
   techtree: 'techtree-content',
 };
@@ -225,6 +234,7 @@ export function onViewChange() {
   setMiningPage(1);
   setExpPage(1);
   setWhPage(1);
+  setXnReportPage(1);
   renderAll();
 }
 
@@ -286,13 +296,14 @@ document.getElementById('btn-save-cap').addEventListener('click', async function
 document.getElementById('btn-rebuild').addEventListener('click', async function () {
   const s = await browser.storage.local.get([
     'archive_index',
-    'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports',
+    'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports', 'xeno_recent_reports',
   ]);
   const idx = s.archive_index || {};
   const n = (idx.survey?.count || (s.recent_reports || []).length) +
             (idx.pirate?.count || (s.pirate_recent_reports || []).length) +
             (idx.mining?.count || (s.mining_recent_reports || []).length) +
-            (idx.exp?.count || (s.exp_recent_reports || []).length);
+            (idx.exp?.count || (s.exp_recent_reports || []).length) +
+            (idx.xeno?.count || (s.xeno_recent_reports || []).length);
   if (!confirm(
     `Recompute all aggregated stats from the ${n} archived report records?\n\n` +
     'Mining alloys/rares, stolen-cargo breakdown and mining loss valuation ' +
@@ -345,14 +356,15 @@ export function validateBackupData(data) {
     'pirate_recent_reports', 'pirate_seen_ids', 'pirate_daily', 'pirate_outcomes',
     'mining_recent_reports', 'mining_seen_ids', 'mining_daily',
     'exp_recent_reports', 'exp_seen_ids', 'exp_daily',
-    'survey_archive', 'pirate_archive', 'mining_archive', 'exp_archive',
+    'xeno_recent_reports', 'xeno_seen_ids', 'xeno_daily',
+    'survey_archive', 'pirate_archive', 'mining_archive', 'exp_archive', 'xeno_archive',
     'spy_reports', 'camp_scout_reports', 'debris_fields',
   ];
   const objects = [
-    'totals', 'pirate_totals', 'mining_totals', 'exp_totals',
+    'totals', 'pirate_totals', 'mining_totals', 'exp_totals', 'xeno_totals',
     'expedition_totals', 'wormhole_totals', 'ships',
     'resources_lost', 'pirate_resources_lost', 'mining_resources_lost',
-    'expedition_resources_lost', 'wormhole_resources_lost',
+    'expedition_resources_lost', 'wormhole_resources_lost', 'xeno_resources_lost',
     'pirate_debris_total', 'archive_index',
   ];
   for (const k of arrays) {
@@ -405,13 +417,14 @@ document.getElementById('import-file').addEventListener('change', async function
 const PURGE_WARN_THRESHOLD = 10000;
 async function maybeWarnStorage() {
   const all = await browser.storage.local.get([
-    'archive_index', 'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports',
+    'archive_index', 'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports', 'xeno_recent_reports',
   ]);
   const idx = all.archive_index || {};
   const total = (idx.survey?.count || all.recent_reports?.length || 0) +
     (idx.pirate?.count || all.pirate_recent_reports?.length || 0) +
     (idx.mining?.count || all.mining_recent_reports?.length || 0) +
-    (idx.exp?.count || all.exp_recent_reports?.length || 0);
+    (idx.exp?.count || all.exp_recent_reports?.length || 0) +
+    (idx.xeno?.count || all.xeno_recent_reports?.length || 0);
   if (total <= PURGE_WARN_THRESHOLD) return;
   if (!await confirmDialog(`⚠ Large storage: ${total.toLocaleString()} reports kept.\n\n` +
     'Purge old data and keep only the last 3 days?')) return;

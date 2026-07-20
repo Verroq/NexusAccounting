@@ -562,6 +562,8 @@ export const RESOURCE_SERIES = [
   { field: 'plasma_core',  label: 'Plasma Core',  color: '#ff7b72' },
   { field: 'dark_matter',  label: 'Dark Matter',  color: '#d2a8ff' },
   { field: 'antimatter',   label: 'Antimatter',   color: '#ffa657' },
+  { field: 'precursor_fragments', label: 'Precursor Fragments', color: '#7ee787' },
+  { field: 'artifact',            label: 'Artifact',            color: '#d29922' },
 ];
 
 // fieldGetters covering every chartable resource, for computeSeries.
@@ -661,6 +663,29 @@ export function computeResourcesLost(reports, ships) {
   return out;
 }
 
+// Ship-loss build cost from raw ships_destroyed_raw arrays
+// ([{shipDefId,quantity}] or [{key,lost}]) — the shape expeditions/wormholes/
+// xeno store per-record, as opposed to computeResourcesLost's shipDefId→qty
+// map. Ships destroyed outright (no repair concept for these encounters).
+export function computeRawLossCost(reports, ships) {
+  const out = emptyResources();
+  const byKey = {};
+  for (const s of Object.values(ships || {})) if (s && s.key) byKey[s.key] = s;
+  for (const r of reports) {
+    for (const i of (r.ships_destroyed_raw || [])) {
+      const ship = i.shipDefId != null ? ships[i.shipDefId] : byKey[i.key];
+      if (!ship) continue;
+      const q = i.quantity ?? i.lost ?? 1;
+      out.ore += q * (ship.costOre || 0);
+      out.silicates += q * (ship.costSilicates || 0);
+      out.hydrogen += q * (ship.costHydrogen || 0);
+      out.alloys += q * (ship.costAlloys || 0);
+      for (const [k, v] of Object.entries(ship.rareCosts || {})) out.rare[k] = (out.rare[k] || 0) + q * v;
+    }
+  }
+  return out;
+}
+
 // Per-resource destroyed + repair, for net calculations.
 export function combinedLost(lost) {
   const d = lost.destroyed || {}, r = lost.repair || {};
@@ -719,6 +744,8 @@ export const EXTRA_RESOURCES = [
   ['plasma_core', 'Plasma Core', 'rare'],
   ['dark_matter', 'Dark Matter', 'rare'],
   ['antimatter', 'Antimatter', 'rare'],
+  ['precursor_fragments', 'Precursor Fragments', 'rare'],
+  ['artifact', 'Artifact', 'rare'],
 ];
 
 export const EXTRA_RES_KEYS_UI = EXTRA_RESOURCES.map(e => e[0]);
@@ -782,8 +809,11 @@ export function renderLostCards(destroyedId, repairId, lost, periodLabel) {
 }
 
 // Relative value of each resource, used to weight the net total.
-export const RESOURCE_WEIGHTS = { ore: 1, silicates: 2, hydrogen: 3, alloys: 5 };
-export const RARE_WEIGHT = 10;   // exotic resources (ice, quantum dust, …) in the net total
+export const RESOURCE_WEIGHTS = {
+  ore: 1, silicates: 2, hydrogen: 3, alloys: 5,
+  precursor_fragments: 50, artifact: 2000,
+};
+export const RARE_WEIGHT = 10;   // exotics with no specific weight above (ice, quantum dust, …)
 
 // Net gain cards: resources collected minus ship build costs, per resource
 // (raw), plus a weighted total (ore×1, silicates×2, hydrogen×3, alloys×5).
@@ -804,20 +834,20 @@ export function renderNetCards(containerId, collected, lost, periodLabel, fuelHy
     total += v * RESOURCE_WEIGHTS[key];
     el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), key));
   }
-  // Exotic resources — net (collected − any rare ship-cost), weighted ×10 in
-  // the total. Shown when present either side.
+  // Exotic resources — net (collected − any rare ship-cost), weighted per
+  // RESOURCE_WEIGHTS (falling back to RARE_WEIGHT). Shown when present either side.
   for (const [key, label, cls] of EXTRA_RESOURCES) {
     if (key === 'alloys') continue;   // already a core field above
     const got = resourceVal(collected, key);
     const spent = resourceVal(cost, key);
     if (!got && !spent) continue;
     const v = got - spent;
-    total += v * RARE_WEIGHT;
+    total += v * (RESOURCE_WEIGHTS[key] || RARE_WEIGHT);
     el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), cls));
   }
   const totalCard = makeStatCard(`Total net${periodLabel}`, (total >= 0 ? '+' : '') + fmt(total),
     '', total >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5, exotics×10.'
+  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5, precursor fragments×50, artifacts×2000, other exotics×10.'
     + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
   el.appendChild(totalCard);
 }

@@ -1,7 +1,7 @@
 // Wormhole runs tab. Expeditions have their own tab (tabs/expeditions.js) —
 // both kinds share one background store (exp_*), tagged per-record by `kind`.
 
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeRawLossCost, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartWormholes, chartWhComp;
 
@@ -93,8 +93,8 @@ export function renderWormholesTab() {
     );
   }
 
-  const lost = store.wormhole_resources_lost || { destroyed: {}, repair: {} };
-  fillResourceCards('w-stats-lost', lost.destroyed, '');
+  const lost = computeRawLossCost(whRecordsForMode(mode), store.ships || {});
+  fillResourceCards('w-stats-lost', lost, '');
 
   if (chartWormholes) chartWormholes.destroy();
   chartWormholes = makeResourceLineChart('chart-wormholes', getWhSeriesForMode(mode),

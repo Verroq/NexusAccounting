@@ -21,6 +21,7 @@
     <button class="tab" data-tab="asteroids">Asteroids Fields</button>
     <button class="tab" data-tab="fleets">Fleet Templates</button>
     <button class="tab" data-tab="scouting">Scouting</button>
+    <button class="tab" data-tab="xeno">Xeno</button>
     <button class="tab" data-tab="market">Market</button>
     <button class="tab" data-tab="techtree">Tech Tree</button>
   </nav>
@@ -819,6 +820,88 @@
           </tr>
         </thead>
         <tbody id="sc-salvage-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="xeno-content" style="display:none;">
+    <div class="finder-controls">
+      <label>Survey From
+        <select id="xn-planet"></select>
+      </label>
+      <label>Fleet template
+        <select id="xn-template"></select>
+      </label>
+      <button id="xn-scan">Launch Ruins Survey</button>
+      <span id="xn-progress" style="color:#8b949e; font-size:0.8rem;"></span>
+      <span id="xn-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="Fleet slots in use"></span>
+    </div>
+    <div id="xn-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
+    <div style="color:#8b949e; font-size:0.8rem; margin-bottom:8px;">
+      Finds the nearest system with an unowned Ancient moon not already targeted by an in-flight ruins survey,
+      then launches one there with the selected fleet template.
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Ruins survey fleets in transit</h2>
+        <span id="xn-transit-count" style="color:#8b949e; font-size:0.8rem;"></span>
+      </div>
+      <div id="xn-transit-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Moons on cooldown</h2>
+        <span id="xn-cooldown-count" style="color:#8b949e; font-size:0.8rem;"></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Moon</th>
+            <th>System</th>
+            <th>Available in</th>
+          </tr>
+        </thead>
+        <tbody id="xn-cooldown-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="section-label">Loot collected — ruins surveys</div>
+    <div class="stats" id="xn-stats-collected"></div>
+
+    <div class="section-label">Ships lost (build cost)</div>
+    <div class="stats" id="xn-stats-lost"></div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h2>Loot per period</h2>
+        <canvas id="chart-xeno"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Loot composition</h2>
+        <canvas id="chart-xeno-comp"></canvas>
+      </div>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Ruins survey reports</h2>
+        <div class="pagination">
+          <button id="xn-report-btn-prev">← Prev</button>
+          <span id="xn-report-page-info">Page 1</span>
+          <button id="xn-report-btn-next">Next →</button>
+        </div>
+      </div>
+      <table>
+        <thead id="xn-reports-head">
+          <tr>
+            <th class="sortable" data-key="created_at">Date</th>
+            <th class="sortable" data-key="precursor_fragments">Precursor Fragments</th>
+            <th class="sortable" data-key="artifact">Artifacts</th>
+          </tr>
+        </thead>
+        <tbody id="xn-reports-tbody"></tbody>
       </table>
     </div>
   </div>
