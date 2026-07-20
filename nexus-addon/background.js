@@ -16,6 +16,7 @@ const RESEARCH_PATH = '/api/research';
 const MINING_PATH = '/api/fleet/mining-reports';
 const EXPEDITION_PATH = '/api/fleet/expedition-reports';
 const WORMHOLE_PATH = '/api/fleet/wormhole-runs';
+const CYBER_PATH = '/api/fleet/cyber-reports';   // xeno_survey (ruins survey) results
 const SYSTEM_DEBRIS_PATH = '/api/fleet/system-debris';
 const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
@@ -561,6 +562,7 @@ const FUEL_BASE = 3.48;
 function fuelMissionType(t) {
   const s = (t || '').toLowerCase();
   if (s.includes('debris')) return 'debris';
+  if (s.includes('xeno')) return 'xeno';   // must precede the 'survey' check below
   if (s.includes('survey') || s.includes('investigate') || s.includes('anomaly')) return 'survey';
   if (s.includes('min')) return 'mining';
   if (s.includes('raid') || s.includes('pirate') || s.includes('attack')) return 'pirate';
@@ -734,17 +736,16 @@ function enqueue(fn) {
 // only rewrites the current month instead of the whole history. The index
 // tracks shard months and counts per type.
 
-const ARCHIVE_TYPES = ['survey', 'pirate', 'mining', 'exp'];
+const ARCHIVE_TYPES = ['survey', 'pirate', 'mining', 'exp', 'xeno'];
 
-function emptyArchiveIndex() {
-  const idx = {};
-  for (const t of ARCHIVE_TYPES) idx[t] = { months: [], count: 0 };
-  return idx;
-}
-
+// Backfills any ARCHIVE_TYPES entry missing from a stored index (e.g. a type
+// added after the index was first written, like 'xeno') so every caller can
+// assume idx[type] exists without checking.
 async function getArchiveIndex() {
   const { archive_index } = await browser.storage.local.get('archive_index');
-  return archive_index || emptyArchiveIndex();
+  const idx = archive_index || {};
+  for (const t of ARCHIVE_TYPES) if (!idx[t]) idx[t] = { months: [], count: 0 };
+  return idx;
 }
 
 async function appendToArchive(type, records) {
@@ -987,7 +988,7 @@ async function backfillZones(zones, campZones = {}, wormholeZones = {}) {
 
   const recentKey = {
     survey: 'recent_reports', pirate: 'pirate_recent_reports',
-    mining: 'mining_recent_reports', exp: 'exp_recent_reports',
+    mining: 'mining_recent_reports', exp: 'exp_recent_reports', xeno: 'xeno_recent_reports',
   };
   const whId = r => r.wormhole_id ?? (String(r.location || '').match(/Wormhole #(\d+)/) || [])[1];
   const stamp = (r, type) => {
@@ -1822,6 +1823,78 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
   return added;
 }
 
+// Ruins survey (xeno_survey) results. Report shape is unconfirmed — no survey
+// had completed as of writing, so this reuses extractLoot/extractShipsLost's
+// tolerant fallbacks (same approach taken for expeditions before that shape
+// was confirmed either). Revisit field names once a real report comes in.
+async function processXenoReports(reports, ships, zones = {}) {
+  if (!(reports || []).length) return 0;
+
+  const stored = await browser.storage.local.get([
+    'xeno_seen_ids', 'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'xeno_resources_lost', 'records_cap',
+  ]);
+  const recordsCap = stored.records_cap ?? 5000;
+
+  const seen = new Set(stored.xeno_seen_ids || []);
+  const totals = stored.xeno_totals || {
+    ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0,
+  };
+  const lost = stored.xeno_resources_lost?.destroyed ? stored.xeno_resources_lost : emptyLost();
+  const dailyMap = {};
+  for (const d of (stored.xeno_daily || [])) dailyMap[d.day] = { ...d };
+  const recent = [...(stored.xeno_recent_reports || [])];
+
+  let added = 0;
+  for (const r of reports) {
+    const uid = `xeno-${r.id}`;
+    if (seen.has(uid) || !r.createdAt) continue;
+    if (r.status && r.status !== 'completed') continue;
+    seen.add(uid);
+    added++;
+    const loot = extractLoot(r);
+    const destroyedArr = r.totalShipsLost || r.shipsDestroyed || r.shipsLost || [];
+    const nLost = extractShipsLost(r);
+
+    addResources(totals, loot);
+    addLossCost(destroyedArr, ships, lost.destroyed, 1);
+    totals.missions += 1;
+    totals.ships_lost += nLost;
+
+    const day = r.createdAt.slice(0, 10);
+    if (!dailyMap[day]) dailyMap[day] = { day, ore: 0, silicates: 0, hydrogen: 0, missions: 0, ships_lost: 0 };
+    dailyMap[day].ore += loot.ore || 0;
+    dailyMap[day].silicates += loot.silicates || 0;
+    dailyMap[day].hydrogen += loot.hydrogen || 0;
+    dailyMap[day].missions += 1;
+    dailyMap[day].ships_lost += nLost;
+
+    recent.unshift({
+      id: uid,
+      created_at: r.createdAt,
+      moon_id: r.targetMoonId ?? r.moonId ?? null,
+      event: r.eventType || r.outcome || r.result || r.status || null,
+      location: r.moonName || r.targetMoonName || r.systemName || r.locationName || r.targetName ||
+        (r.targetMoonId != null ? `Moon #${r.targetMoonId}` : '—'),
+      zone: r.securityZone || resolveZone(r.systemName || systemFromLocation(r.locationName), zones),
+      loot,
+      ships_lost: nLost,
+      ships_destroyed_raw: destroyedArr,
+    });
+  }
+
+  if (added) {
+    await appendToArchive('xeno', recent.slice(0, recent.length - (stored.xeno_recent_reports || []).length));
+    await browser.storage.local.set({
+      xeno_seen_ids: [...seen],
+      xeno_totals: totals,
+      xeno_resources_lost: lost,
+      xeno_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
+      xeno_recent_reports: recent.slice(0, recordsCap),
+    });
+  }
+  return added;
+}
+
 // system-debris is live state, not history. Snapshot it and treat decreases
 // between snapshots as "collected by someone" (us or another player).
 // Snapshot the live debris fields (with first-seen timestamps) for the
@@ -1975,7 +2048,7 @@ function costFromDetail(record, ships, into) {
 async function rebuildAggregates() {
   const s = await browser.storage.local.get([
     'recent_reports', 'pirate_recent_reports', 'mining_recent_reports',
-    'exp_recent_reports', 'ships',
+    'exp_recent_reports', 'xeno_recent_reports', 'ships',
   ]);
   const ships = s.ships || {};
   const out = {};
@@ -1987,6 +2060,7 @@ async function rebuildAggregates() {
   const pirateRecords = archives.pirate.length ? archives.pirate : (s.pirate_recent_reports || []);
   const miningRecords = archives.mining.length ? archives.mining : (s.mining_recent_reports || []);
   const expRecords = archives.exp.length ? archives.exp : (s.exp_recent_reports || []);
+  const xenoRecords = archives.xeno.length ? archives.xeno : (s.xeno_recent_reports || []);
 
   // Surveys
   {
@@ -2163,6 +2237,30 @@ async function rebuildAggregates() {
     out.expedition_resources_lost = expLost;
     out.wormhole_resources_lost = whLost;
     out.exp_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
+  }
+
+  // Xeno ruins surveys (full loot map per record — fully rebuildable)
+  {
+    const totals = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
+    const lost = emptyLost();
+    const daily = {};
+    for (const r of xenoRecords) {
+      addResources(totals, r.loot || {});
+      addLossCost(r.ships_destroyed_raw, ships, lost.destroyed, 1);
+      totals.missions += 1;
+      totals.ships_lost += r.ships_lost || 0;
+
+      const day = r.created_at.slice(0, 10);
+      if (!daily[day]) daily[day] = { day, ore: 0, silicates: 0, hydrogen: 0, missions: 0, ships_lost: 0 };
+      daily[day].ore += r.loot?.ore || 0;
+      daily[day].silicates += r.loot?.silicates || 0;
+      daily[day].hydrogen += r.loot?.hydrogen || 0;
+      daily[day].missions += 1;
+      daily[day].ships_lost += r.ships_lost || 0;
+    }
+    out.xeno_totals = totals;
+    out.xeno_resources_lost = lost;
+    out.xeno_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
   }
 
   await browser.storage.local.set(out);
@@ -2377,7 +2475,7 @@ async function scrape() {
   try {
     const planetId = await getHomePlanetId(token);
     const [shipyardData, reportData, pirateData, spyData, campScoutData,
-           miningData, expeditionData, wormholeData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
+           miningData, expeditionData, wormholeData, cyberData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
       apiFetch(`/api/planets/${planetId}/shipyard`, token).catch(() => null),   // 403s while ships are on patrol — fall back to cached catalog
       apiFetch(REPORTS_PATH, token),
       apiFetch(PIRATES_PATH, token),
@@ -2386,6 +2484,7 @@ async function scrape() {
       apiFetch(MINING_PATH, token).catch(() => ({ reports: [] })),
       apiFetch(EXPEDITION_PATH, token).catch(() => ({ reports: [] })),
       apiFetch(WORMHOLE_PATH, token).catch(() => ({ runs: [] })),
+      apiFetch(CYBER_PATH, token).catch(() => ({ reports: [] })),
       apiFetch(SYSTEM_DEBRIS_PATH, token).catch(() => ({ debris: [] })),
       apiFetch(MISSIONS_PATH, token).catch(() => ({ missions: [] })),
       apiFetch(RESEARCH_PATH, token).catch(() => ({ research: [] })),
@@ -2415,6 +2514,7 @@ async function scrape() {
       const nPirates = await processPirateReports(pirateData.reports || [], ships, campZones);
       const nMining = await processMiningReports(miningData.reports || [], ships, zones);
       await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships, zones, wormholeZones, wormholeClasses || {});
+      await processXenoReports(cyberData.reports || [], ships, zones);
       await processSystemDebris(systemDebrisData.debris || [], zones);
       await processMissions(missionsData.missions || [], zoneById || {}, ships);
       await browser.storage.local.set({
@@ -2454,6 +2554,7 @@ const WATCHED_URLS = [
   `${GAME_URL}/api/fleet/mining-reports*`,
   `${GAME_URL}/api/fleet/expedition-reports*`,
   `${GAME_URL}/api/fleet/wormhole-runs*`,
+  `${GAME_URL}/api/fleet/cyber-reports*`,
   `${GAME_URL}/api/fleet/system-debris*`,
   `${GAME_URL}/api/fleet/missions*`,
   `${GAME_URL}/api/research*`,
@@ -2538,6 +2639,7 @@ function routeIntercepted(url, json) {
     else if (url.includes('/mining-reports')) n = await processMiningReports(json.reports || [], ships, zones);
     else if (url.includes('/expedition-reports')) n = await processExpeditionReports(json.reports || [], [], ships, zones, wz, wc);
     else if (url.includes('/wormhole-runs')) n = await processExpeditionReports([], json.runs || [], ships, zones, wz, wc);
+    else if (url.includes('/cyber-reports')) n = await processXenoReports(json.reports || [], ships, zones);
     if (n) console.log(`[NexusAccounting] Realtime: ${n} new reports from ${url}`);
   });
 }

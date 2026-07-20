@@ -7,13 +7,14 @@
 // Eligibility (the game exposes no moon cooldown/survey-state field anywhere,
 // so this is a best-effort proxy): moonType 'ancient' AND unowned
 // (userId == null), not already targeted by an in-flight xeno_survey (checked
-// via GET_MISSIONS' cargo._targetMoonId), and not surveyed by us within the
-// last 48h (tracked locally in storage — the game gives no way to read this
-// back, so it's lost if storage is cleared/reset).
+// via GET_MISSIONS' cargo._targetMoonId), and not within 48h of when our last
+// survey there finished (returnDepartsAt, not launch time — tracked locally
+// in storage since the game gives no way to read this back, so it's lost if
+// storage is cleared/reset).
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { clearAvailStrip, confirmDialog, fmtCountdown, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fmtCountdown, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
 const XENO_CACHE_TTL = 24 * 3600 * 1000;   // moon ownership rarely changes
 const XENO_COOLDOWN_MS = 48 * 3600 * 1000; // local cooldown after we survey a moon
@@ -31,10 +32,19 @@ async function loadSurveyedMoons() {
   return kept;
 }
 
-async function markMoonSurveyed(moonId, name, systemName) {
+async function markMoonSurveyed(moonId, name, systemName, finishAt) {
   const surveyed = await loadSurveyedMoons();
-  surveyed[moonId] = { at: Date.now(), name, systemName };
+  surveyed[moonId] = { at: finishAt, name, systemName };
   await browser.storage.local.set({ xeno_surveyed_moons: surveyed });
+}
+
+// The just-launched mission for this moon, or null. Used to read its
+// returnDepartsAt (when the survey itself finishes and the cooldown should
+// start) — the send response doesn't include the mission record.
+async function findXenoMissionForMoon(moonId) {
+  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
+  if (mi.error) return null;
+  return (mi.missions || []).find(m => m.missionType === 'xeno_survey' && m.cargo && m.cargo._targetMoonId === moonId) || null;
 }
 
 let inited = false;
@@ -44,6 +54,106 @@ let xnMap = null;          // { systems, byId } from GET_GALAXY_MAP, cached
 let xnRunning = false;
 let xnMissions = [];       // in-flight xeno_survey missions
 let xnTicks = [];
+
+// ── Historical stats/charts/table (mirrors tabs/expeditions.js) ────────────
+export let chartXeno, chartXenoComp;
+export let xnReportPage = 1;
+
+export function xnRecordsForMode(mode) {
+  const filtered = filterZone(store.xeno_recent_reports || []);
+  if (mode === 'all' && !windowActive()) return filtered;
+  return inWindowRange(filtered);
+}
+
+export function getXnTotalsForMode(mode) {
+  const t = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
+  for (const r of xnRecordsForMode(mode)) {
+    for (const [k, v] of Object.entries(r.loot || {})) {
+      if (k in t && k !== 'rare' && k !== 'missions' && k !== 'ships_lost') t[k] += v;
+      else if (!['ore', 'silicates', 'hydrogen', 'alloys'].includes(k)) t.rare[k] = (t.rare[k] || 0) + v;
+    }
+    t.missions += 1;
+    t.ships_lost += r.ships_lost || 0;
+  }
+  return t;
+}
+
+export function getXnSeriesForMode(mode) {
+  const getters = { missions: () => 1 };
+  for (const d of RESOURCE_SERIES) getters[d.field] = r => (r.loot && r.loot[d.field]) || 0;
+  return computeSeries(filterZone(store.xeno_recent_reports || []), mode, getters);
+}
+
+export function renderXenoTab() {
+  const mode = getMode();
+  const periodLabel = periodLabelFor(mode);
+  const t = getXnTotalsForMode(mode);
+  const el = document.getElementById('xn-stats-collected');
+  if (!el) return;   // dashboard.html not loaded yet on first call
+  el.textContent = '';
+  if (!t.missions) {
+    const p = document.createElement('p');
+    p.style.cssText = 'color:#484f58;padding:8px 0';
+    p.textContent = 'No ruins survey reports recorded yet.';
+    el.appendChild(p);
+  } else {
+    el.append(
+      makeStatCard(`Ore${periodLabel}`, fmt(t.ore), 'ore'),
+      makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
+      makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
+    );
+    appendExtraResourceCards(el, t, periodLabel);
+    el.append(
+      makeStatCard(`Surveys${periodLabel}`, fmt(t.missions), 'missions'),
+      makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
+      makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('xeno', mode)), 'hydrogen'),
+    );
+  }
+
+  const lost = store.xeno_resources_lost || { destroyed: {}, repair: {} };
+  fillResourceCards('xn-stats-lost', lost.destroyed, '');
+
+  if (chartXeno) chartXeno.destroy();
+  chartXeno = makeResourceLineChart('chart-xeno', getXnSeriesForMode(mode),
+    getLabelKey(mode), { field: 'missions', label: 'Surveys' });
+
+  if (chartXenoComp) chartXenoComp.destroy();
+  chartXenoComp = makeResourceDoughnut('chart-xeno-comp', t);
+
+  renderXnReportTable();
+}
+
+export const xnReportSort = { key: 'created_at', dir: -1 };
+attachSortable('xn-reports-head', xnReportSort, () => { xnReportPage = 1; renderXnReportTable(); });
+
+export function renderXnReportTable() {
+  const reports = applySort('xn-reports-head', filterZone(store.xeno_recent_reports || []), xnReportSort);
+  renderPagedTable(reports, xnReportPage, 'xn-report-page-info', 'xn-report-btn-prev', 'xn-report-btn-next', 'xn-reports-tbody', r => {
+    const tr = document.createElement('tr');
+    const tdDate = document.createElement('td');
+    tdDate.textContent = new Date(r.created_at).toLocaleString();
+    const tdLoc = document.createElement('td');
+    tdLoc.textContent = r.location || '—';
+    const tdEvent = document.createElement('td');
+    tdEvent.textContent = r.event ? String(r.event).replace(/_/g, ' ') : '—';
+    const loot = r.loot || {};
+    const tdOre = zeroCell(loot.ore); tdOre.className = 'ore';
+    const tdSil = zeroCell(loot.silicates); tdSil.className = 'silicates';
+    const tdHyd = zeroCell(loot.hydrogen); tdHyd.className = 'hydrogen';
+    const tdAll = zeroCell(loot.alloys); tdAll.className = 'alloys';
+    tr.append(tdDate, tdLoc, zoneCell(r.zone), tdEvent,
+              tdOre, tdSil, tdHyd, tdAll,
+              zeroCell(loot.cryo_ice), zeroCell(loot.quantum_dust), zeroCell(loot.plasma_core),
+              zeroCell(loot.dark_matter), zeroCell(loot.antimatter),
+              zeroCell(r.ships_lost));
+    return tr;
+  });
+}
+
+document.getElementById('xn-report-btn-prev').addEventListener('click', () => { xnReportPage--; renderXnReportTable(); });
+document.getElementById('xn-report-btn-next').addEventListener('click', () => { xnReportPage++; renderXnReportTable(); });
+
+export function setXnReportPage(n) { xnReportPage = n; }
 
 export async function initXenoTab() {
   if (inited) return;
@@ -313,10 +423,20 @@ async function launchRuinsSurvey() {
     type: 'SEND_XENO_SURVEY', sourcePlanetId: planetId, targetMoonId: found.moon.id, ships: r.ships,
   });
   if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
-  await markMoonSurveyed(found.moon.id, found.moon.name, found.system.name || `#${found.system.id}`);
-  renderCooldownTable();
   status.textContent = `Fleet sent to ${found.moon.name} ✓`;
   updateAvail();
   refreshMissions();
-  setTimeout(refreshMissions, 2000);   // retry for post-POST API lag
+
+  // Cooldown starts when the survey itself finishes (returnDepartsAt), not at
+  // launch — fetch the new mission (retrying once for post-POST API lag) to
+  // read that time. Falls back to now if it never shows up.
+  let mission = await findXenoMissionForMoon(found.moon.id);
+  if (!mission) {
+    await new Promise(r => setTimeout(r, 2000));
+    mission = await findXenoMissionForMoon(found.moon.id);
+    refreshMissions();
+  }
+  const finishAt = mission && mission.returnDepartsAt ? Date.parse(mission.returnDepartsAt) : Date.now();
+  await markMoonSurveyed(found.moon.id, found.moon.name, found.system.name || `#${found.system.id}`, finishAt);
+  renderCooldownTable();
 }

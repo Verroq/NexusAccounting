@@ -866,6 +866,55 @@
         <tbody id="xn-cooldown-tbody"></tbody>
       </table>
     </div>
+
+    <div class="section-label">Loot collected — ruins surveys</div>
+    <div class="stats" id="xn-stats-collected"></div>
+
+    <div class="section-label">Ships lost (build cost)</div>
+    <div class="stats" id="xn-stats-lost"></div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h2>Loot per period</h2>
+        <canvas id="chart-xeno"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Loot composition</h2>
+        <canvas id="chart-xeno-comp"></canvas>
+      </div>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Ruins survey reports</h2>
+        <div class="pagination">
+          <button id="xn-report-btn-prev">← Prev</button>
+          <span id="xn-report-page-info">Page 1</span>
+          <button id="xn-report-btn-next">Next →</button>
+        </div>
+      </div>
+      <table>
+        <thead id="xn-reports-head">
+          <tr>
+            <th class="sortable" data-key="created_at">Date</th>
+            <th class="sortable" data-key="location">Location</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="event">Event</th>
+            <th class="sortable" data-key="ore">Ore</th>
+            <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="ice">Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
+            <th class="sortable" data-key="ships_lost">Ships lost</th>
+          </tr>
+        </thead>
+        <tbody id="xn-reports-tbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <div id="fleets-content" style="display:none;">
