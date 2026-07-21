@@ -4,6 +4,17 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.5] - 2026-07-21
+
+### Fixed
+- **Fuel-estimate throttling**: `gamePost` now gates fuel-estimate calls to
+  the endpoint's own rate-limit scope (40/10s, 120/min) instead of relying
+  solely on the global budget `apiFetch` tracks.
+- **429 retry on `gamePost`**: game actions sent through the game tab (mine,
+  survey, investigate, fuel-estimate, etc.) now retry on 429, honouring
+  `Retry-After` then falling back to exponential backoff — matching
+  `apiFetch`'s existing policy. Previously only GET requests retried.
+
 ## [1.7.4] - 2026-07-20
 
 ### Added
