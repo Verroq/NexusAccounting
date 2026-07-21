@@ -11,7 +11,8 @@
     "alarms",
     "downloads",
     "webRequest",
-    "notifications"
+    "notifications",
+    "scripting"
   ],
   "host_permissions": [
     "https://*.nexuslegacy.space/*",

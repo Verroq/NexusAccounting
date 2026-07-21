@@ -768,14 +768,56 @@ async function getPlanetShips(planetId) {
 async function gamePost(path, body) {
   if (!(body.ships || []).length) return { error: 'No ships selected.' };
   const token = await getToken();
+  // Use native API (chrome for Chrome, browser for Firefox via polyfill)
+  const api = typeof chrome !== 'undefined' && chrome.tabs ? chrome : browser;
+  const tabs = await api.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
+  if (!tabs.length) return { error: 'Open the Nexus Legacy game in a tab first.' };
+
+  // Preferred path: delegate to the content script which is already running in
+  // the page context with the correct origin and session cookies.
   try {
-    // Use native API (chrome for Chrome, browser for Firefox via polyfill)
-    const api = typeof chrome !== 'undefined' && chrome.tabs ? chrome : browser;
-    const tabs = await api.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
-    if (!tabs.length) return { error: 'Open the Nexus Legacy game in a tab first.' };
     return await api.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
   } catch (e) {
-    return { error: e.message };
+    if (!e.message || !e.message.includes('Receiving end does not exist')) {
+      return { error: e.message };
+    }
+    // Content script not running (tab opened before extension was installed/updated,
+    // or MV3 service worker woke up and lost the connection). Fall through to the
+    // scripting API fallback below.
+  }
+
+  // Fallback: execute the fetch directly in the page context via the scripting API
+  // (available because the `scripting` permission + host_permissions cover this origin).
+  // All args must be JSON-serialisable — path (string), token (string), body (object) are.
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tabs[0].id },
+      func: async (fetchPath, fetchToken, fetchBody) => {
+        const r = await fetch(fetchPath, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(fetchToken ? { Authorization: `Bearer ${fetchToken}` } : {}),
+          },
+          body: JSON.stringify(fetchBody),
+        });
+        const text = await r.text();
+        if (!r.ok) {
+          let m = `${r.status}`;
+          try { const j = JSON.parse(text); m = j.message || j.error || m; }
+          catch { if (text) m = `${r.status}: ${text.slice(0, 200)}`; }
+          return { error: m };
+        }
+        let data = {};
+        try { data = JSON.parse(text); } catch { /* empty / non-JSON body is fine */ }
+        return { ok: true, data };
+      },
+      args: [path, token, body],
+    });
+    return results[0]?.result ?? { error: 'Script injection returned no result.' };
+  } catch (e2) {
+    return { error: `Could not reach the game tab. Please reload it and try again. (${e2.message})` };
   }
 }
 
