@@ -182,7 +182,7 @@ rt.onMessage.addListener((msg, sender, sendResponse) => {
       let m = `${r.status}`;
       try { const j = JSON.parse(text); m = j.message || j.error || m; }
       catch { if (text) m = `${r.status}: ${text.slice(0, 200)}`; }
-      sendResponse({ error: m });
+      sendResponse({ error: m, status: r.status, retryAfter: r.headers.get('Retry-After') });
     } else {
       let data = {};
       try { data = JSON.parse(text); } catch { /* empty/non-JSON ok */ }

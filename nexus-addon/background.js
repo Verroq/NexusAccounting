@@ -717,17 +717,43 @@ async function getPlanetShips(planetId) {
   }
 }
 
+// fuel-estimate has its own tighter scope (40/10s, 120/min) separate from the
+// global RateLimit-* budget apiFetch tracks. gamePost responses come back via
+// the content script as {ok,data}/{error} with no headers relayed, so this
+// gates client-side on the known caps instead of reading server state.
+const FUEL_EST_TIMES = [];
+async function fuelEstimateGate() {
+  for (;;) {
+    const now = Date.now();
+    while (FUEL_EST_TIMES.length && now - FUEL_EST_TIMES[0] > 60000) FUEL_EST_TIMES.shift();
+    const in10s = FUEL_EST_TIMES.filter(t => now - t <= 10000).length;
+    if (FUEL_EST_TIMES.length < 120 && in10s < 40) break;
+    await new Promise(res => setTimeout(res, 250));
+  }
+  FUEL_EST_TIMES.push(Date.now());
+}
+
 // POST a fleet action (mine / survey / investigate) through the game tab's
 // content script, so the request is same-origin with the session cookie —
 // identical to the game's own call. A Bearer request straight from the
 // extension is rejected by the server (500).
 async function gamePost(path, body) {
   if (!(body.ships || []).length) return { error: 'No ships selected.' };
+  if (path === '/api/fleet/fuel-estimate') await fuelEstimateGate();
   const token = await getToken();
   try {
     const tabs = await browser.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
     if (!tabs.length) return { error: 'Open the Nexus Legacy game in a tab first.' };
-    return await browser.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
+    // Retry on 429, honouring Retry-After, then exponential backoff — same policy as apiFetch.
+    for (let attempt = 0; ; attempt++) {
+      const r = await browser.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
+      if (r && r.status === 429 && attempt < 4) {
+        const ra = parseFloat(r.retryAfter);
+        await new Promise(res => setTimeout(res, Number.isFinite(ra) ? ra * 1000 : 500 * 2 ** attempt));
+        continue;
+      }
+      return r;
+    }
   } catch (e) {
     return { error: e.message };
   }
