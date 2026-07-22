@@ -4,6 +4,17 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.6] - 2026-07-22
+
+### Fixed
+- **Collect-debris under-recording**: debris collection now runs in
+  repeating ticks under the same mission id, with cargo growing each
+  tick. The addon's commit gate still treated `returnDepartsAt` (set
+  from the first tick on) as "cargo is final," so it recorded only the
+  first tick's partial haul instead of the full amount. Now gated on
+  `raidParams.collectionComplete`, falling back to `status: 'returning'`
+  for the older non-ticked mission shape.
+
 ## [1.7.5] - 2026-07-21
 
 ### Fixed
