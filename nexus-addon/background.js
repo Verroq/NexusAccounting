@@ -2029,7 +2029,11 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
   for (const m of runs) {
     const cargo = m.cargo || {};
     const amount = (cargo.ore || 0) + (cargo.silicates || 0) + (cargo.alloys || 0) + (cargo.hydrogen || 0);
+    // Collection now runs in repeating ticks (cargo grows each tick, same mission
+    // id); `returnDepartsAt` is set from the first tick on as a rolling ETA, so it
+    // no longer means the haul is final. `raidParams.collectionComplete` does.
     const returning = m.status === 'returning' || m.returnDepartsAt != null;
+    const collectionDone = m.raidParams?.collectionComplete === true || m.status === 'returning';
 
     active.push({
       id: m.id,
@@ -2050,8 +2054,8 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
       addLossCost(destroyed, ships, lost.destroyed, 1);
     }
 
-    // Commit once the haul is known (returning with non-empty cargo).
-    if (returning && amount > 0 && !seen.has(m.id)) {
+    // Commit once the haul is known (collection tick loop finished, non-empty cargo).
+    if (collectionDone && amount > 0 && !seen.has(m.id)) {
       seen.add(m.id);
       total.ore += cargo.ore || 0;
       total.silicates += cargo.silicates || 0;

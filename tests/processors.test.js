@@ -332,6 +332,31 @@ test('debris collection: returning collect_debris cargo recorded once', async ()
   assert.equal(store.debris_collected.ore, 480);
 });
 
+test('debris collection: mid-tick cargo not committed until collectionComplete', async () => {
+  const store = makeBrowserStub({});
+  const bg = await loadBackground();
+  const zoneById = { 568: 'sentinel' };
+  const mission = (cargo, complete) => ([{
+    id: 3, missionType: 'collect_debris', status: 'collecting', targetSystemId: 568,
+    returnDepartsAt: 'rolling-eta', cargo, raidParams: { collectionComplete: complete },
+  }]);
+
+  // status is still 'collecting' but returnDepartsAt is already set from tick 1 —
+  // must NOT commit on the partial haul.
+  await bg.processMissions(mission({ ore: 1476, silicates: 794, alloys: 231 }, false), zoneById);
+  assert.equal(store.debris_collected.ore, 0);
+  assert.equal(store.debris_collection_log.length, 0);
+
+  await bg.processMissions(mission({ ore: 2952, silicates: 1588, alloys: 462 }, false), zoneById);
+  assert.equal(store.debris_collected.ore, 0);
+
+  // final tick: collectionComplete flips true — commit the full cumulative cargo.
+  await bg.processMissions(mission({ ore: 6804, silicates: 3661, alloys: 1066 }, true), zoneById);
+  assert.equal(store.debris_collected.ore, 6804);
+  assert.equal(store.debris_collected.silicates, 3661);
+  assert.equal(store.debris_collection_log.length, 1);
+});
+
 test('zone back-fill stamps existing records once', async () => {
   const store = makeBrowserStub({
     recent_reports: [{ id: 1, system_name: 'A12-27' }, { id: 2, system_name: 'Z9-9' }],
