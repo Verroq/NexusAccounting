@@ -1108,3 +1108,30 @@ export function applySort(headId, records, state, tiebreak = 'created_at') {
     return cmp * dir || String(b[tiebreak] ?? '').localeCompare(String(a[tiebreak] ?? ''));
   });
 }
+
+// ── Travel Time & Efficiency Helpers ────────────────────────────────────────
+
+// Tech bonus multipliers per level (4% impulse, 6% warp).
+const IMPULSE_BONUS_PER_LEVEL = 0.04;
+const WARP_BONUS_PER_LEVEL = 0.06;
+
+// Effective fleet speed: minimum base speed × tech multiplier.
+export function effectiveFleetSpeed(ships, techBonus, shipDefs) {
+  if (!ships || !ships.length) return 0;
+  const techMult = 1 + ((techBonus?.impulseLevel || 0) * IMPULSE_BONUS_PER_LEVEL) + ((techBonus?.warpLevel || 0) * WARP_BONUS_PER_LEVEL);
+  let minSpeed = Infinity;
+  for (const { shipDefId, quantity } of ships) {
+    if (quantity <= 0) continue;
+    const def = shipDefs && shipDefs[shipDefId];
+    const baseSpeed = def?.speed || 1;  // fallback to 1 if unknown
+    const effectSpeed = baseSpeed * techMult;
+    if (effectSpeed < minSpeed) minSpeed = effectSpeed;
+  }
+  return minSpeed === Infinity ? 0 : minSpeed;
+}
+
+// Travel time in seconds: distance / effective speed.
+export function missionTravelTime(distanceAU, effectiveSpeed) {
+  if (!distanceAU || !effectiveSpeed) return 0;
+  return distanceAU / effectiveSpeed;
+}

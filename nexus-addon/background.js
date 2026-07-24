@@ -273,9 +273,29 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_MARKET_ORDERS') return getOrders('/api/market/orders');
   if (msg.type === 'GET_ALLIANCE_ORDERS') return getOrders('/api/alliance-trade/orders');
   if (msg.type === 'START_RESEARCH') return startResearch(msg.researchId, msg.planetId, msg.useFragments);
+  if (msg.type === 'GET_TECH_BONUS') return getTechBonus();
   if (msg.type === 'SET_LIVE_SEARCH') return setLiveSearch(msg.config);
   if (msg.type === 'STOP_LIVE_SEARCH') return stopLiveSearch();
 });
+
+// Extract tech bonus levels from stored research data (Impulse Drive, Warp Drive).
+// Returns { impulseLevel, warpLevel } or both 0 if data unavailable.
+async function getTechBonus() {
+  try {
+    const { research: researchArr } = await browser.storage.local.get('research');
+    if (!Array.isArray(researchArr)) return { impulseLevel: 0, warpLevel: 0 };
+    let impulseLevel = 0, warpLevel = 0;
+    for (const r of researchArr) {
+      if (!r || typeof r.level !== 'number') continue;
+      const key = (r.key || r.name || '').toLowerCase();
+      if (key.includes('impulse') && key.includes('drive')) impulseLevel = r.level;
+      if (key.includes('warp') && key.includes('drive')) warpLevel = r.level;
+    }
+    return { impulseLevel, warpLevel };
+  } catch {
+    return { impulseLevel: 0, warpLevel: 0 };
+  }
+}
 
 // Launch a research on a planet: POST /api/research/{id}/start { planetId }.
 // (Endpoint mirrors the game client.) Refreshes stored state on success so the
@@ -745,6 +765,10 @@ async function getShipDefs() {
     const planetId = await getHomePlanetId(token);
     const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token);
     const race = jwtRace(token);
+    // Also load stored ship defs (have fuelRate from scrape)
+    const { ships: storedShips } = await browser.storage.local.get('ships');
+    const fuelRateMap = {};
+    for (const [id, def] of Object.entries(storedShips || {})) fuelRateMap[id] = def.fuelRate || 0;
     const ships = (data.ships || []).map(s => ({
       shipDefId: s.id,
       key: s.key || '',
@@ -759,6 +783,7 @@ async function getShipDefs() {
       shieldHp: s.shieldHp || 0,
       weaponType: s.weaponType || null,
       armorType: s.armorType || '',
+      fuelRate: s.fuelRate || fuelRateMap[s.id] || 0,
     }));
     return { ships };
   } catch (err) {

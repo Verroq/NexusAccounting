@@ -269,3 +269,14 @@ input.no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; 
 }
 .m-switch:checked { background: #1f6feb; }
 .m-switch:checked::before { transform: translateX(22px); }
+
+/* Escort Options buttons (asteroid fields tab) */
+.af-escorts-cell { padding: 6px !important; }
+.af-escort-btn {
+  display: inline-block; padding: 4px 10px; border-radius: 4px; border: none;
+  font-size: 0.75rem; cursor: pointer; color: #fff; margin-right: 4px; margin-bottom: 4px;
+  white-space: nowrap; font-family: monospace;
+}
+.af-escort-btn.ok { background: #238636; cursor: pointer; }
+.af-escort-btn.ok:hover { background: #2ea043; }
+.af-escort-btn.missing { background: #da3633; cursor: not-allowed; opacity: 0.6; }

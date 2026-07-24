@@ -8,7 +8,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { clearAvailStrip, editFleetDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { clearAvailStrip, editFleetDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip, effectiveFleetSpeed, missionTravelTime } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // asteroid fieldType → resource icon + label
@@ -56,11 +56,15 @@ const MINING_DURATION = 600;   // seconds; fixed for asteroid mining missions
 let afTemplates = [];        // fleet templates, managed in the Fleets tab
 let afMap = null;            // { byId: {id→{x,y,sectorId,visibility}}, systems: [...] }, cached
 const sectorSystems = {};   // sectorId → systems[] (name/zone/planetCount), cached
-let afAllShips = [];        // every ship def: [{ shipDefId, name, imageUrl }]
+let afAllShips = [];        // every ship def: [{ shipDefId, name, imageUrl, fuelRate, speed }]
 let afAvailTimer = null;    // periodic availability poll
 let afMyUsername = null;    // this player's username, to spot fields already mined by us
 let afMiningFieldIds = new Set();   // fieldIds with an in-flight/active mine mission
 const allianceTagCache = {};   // player name → alliance tag (or null), session cache
+let afEscortsByZone = {};   // { zone: [template1, template2, ...] } - escorts grouped by zone
+let afEscortShipAvail = {};   // { planetId: { escortTemplateId: { withExcavator: bool, withoutExcavator: bool } } }
+const afEscortStats = new Map();   // fieldId → { templateId: { fuel, time, statusCode } }, result cache
+let afEscortGen = 0;   // generation counter for escort stats (like afFuelGen)
 
 // Resolve alliance tags for a set of player names not already cached.
 async function resolveAllianceTags(names) {
@@ -123,6 +127,10 @@ export async function initAsteroidsTab() {
   pSel.addEventListener('change', () => { rememberSelection('af-planet', pSel.value); setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
   document.getElementById('af-scan').addEventListener('click', scan);
   document.getElementById('af-template-select').addEventListener('change', e => { rememberSelection('af-template-select', e.target.value); computeFuel(); });
+  document.getElementById('af-calc-escorts').addEventListener('click', () => {
+    _travelTimeCache.clear();
+    computeEscortStats();
+  });
   document.getElementById('af-results-head').addEventListener('click', e => {
     const th = e.target.closest('th.sortable');
     if (!th) return;
@@ -152,7 +160,10 @@ export async function initAsteroidsTab() {
 
   // Ship catalog (names + icons) for the availability strip, then start it.
   const defs = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
-  afAllShips = (defs.ships || []).map(s => ({ shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl }));
+  afAllShips = (defs.ships || []).map(s => ({
+    shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl,
+    fuelRate: s.fuelRate || 0, speed: s.speed || 1,
+  }));
   updateAfAvail();
   if (!afAvailTimer) {
     afAvailTimer = setInterval(() => {
@@ -446,6 +457,55 @@ async function refreshTemplates() {
     sel.appendChild(o);
   }
   if (want && miningTemplates.some(t => String(t.id) === want)) sel.value = want;
+
+  // Build afEscortsByZone: group escort templates by zone (only escortPerMiner=true templates).
+  afEscortsByZone = {};
+  const escortTemplates = afTemplates.filter(t => t.escortZones && t.escortZones.length && t.escortPerMiner);
+  console.log(`[AF] Found ${escortTemplates.length} escort templates (out of ${afTemplates.length} total)`, escortTemplates.map(t => ({ name: t.name, zones: t.escortZones })));
+  for (const ezone of ['sentinel', 'open', 'dead', 'rift', 'unknown']) {
+    afEscortsByZone[ezone] = escortTemplates.filter(t => (t.escortZones || []).includes(ezone));
+  }
+  console.log('[AF] afEscortsByZone:', afEscortsByZone);
+
+  // Reset escort ship availability cache on template reload.
+  afEscortShipAvail = {};
+  _travelTimeCache.clear();
+}
+
+// Check which escort templates have available ships for a given planet (with/without Excavator).
+// Returns { templateId: { withExcavator: bool, withoutExcavator: bool } } or caches from afEscortShipAvail.
+async function checkEscortShipAvailability(planetId) {
+  if (!planetId || !afEscortsByZone) return {};
+  const cacheKey = String(planetId);
+  if (afEscortShipAvail[cacheKey]) return afEscortShipAvail[cacheKey];
+
+  const res = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  const avail = res.available || {};
+  const result = {};
+
+  // Flatten all escorts from all zones
+  const allEscorts = Object.values(afEscortsByZone).flat();
+  for (const t of allEscorts) {
+    result[t.id] = {};
+    for (const withExc of [false, true]) {
+      let canDo = true;
+      for (const [shipDefId, qty] of Object.entries(t.ships || {})) {
+        const needed = Number(qty) || 0;
+        if (needed <= 0) continue;
+        const have = (avail[shipDefId] || 0);
+        if (have < needed) { canDo = false; break; }
+      }
+      // Also check Excavator if requested
+      if (withExc && canDo) {
+        const excDef = afAllShips.find(d => d.name === 'Excavator');
+        if (excDef && (avail[excDef.shipDefId] || 0) < 1) canDo = false;
+      }
+      result[t.id][withExc ? 'withExcavator' : 'withoutExcavator'] = canDo;
+    }
+  }
+
+  afEscortShipAvail[cacheKey] = result;
+  return result;
 }
 
 // Open the editable fleet dialog seeded from the ship recommendation (falling
@@ -505,6 +565,82 @@ async function sendMineMission(f) {
   }
 }
 
+// Send mining mission with escort template pre-selected. Combines mining ships (from selected template)
+// + escort ships (from escort template) + optional excavator.
+async function sendMineMissionWithEscort(field, escortTemplate, withExcavator = false) {
+  const planetId = Number(document.getElementById('af-planet').value);
+  const planet = afPlanets.find(p => p.id === planetId);
+  const status = document.getElementById('af-progress');
+  if (!planetId) { alert('Pick a source planet first.'); return; }
+
+  status.textContent = 'Checking fleet…';
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  if (av.error) { status.textContent = `Error: ${av.error}`; return; }
+  const avail = av.available || {};
+
+  // Use recommend() for mining ships, same as Ships Recommendation column
+  const rec = recommend(field);
+  if (!rec || !rec.shipDefId) { status.textContent = 'No mining ship recommendation available.'; return; }
+  
+  // Limit to actually available ships (don't overcommit)
+  const maxAvailMining = avail[rec.shipDefId] || 0;
+  const actualMiningCount = Math.min(rec.count, maxAvailMining);
+  if (actualMiningCount <= 0) { status.textContent = `No ${rec.name} available (need ${rec.count}).`; return; }
+  
+  const miningShipEntry = { [rec.shipDefId]: actualMiningCount };
+
+  // Combine with escort ships (scale by actual mining count if escortPerMiner)
+  const combinedShips = { ...miningShipEntry };
+  for (const [id, q] of Object.entries(escortTemplate.ships || {})) {
+    const scaledQty = escortTemplate.escortPerMiner
+      ? Math.max(1, Math.ceil(q * actualMiningCount))
+      : Math.ceil(q);
+    combinedShips[Number(id)] = (combinedShips[Number(id)] || 0) + scaledQty;
+  }
+
+  // Add excavator if requested
+  if (withExcavator) {
+    const exc = afAllShips.find(d => d.name === 'Excavator');
+    if (exc) combinedShips[exc.shipDefId] = (combinedShips[exc.shipDefId] || 0) + 1;
+  }
+
+  // Convert to ships array for editFleetDialog
+  const ships = Object.entries(combinedShips)
+    .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity: Number(quantity) || 0 }))
+    .filter(s => s.quantity > 0);
+
+  if (!ships.length) { alert('No ships in combined fleet.'); return; }
+
+  // Open dialog with this pre-seeded fleet
+  const fieldZone = field.zone && field.zone !== '—' ? field.zone : null;
+  const fieldEscorts = fieldZone ? afTemplates.filter(t => (t.escortZones || []).includes(fieldZone)) : [];
+
+  const finalShips = await editFleetDialog({
+    title: `Mine ${field.name} with Escort`,
+    subtitle: `To: ${field.name} (${field.system})\nFrom: ${planet ? planet.name : planetId}\nEscort: ${escortTemplate.name}${withExcavator ? ' + 🔧' : ''}`,
+    avail, 
+    seed: combinedShips,
+    miningShipIds: new Set([rec.shipDefId]),  // Tell dialog which ships are miners
+    escortTemplates: fieldEscorts,
+  });
+  if (!finalShips || !finalShips.length) return;
+
+  status.textContent = `Sending to ${field.name}…`;
+  const res = await browser.runtime.sendMessage({
+    type: 'SEND_MINE',
+    sourcePlanetId: planetId,
+    targetFieldId: field.fieldId,
+    ships: finalShips,
+    miningDuration: MINING_DURATION,
+  });
+  status.textContent = res.error ? `Send failed: ${res.error}` : `Fleet sent to ${field.name} ✓`;
+  if (!res.error) {
+    afMiningFieldIds.add(field.fieldId);
+    renderAsteroids();
+    refreshSlots(); updateAfAvail();
+  }
+}
+
 // "used/max fleet slots" and in-flight mine missions — both come from the
 // missions endpoint. afMiningFieldIds drives the "already mining" row highlight.
 async function refreshSlots() {
@@ -515,6 +651,192 @@ async function refreshSlots() {
   afMiningFieldIds = new Set(
     (mi.missions || []).filter(m => m.missionType === 'mine' && m.targetFieldId != null).map(m => m.targetFieldId));
   renderAsteroids();
+}
+
+// Format seconds as Xm Ys or Xh Ym
+function fmtTime(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm ? `${h}h ${rm}m` : `${h}h`;
+}
+
+// Fuel + travel time via local formula (avoids rate-limited API calls).
+// fuel = Σ(fuelRate × qty) × (FUEL_K × distAU + FUEL_BASE)
+// travelTime = distAU / min(speed) in seconds
+const AF_FUEL_K    = 0.0496;
+const AF_FUEL_BASE = 3.48;
+const AF_COORD_TO_AU = 1 / 57.4;
+
+function localFuelEstimate(ships, distCoords) {
+  if (!ships.length || !distCoords) return { fuelCost: null };
+  const distAU = distCoords * AF_COORD_TO_AU;
+  let totalFuelRate = 0;
+  for (const { shipDefId, quantity } of ships) {
+    const def = afAllShips.find(d => d.shipDefId === shipDefId);
+    if (!def) continue;
+    totalFuelRate += def.fuelRate * quantity;
+  }
+  if (!totalFuelRate) return { fuelCost: null };
+  const fuelCost = Math.round(totalFuelRate * (AF_FUEL_K * distAU + AF_FUEL_BASE));
+  return { fuelCost };
+}
+
+// Cache travelTime per (planetId|systemId|escortId|withExcavator) — at most
+// #escorts × 2 API calls per computeEscortStats run instead of one per row.
+const _travelTimeCache = new Map();
+async function cachedTravelTime(planetId, sysId, escortId, withExcavator, combinedShips) {
+  const key = `${planetId}|${sysId}|${escortId}|${withExcavator}`;
+  if (_travelTimeCache.has(key)) return _travelTimeCache.get(key);
+  // Use one representative row's ships for speed (slowest ship determines time).
+  const ships = combinedShips.map(s => ({ shipDefId: s.shipDefId, quantity: Math.ceil(s.quantity) }));
+  const est = await fuelEstimate(planetId, sysId, ships);
+  const t = est.error ? null : (est.travelTime ? Math.ceil(est.travelTime) : null);
+  if (!est.error) _travelTimeCache.set(key, t);
+  return t;
+}
+
+// Compute Escort stats: fuel + travel time for each visible field + each zone's escort templates.
+// Uses Ships Recommendation for each field as the mining baseline.
+let afEscortStatsGen = 0;
+async function computeEscortStats() {
+  const gen = ++afEscortStatsGen;
+  const planetId = Number(document.getElementById('af-planet').value);
+  if (!planetId) return;
+  console.log(`[AF] computeEscortStats gen=${gen}, planetId=${planetId}, buttons found:`, document.querySelectorAll('.af-escort-btn').length);
+
+  // Cache escort availability once
+  const escortAvail = await checkEscortShipAvailability(planetId);
+  console.log(`[AF] escortAvail keys:`, Object.keys(escortAvail));
+
+  // For each visible field row, compute stats for each escort button
+  let rowsProcessed = 0;
+  let rowsChecked = 0;
+  for (const tr of document.querySelectorAll('#af-results-tbody tr')) {
+    if (gen !== afEscortStatsGen) return;
+
+    rowsChecked++;
+    const sysId = Number(tr.getAttribute('data-system'));
+    const fieldId = Number(tr.getAttribute('data-field-id'));  // Convert to number
+    
+    if (rowsChecked === 1) {
+      console.log(`[AF] First TR check: sysId=${sysId}, fieldId=${fieldId}`);
+    }
+    
+    if (!sysId || !fieldId) {
+      console.log(`[AF] Skipping row: sysId=${sysId}, fieldId=${fieldId}`);
+      continue;
+    }
+
+    // Get the field data and its recommended ships
+    const fieldRow = afFields.find(f => f.fieldId === fieldId);
+    if (!fieldRow) {
+      console.log(`[AF] fieldRow not found for fieldId=${fieldId}`);
+      continue;
+    }
+
+    // Build mining ships array from recommend() result
+    const rec = recommend(fieldRow);
+    const miningShips = (rec && rec.shipDefId && rec.count > 0)
+      ? [{ shipDefId: rec.shipDefId, quantity: rec.count }]
+      : [];
+    
+    if (!miningShips || !miningShips.length) {
+      // Mark all buttons as disabled if no mining ships recommended
+      const escortEls = tr.querySelectorAll('.af-escort-btn');
+      for (const btn of escortEls) {
+        btn.className = 'af-escort-btn missing';
+        btn.disabled = true;
+        btn.textContent = `${btn.textContent.split(' · ')[0]} · No mining ships`;
+      }
+      continue;
+    }
+
+    // Get escort buttons for this row
+    const escortEls = tr.querySelectorAll('.af-escort-btn');
+    if (!escortEls.length) continue;
+
+    rowsProcessed++;
+    let buttonsUpdated = 0;
+
+    for (const escBtn of escortEls) {
+      if (gen !== afEscortStatsGen) return;
+
+      const escortId = escBtn.dataset.escortId;
+      const withExc = escBtn.dataset.withExcavator === 'true';
+      const escortTpl = afTemplates.find(t => String(t.id) === escortId);
+      if (!escortTpl) continue;
+
+      // Combine mining + escort ships (deep-copy to avoid mutating the original array across iterations)
+      const combinedShips = miningShips.map(s => ({ ...s }));
+      const miningCount = miningShips.reduce((s, x) => s + x.quantity, 0);
+      for (const [shipDefId, qty] of Object.entries(escortTpl.ships || {})) {
+        const scaledQty = escortTpl.escortPerMiner
+          ? Math.max(1, Math.ceil(qty * miningCount))
+          : qty;
+        const existing = combinedShips.find(s => s.shipDefId === Number(shipDefId));
+        if (existing) existing.quantity = (existing.quantity || 0) + scaledQty;
+        else combinedShips.push({ shipDefId: Number(shipDefId), quantity: scaledQty });
+      }
+
+      // Add excavator if needed
+      if (withExc) {
+        const excDef = afAllShips.find(d => d.name === 'Excavator');
+        if (excDef) {
+          const existing = combinedShips.find(s => s.shipDefId === excDef.shipDefId);
+          if (existing) existing.quantity = (existing.quantity || 0) + 1;
+          else combinedShips.push({ shipDefId: excDef.shipDefId, quantity: 1 });
+        }
+      }
+
+      // Fuel via local formula; travelTime via API but cached per system+escort
+      const distCoords = distance(fieldRow);
+      const { fuelCost } = localFuelEstimate(combinedShips, distCoords);
+      const travelTime = await cachedTravelTime(planetId, sysId, escortId, withExc, combinedShips);
+      if (gen !== afEscortStatsGen) return;
+      
+      if (rowsProcessed === 1) {
+        console.log(`[AF] First escort button: distCoords=${distCoords}, fuelCost=${fuelCost}, travelTime=${travelTime}`);
+      }
+
+      // Determine status color (green=ok, red=missing ships)
+      const allOk = (escortAvail[escortId] || {})[withExc ? 'withExcavator' : 'withoutExcavator'] !== false;
+      if (allOk) {
+        escBtn.className = 'af-escort-btn ok';
+        escBtn.disabled = false;
+      } else {
+        escBtn.className = 'af-escort-btn missing';
+        escBtn.disabled = true;
+      }
+      const escortName = escortTpl.name || `T${escortTpl.id}`;
+      escBtn.textContent = `${escortName}${withExc ? '🔧' : ''} · ${fuelCost != null ? fuelCost : '?'}H₂ / ${travelTime != null ? fmtTime(travelTime) : '?'}s`;
+      
+      // Store in cache for rerender - key must match renderAsteroids lookup
+      const cacheKey = `${escortId}|${withExc}`;
+      if (!afEscortStats.has(fieldId)) afEscortStats.set(fieldId, {});
+      afEscortStats.get(fieldId)[cacheKey] = { 
+        fuelCost: fuelCost != null ? fuelCost : null, 
+        travelTime: travelTime != null ? travelTime : null,
+        allOk 
+      };
+      
+      buttonsUpdated++;
+    }
+    
+    if (rowsProcessed === 1) {
+      console.log(`[AF] First row: ${buttonsUpdated} buttons updated, miningShips:`, miningShips);
+    }
+  }
+  console.log(`[AF] Finished: ${rowsProcessed} rows processed`);
+}
+
+// Apply visual markers to rows for in-flight missions (stub - placeholder for future expansion)
+function applyMissionMarkers() {
+  // TODO: Could add additional visual markers, animations, etc. for in-flight missions
+  // Currently handled via row background in renderAsteroids()
 }
 
 export function renderAsteroids() {
@@ -574,7 +896,8 @@ export function renderAsteroids() {
 
   for (const f of pageRows) {
     const tr = document.createElement('tr');
-    tr.dataset.system = f.systemId;
+    tr.setAttribute('data-system', String(f.systemId));
+    tr.setAttribute('data-field-id', String(f.fieldId));
     if ((afMyUsername && f.minerPresent === afMyUsername) || afMiningFieldIds.has(f.fieldId)) {
       tr.style.background = 'rgba(63,185,80,0.15)';   // already mining / claimed by us
     }
@@ -602,14 +925,51 @@ export function renderAsteroids() {
       f.distance == null ? '—' : String(f.distance),
       '…',   // fuel cost, filled async
       f.rec ? `${f.rec.count}× ${f.rec.name}` : '—',
+      '',    // escort options, filled inline below
     ];
     cells.forEach((v, i) => {
       const td = document.createElement('td');
-      td.textContent = v;
-      if (i === 1) td.style.color = TYPE_COLOR[f.type] || '#e6edf3';
-      else if (i === 2 && f.mult != null) td.style.color = '#e3b341';
-      else if (i === 5) td.style.color = ZONE_COLOR[f.zone] || '#8b949e';
-      else if (i === 8) td.className = 'af-fuel';
+      if (i === 10) {  // escort options cell
+        td.className = 'af-escorts-cell';
+        // Use field's zone directly - f has all the data
+        const zone = f.zone && f.zone !== '—' ? f.zone : null;
+        const escortEls = zone ? (afEscortsByZone[zone] || []) : [];
+        
+        if (escortEls.length === 0) {
+          td.textContent = '—';
+        } else {
+          for (const eTpl of escortEls) {
+            for (const withExc of [false, true]) {
+              const btn = document.createElement('button');
+              btn.className = 'af-escort-btn';  // Don't set ok/missing yet - wait for computeEscortStats
+              btn.dataset.escortId = eTpl.id;
+              btn.dataset.withExcavator = String(withExc);
+              const label = (eTpl.name || `T${eTpl.id}`) + (withExc ? '🔧' : '');
+              
+              // Try to load from cache first (key matches computeEscortStats storage)
+              const cacheKey = `${eTpl.id}|${withExc}`;
+              const cached = afEscortStats.get(f.fieldId)?.[cacheKey];
+              if (cached) {
+                btn.textContent = `${label} · ${cached.fuelCost}H₂ / ${cached.travelTime}s`;
+                btn.className = cached.allOk ? 'af-escort-btn ok' : 'af-escort-btn missing';
+                btn.disabled = false;
+              } else {
+                btn.textContent = `${label} · -H / -s`;
+                btn.className = 'af-escort-btn';
+                btn.disabled = true;
+              }
+              btn.addEventListener('click', () => sendMineMissionWithEscort(f, eTpl, withExc));
+              td.appendChild(btn);
+            }
+          }
+        }
+      } else {
+        td.textContent = v;
+        if (i === 1) td.style.color = TYPE_COLOR[f.type] || '#e6edf3';
+        else if (i === 2 && f.mult != null) td.style.color = '#e3b341';
+        else if (i === 5) td.style.color = ZONE_COLOR[f.zone] || '#8b949e';
+        else if (i === 8) td.className = 'af-fuel';
+      }
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -638,7 +998,7 @@ async function computeFuel() {
   for (const tr of document.querySelectorAll('#af-results-tbody tr')) {
     if (gen !== afFuelGen) return;
     const cell = tr.querySelector('.af-fuel');
-    const sysId = Number(tr.dataset.system);
+    const sysId = Number(tr.getAttribute('data-system'));
     if (!cell || !sysId) continue;
     const est = await fuelEstimate(planetId, sysId, ships);
     if (gen !== afFuelGen) return;

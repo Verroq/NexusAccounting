@@ -26,9 +26,67 @@ let _resolvedDistanceAU = 0;
 // (50 cruisers + 34 scouts → 5,891 H round trip).
 const COORD_TO_FUEL_AU = 1 / 57.4;
 
+// Tech bonus multipliers per level (4%/6% per level).
+const IMPULSE_BONUS_PER_LEVEL = 0.04;
+const WARP_BONUS_PER_LEVEL = 0.06;
+
 // Euclidean coordinate distance between two systems, scaled to fuel-AU.
 function coordDistanceAU(a, d) {
   return Math.sqrt((d.x - a.x) ** 2 + (d.y - a.y) ** 2) * COORD_TO_FUEL_AU;
+}
+
+// Effective fleet speed: minimum base speed × tech multiplier.
+// ships: [{ shipDefId, quantity }, ...], techBonus: { impulseLevel, warpLevel }
+// shipDefs: keyed by shipDefId with { speed } field. Returns speed in game units.
+function effectiveFleetSpeed(ships, techBonus, shipDefs) {
+  if (!ships || !ships.length) return 0;
+  const techMult = 1 + ((techBonus?.impulseLevel || 0) * IMPULSE_BONUS_PER_LEVEL) + ((techBonus?.warpLevel || 0) * WARP_BONUS_PER_LEVEL);
+  let minSpeed = Infinity;
+  for (const { shipDefId, quantity } of ships) {
+    if (quantity <= 0) continue;
+    const def = shipDefs && shipDefs[shipDefId];
+    const baseSpeed = def?.speed || 1;  // fallback to 1 if unknown
+    const effectSpeed = baseSpeed * techMult;
+    if (effectSpeed < minSpeed) minSpeed = effectSpeed;
+  }
+  return minSpeed === Infinity ? 0 : minSpeed;
+}
+
+// Travel time in seconds: distance / effective speed.
+// distanceAU: in AU, effectiveSpeed: result from effectiveFleetSpeed.
+function missionTravelTime(distanceAU, effectiveSpeed) {
+  if (!distanceAU || !effectiveSpeed) return 0;
+  return distanceAU / effectiveSpeed;
+}
+
+// Mining output for a fleet: ships × rate × field multiplier × cycles.
+// ships: [{ shipDefId, quantity }, ...], fieldMult: field richness, cycles: mining cycles.
+// Returns { ore, silicates, alloys, hydrogen, rare: {} } or null if uncomputable.
+function miningOutput(ships, fieldMult, shipDefs, cycles = 10, withExcavatorBonus = false) {
+  if (!ships || !ships.length || !fieldMult) return null;
+  const excavatorMult = withExcavatorBonus ? 1.2 : 1;
+  const resources = { ore: 0, silicates: 0, alloys: 0, hydrogen: 0, rare: {} };
+  for (const { shipDefId, quantity } of ships) {
+    if (quantity <= 0) continue;
+    const def = shipDefs && shipDefs[shipDefId];
+    const rate = (def?.miningRate || 0) * excavatorMult;  // per-cycle extraction
+    const perShip = rate * fieldMult * cycles;
+    resources.ore += perShip * quantity;  // assume ore for now, expandable per ship type
+  }
+  return resources;
+}
+
+// Efficiency: resources per hour for a mining mission.
+// totalOutput: { ore, silicates, ... }, totalTimeSeconds: hinflug + mining + rückflug.
+// Returns { ore_per_hour, silicates_per_hour, ... } or null if invalid.
+function efficiencyPerHour(totalOutput, totalTimeSeconds) {
+  if (!totalTimeSeconds || totalTimeSeconds <= 0) return null;
+  const hoursPerSec = 3600 / totalTimeSeconds;
+  const out = {};
+  for (const [k, v] of Object.entries(totalOutput || {})) {
+    if (typeof v === 'number') out[k + '_per_hour'] = v * hoursPerSec;
+  }
+  return out;
 }
 
 async function updateDistanceFromCoords() {
@@ -268,4 +326,5 @@ coordInputHandler(document.getElementById('def-system'));
 export {
   updateDistanceFromCoords, loadIntelReports, populatePlanetPicker,
   _resolvedDistanceAU, classifyDefenses, coordDistanceAU, COORD_TO_FUEL_AU,
+  effectiveFleetSpeed, missionTravelTime, miningOutput, efficiencyPerHour,
 };
