@@ -58,7 +58,18 @@ let afMap = null;            // { byId: {id→{x,y,sectorId,visibility}}, system
 const sectorSystems = {};   // sectorId → systems[] (name/zone/planetCount), cached
 let afAllShips = [];        // every ship def: [{ shipDefId, name, imageUrl }]
 let afAvailTimer = null;    // periodic availability poll
-let afMissions = [];        // current in-flight missions from the fleet API
+let afMyUsername = null;    // this player's username, to spot fields already mined by us
+let afMiningFieldIds = new Set();   // fieldIds with an in-flight/active mine mission
+const allianceTagCache = {};   // player name → alliance tag (or null), session cache
+
+// Resolve alliance tags for a set of player names not already cached.
+async function resolveAllianceTags(names) {
+  const need = [...new Set(names)].filter(n => n && !(n in allianceTagCache));
+  await Promise.all(need.map(async name => {
+    const res = await browser.runtime.sendMessage({ type: 'GET_PLAYER_ALLIANCE_TAG', name });
+    allianceTagCache[name] = (res && res.tag) || null;
+  }));
+}
 
 export async function initAsteroidsTab() {
   if (afInited) return;
@@ -69,6 +80,9 @@ export async function initAsteroidsTab() {
   const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS' });
   if (planets.error) { status.textContent = `Error: ${planets.error}`; afInited = false; return; }
   afPlanets = (planets.planets || []).filter(p => p.systemId != null);
+
+  const me = await browser.runtime.sendMessage({ type: 'GET_AUTH_ME' });
+  afMyUsername = (me && !me.error && me.user) ? me.user.username : null;
 
   const pSel = document.getElementById('af-planet');
   const lsSel = document.getElementById('ls-planet');
@@ -361,6 +375,7 @@ async function scan() {
           zone: meta.securityZone || '—',
           sx: sys.x, sy: sys.y,
           minerPresent: f.controllerName || null,
+          ownerName: (f.outpostShieldMaxHp ?? 0) > 0 ? (f.controllerName || null) : null,
         });
       }
       scanned++;
@@ -383,6 +398,8 @@ async function scan() {
       .forEach(id => delete cache[id]);
   }
   await browser.storage.local.set({ planet_scan_cache: cache });
+
+  await resolveAllianceTags(afFields.filter(f => f.ownerName).map(f => f.ownerName));
 
   status.textContent = `Done: ${afFields.length} fields in ${scanned} systems` +
     (errors ? ` · ${errors} skipped (errors)` : '') + '.';
@@ -481,64 +498,23 @@ async function sendMineMission(f) {
     miningDuration: MINING_DURATION,
   });
   status.textContent = res.error ? `Send failed: ${res.error}` : `Fleet sent to ${f.name} ✓`;
-  if (!res.error) { refreshSlots(); updateAfAvail(); }
+  if (!res.error) {
+    afMiningFieldIds.add(f.fieldId);   // optimistic — GET_MISSIONS can lag right after the send
+    renderAsteroids();
+    refreshSlots(); updateAfAvail();
+  }
 }
 
-// "used/max fleet slots" — both come from the missions endpoint.
-// Also stores the mission list for the active-fleet markers on the table.
+// "used/max fleet slots" and in-flight mine missions — both come from the
+// missions endpoint. afMiningFieldIds drives the "already mining" row highlight.
 async function refreshSlots() {
   const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
   if (mi.maxFleetSlots != null) {
     document.getElementById('af-slots').textContent = `${(mi.missions || []).length}/${mi.maxFleetSlots} fleet slots`;
   }
-  afMissions = mi.missions || [];
-  applyMissionMarkers();
-}
-
-// Apply (or refresh) the in-flight fleet markers on the current table rows.
-// Called after renderAsteroids() and after every refreshSlots() poll.
-// Only mining missions (missionType 'mine') are relevant here.
-function applyMissionMarkers() {
-  // Build a map: targetSystemId → mining missions count.
-  const bySystem = new Map();
-  for (const m of afMissions) {
-    if (m.missionType !== 'mine' || !m.targetSystemId) continue;
-    bySystem.set(m.targetSystemId, (bySystem.get(m.targetSystemId) || 0) + 1);
-  }
-
-  for (const tr of document.querySelectorAll('#af-results-tbody tr')) {
-    const sysId = Number(tr.dataset.system);
-    if (!sysId) continue;
-
-    // Remove any previous marker so we start clean on each refresh.
-    const prev = tr.querySelector('.af-mission-badge');
-    if (prev) prev.remove();
-    tr.style.removeProperty('border-left');
-
-    const count = bySystem.get(sysId);
-    if (!count) continue;
-
-    tr.style.borderLeft = '3px solid #f0883e';
-
-    const firstTd = tr.children[1];
-    if (!firstTd) continue;
-    const badge = document.createElement('span');
-    badge.className = 'af-mission-badge';
-    badge.style.cssText = 'display:inline-block;margin-left:5px;font-size:0.7rem;padding:1px 5px;border-radius:4px;background:#f0883e22;border:1px solid #f0883e;color:#f0883e;vertical-align:middle;cursor:default;';
-    badge.textContent = count > 1 ? `⛏ ×${count}` : '⛏';
-
-    // Tooltip: stage of each mining mission in this system.
-    const miningHere = afMissions.filter(m => m.missionType === 'mine' && m.targetSystemId === sysId);
-    badge.title = miningHere.map(m => {
-      const now = Date.now();
-      const arr  = m.arrivesAt      ? new Date(m.arrivesAt).getTime()      : null;
-      const rdep = m.returnDepartsAt ? new Date(m.returnDepartsAt).getTime() : null;
-      const stage = arr && now < arr ? 'En route' : rdep && now < rdep ? 'Mining' : 'Returning';
-      return `Fleet: ${stage}`;
-    }).join('\n');
-
-    firstTd.appendChild(badge);
-  }
+  afMiningFieldIds = new Set(
+    (mi.missions || []).filter(m => m.missionType === 'mine' && m.targetFieldId != null).map(m => m.targetFieldId));
+  renderAsteroids();
 }
 
 export function renderAsteroids() {
@@ -599,6 +575,9 @@ export function renderAsteroids() {
   for (const f of pageRows) {
     const tr = document.createElement('tr');
     tr.dataset.system = f.systemId;
+    if ((afMyUsername && f.minerPresent === afMyUsername) || afMiningFieldIds.has(f.fieldId)) {
+      tr.style.background = 'rgba(63,185,80,0.15)';   // already mining / claimed by us
+    }
 
     const sendTd = document.createElement('td');
     const ship = document.createElement('span');
@@ -611,12 +590,15 @@ export function renderAsteroids() {
 
     const content = f.remaining == null ? '—'
       : `${f.remaining.toLocaleString()} / ${(f.total ?? 0).toLocaleString()}`;
+    const tag = f.ownerName ? allianceTagCache[f.ownerName] : null;
+    const owner = f.ownerName ? (tag ? `${f.ownerName} [${tag}]` : f.ownerName) : '—';
     const cells = [
       f.system, String(f.type).replace(/_/g, ' '),
       f.mult == null ? '—' : `×${f.mult}`,
       content,
       f.leftPct == null ? '—' : `${f.leftPct}%`,
       f.zone,
+      owner,
       f.distance == null ? '—' : String(f.distance),
       '…',   // fuel cost, filled async
       f.rec ? `${f.rec.count}× ${f.rec.name}` : '—',
@@ -627,7 +609,7 @@ export function renderAsteroids() {
       if (i === 1) td.style.color = TYPE_COLOR[f.type] || '#e6edf3';
       else if (i === 2 && f.mult != null) td.style.color = '#e3b341';
       else if (i === 5) td.style.color = ZONE_COLOR[f.zone] || '#8b949e';
-      else if (i === 7) td.className = 'af-fuel';
+      else if (i === 8) td.className = 'af-fuel';
       tr.appendChild(td);
     });
     tbody.appendChild(tr);

@@ -2,7 +2,7 @@
 // both kinds share one background store (exp_*), tagged per-record by `kind`.
 
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartExpeditions, chartExpComp;
 
@@ -310,8 +310,8 @@ export function renderExpeditionsTab() {
     );
   }
 
-  const lost = store.expedition_resources_lost || { destroyed: {}, repair: {} };
-  fillResourceCards('e-stats-lost', lost.destroyed, '');
+  const lost = computeRawLossCost(expRecordsForMode(mode), store.ships || {});
+  fillResourceCards('e-stats-lost', lost, '');
 
   if (chartExpeditions) chartExpeditions.destroy();
   chartExpeditions = makeResourceLineChart('chart-expeditions', getExpSeriesForMode(mode),

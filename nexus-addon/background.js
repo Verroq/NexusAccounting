@@ -16,6 +16,11 @@ const RESEARCH_PATH = '/api/research';
 const MINING_PATH = '/api/fleet/mining-reports';
 const EXPEDITION_PATH = '/api/fleet/expedition-reports';
 const WORMHOLE_PATH = '/api/fleet/wormhole-runs';
+// xeno_survey (ruins survey) results aren't a fleet report — they arrive as a
+// system message with subject "Xeno Survey Complete", body text like "Your
+// science team finished the xeno survey. 0 fragments recovered, plus an
+// artifact for your collection." No structured loot/moon/zone data at all.
+const XENO_MESSAGES_PATH = '/api/messages/system';
 const SYSTEM_DEBRIS_PATH = '/api/fleet/system-debris';
 const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
@@ -144,6 +149,7 @@ async function liveSearchScan() {
             remaining: f.remainingResources ?? null,
             leftPct: f.totalResources ? Math.round((f.remainingResources / f.totalResources) * 100) : null,
             zone,
+            controllerName: f.controllerName || null,
           });
         }
       }
@@ -243,6 +249,11 @@ browser.runtime.onMessage.addListener(msg => {
       sourcePlanetId: msg.sourcePlanetId, ships: msg.ships, zone: msg.zone, depth: msg.depth,
     });
   }
+  if (msg.type === 'SEND_XENO_SURVEY') {
+    return gamePost('/api/fleet/xeno-survey', {
+      sourcePlanetId: msg.sourcePlanetId, targetMoonId: msg.targetMoonId, ships: msg.ships,
+    });
+  }
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
   if (msg.type === 'PURGE_OLD') return enqueue(() => purgeOldData(msg.days ?? 3)).then(() => ({ ok: true }));
@@ -252,6 +263,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
   if (msg.type === 'GET_ARM_SECTORS') return apiGet(`/api/galaxy/arms/${msg.armId}/sectors`);
   if (msg.type === 'GET_SECTOR_SYSTEMS') return apiGet(`/api/galaxy/sectors/${msg.sectorId}/systems`);
+  if (msg.type === 'GET_PLAYER_ALLIANCE_TAG') return getPlayerAllianceTag(msg.name);
   if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me');
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
@@ -387,6 +399,16 @@ async function getPlayerRanks(name) {
     if (e) out[cat] = e.rank;
   }
   return out;
+}
+
+// A player's current alliance tag by exact username (asteroid field outpost
+// owners), via the same leaderboard search endpoint.
+async function getPlayerAllianceTag(name) {
+  if (!name) return { tag: null };
+  const data = await apiGet(`/api/rankings/players?category=military&search=${encodeURIComponent(name)}`);
+  if (data.error) return data;
+  const e = (data.leaderboard || []).find(x => x.username === name);
+  return { tag: e ? (e.allianceTag || null) : null };
 }
 
 function jwtRace(token) {
@@ -623,6 +645,7 @@ const FUEL_BASE = 3.48;
 function fuelMissionType(t) {
   const s = (t || '').toLowerCase();
   if (s.includes('debris')) return 'debris';
+  if (s.includes('xeno')) return 'xeno';   // must precede the 'survey' check below
   if (s.includes('survey') || s.includes('investigate') || s.includes('anomaly')) return 'survey';
   if (s.includes('min')) return 'mining';
   if (s.includes('raid') || s.includes('pirate') || s.includes('attack')) return 'pirate';
@@ -761,12 +784,29 @@ async function getPlanetShips(planetId) {
   }
 }
 
+// fuel-estimate has its own tighter scope (40/10s, 120/min) separate from the
+// global RateLimit-* budget apiFetch tracks. gamePost responses come back via
+// the content script as {ok,data}/{error} with no headers relayed, so this
+// gates client-side on the known caps instead of reading server state.
+const FUEL_EST_TIMES = [];
+async function fuelEstimateGate() {
+  for (;;) {
+    const now = Date.now();
+    while (FUEL_EST_TIMES.length && now - FUEL_EST_TIMES[0] > 60000) FUEL_EST_TIMES.shift();
+    const in10s = FUEL_EST_TIMES.filter(t => now - t <= 10000).length;
+    if (FUEL_EST_TIMES.length < 120 && in10s < 40) break;
+    await new Promise(res => setTimeout(res, 250));
+  }
+  FUEL_EST_TIMES.push(Date.now());
+}
+
 // POST a fleet action (mine / survey / investigate) through the game tab's
 // content script, so the request is same-origin with the session cookie —
 // identical to the game's own call. A Bearer request straight from the
 // extension is rejected by the server (500).
 async function gamePost(path, body) {
   if (!(body.ships || []).length) return { error: 'No ships selected.' };
+  if (path === '/api/fleet/fuel-estimate') await fuelEstimateGate();
   const token = await getToken();
   // Use native API (chrome for Chrome, browser for Firefox via polyfill)
   const api = typeof chrome !== 'undefined' && chrome.tabs ? chrome : browser;
@@ -776,7 +816,18 @@ async function gamePost(path, body) {
   // Preferred path: delegate to the content script which is already running in
   // the page context with the correct origin and session cookies.
   try {
-    return await api.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
+    const tabs = await browser.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
+    if (!tabs.length) return { error: 'Open the Nexus Legacy game in a tab first.' };
+    // Retry on 429, honouring Retry-After, then exponential backoff — same policy as apiFetch.
+    for (let attempt = 0; ; attempt++) {
+      const r = await browser.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
+      if (r && r.status === 429 && attempt < 4) {
+        const ra = parseFloat(r.retryAfter);
+        await new Promise(res => setTimeout(res, Number.isFinite(ra) ? ra * 1000 : 500 * 2 ** attempt));
+        continue;
+      }
+      return r;
+    }
   } catch (e) {
     if (!e.message || !e.message.includes('Receiving end does not exist')) {
       return { error: e.message };
@@ -840,17 +891,16 @@ function enqueue(fn) {
 // only rewrites the current month instead of the whole history. The index
 // tracks shard months and counts per type.
 
-const ARCHIVE_TYPES = ['survey', 'pirate', 'mining', 'exp'];
+const ARCHIVE_TYPES = ['survey', 'pirate', 'mining', 'exp', 'xeno'];
 
-function emptyArchiveIndex() {
-  const idx = {};
-  for (const t of ARCHIVE_TYPES) idx[t] = { months: [], count: 0 };
-  return idx;
-}
-
+// Backfills any ARCHIVE_TYPES entry missing from a stored index (e.g. a type
+// added after the index was first written, like 'xeno') so every caller can
+// assume idx[type] exists without checking.
 async function getArchiveIndex() {
   const { archive_index } = await browser.storage.local.get('archive_index');
-  return archive_index || emptyArchiveIndex();
+  const idx = archive_index || {};
+  for (const t of ARCHIVE_TYPES) if (!idx[t]) idx[t] = { months: [], count: 0 };
+  return idx;
 }
 
 async function appendToArchive(type, records) {
@@ -1093,7 +1143,7 @@ async function backfillZones(zones, campZones = {}, wormholeZones = {}) {
 
   const recentKey = {
     survey: 'recent_reports', pirate: 'pirate_recent_reports',
-    mining: 'mining_recent_reports', exp: 'exp_recent_reports',
+    mining: 'mining_recent_reports', exp: 'exp_recent_reports', xeno: 'xeno_recent_reports',
   };
   const whId = r => r.wormhole_id ?? (String(r.location || '').match(/Wormhole #(\d+)/) || [])[1];
   const stamp = (r, type) => {
@@ -1928,6 +1978,82 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
   return added;
 }
 
+// Ruins survey (xeno_survey) results arrive as a system message, not a fleet
+// report: subject "Xeno Survey Complete", body e.g. "Your science team
+// finished the xeno survey. 0 fragments recovered, plus an artifact for your
+// collection." No structured loot, and no moon/system/ships-lost data at all
+// — location/zone/ships_lost are unknowable from this feed.
+const XENO_FRAGMENTS_RE = /(\d+)\s*fragments?\s*recovered/i;
+const XENO_ARTIFACT_RE = /plus\s+(\d+|an?)\s*artifacts?/i;
+
+function parseXenoMessage(body) {
+  const loot = {};
+  const frag = XENO_FRAGMENTS_RE.exec(body || '');
+  if (frag && +frag[1]) loot.precursor_fragments = +frag[1];
+  const art = XENO_ARTIFACT_RE.exec(body || '');
+  if (art) {
+    const n = /^an?$/i.test(art[1]) ? 1 : +art[1];
+    if (n) loot.artifact = n;
+  }
+  return loot;
+}
+
+async function processXenoReports(messages) {
+  const xenoMsgs = (messages || []).filter(m => m.subject === 'Xeno Survey Complete');
+  if (!xenoMsgs.length) return 0;
+
+  const stored = await browser.storage.local.get([
+    'xeno_seen_ids', 'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'records_cap',
+  ]);
+  const recordsCap = stored.records_cap ?? 5000;
+
+  const seen = new Set(stored.xeno_seen_ids || []);
+  const totals = stored.xeno_totals || {
+    ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0,
+  };
+  const dailyMap = {};
+  for (const d of (stored.xeno_daily || [])) dailyMap[d.day] = { ...d };
+  const recent = [...(stored.xeno_recent_reports || [])];
+
+  let added = 0;
+  for (const m of xenoMsgs) {
+    const uid = `xeno-${m.id}`;
+    if (seen.has(uid) || !m.createdAt) continue;
+    seen.add(uid);
+    added++;
+    const loot = parseXenoMessage(m.body);
+
+    addResources(totals, loot);
+    totals.missions += 1;
+
+    const day = m.createdAt.slice(0, 10);
+    if (!dailyMap[day]) dailyMap[day] = { day, ore: 0, silicates: 0, hydrogen: 0, missions: 0, ships_lost: 0 };
+    dailyMap[day].missions += 1;
+
+    recent.unshift({
+      id: uid,
+      created_at: m.createdAt,
+      event: 'ruins_survey_complete',
+      location: '—',
+      zone: null,
+      loot,
+      ships_lost: 0,
+      ships_destroyed_raw: [],
+    });
+  }
+
+  if (added) {
+    await appendToArchive('xeno', recent.slice(0, recent.length - (stored.xeno_recent_reports || []).length));
+    await browser.storage.local.set({
+      xeno_seen_ids: [...seen],
+      xeno_totals: totals,
+      xeno_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
+      xeno_recent_reports: recent.slice(0, recordsCap),
+    });
+  }
+  return added;
+}
+
 // system-debris is live state, not history. Snapshot it and treat decreases
 // between snapshots as "collected by someone" (us or another player).
 // Snapshot the live debris fields (with first-seen timestamps) for the
@@ -2016,7 +2142,11 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
   for (const m of runs) {
     const cargo = m.cargo || {};
     const amount = (cargo.ore || 0) + (cargo.silicates || 0) + (cargo.alloys || 0) + (cargo.hydrogen || 0);
+    // Collection now runs in repeating ticks (cargo grows each tick, same mission
+    // id); `returnDepartsAt` is set from the first tick on as a rolling ETA, so it
+    // no longer means the haul is final. `raidParams.collectionComplete` does.
     const returning = m.status === 'returning' || m.returnDepartsAt != null;
+    const collectionDone = m.raidParams?.collectionComplete === true || m.status === 'returning';
 
     active.push({
       id: m.id,
@@ -2037,8 +2167,8 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
       addLossCost(destroyed, ships, lost.destroyed, 1);
     }
 
-    // Commit once the haul is known (returning with non-empty cargo).
-    if (returning && amount > 0 && !seen.has(m.id)) {
+    // Commit once the haul is known (collection tick loop finished, non-empty cargo).
+    if (collectionDone && amount > 0 && !seen.has(m.id)) {
       seen.add(m.id);
       total.ore += cargo.ore || 0;
       total.silicates += cargo.silicates || 0;
@@ -2081,7 +2211,7 @@ function costFromDetail(record, ships, into) {
 async function rebuildAggregates() {
   const s = await browser.storage.local.get([
     'recent_reports', 'pirate_recent_reports', 'mining_recent_reports',
-    'exp_recent_reports', 'ships',
+    'exp_recent_reports', 'xeno_recent_reports', 'ships',
   ]);
   const ships = s.ships || {};
   const out = {};
@@ -2093,6 +2223,7 @@ async function rebuildAggregates() {
   const pirateRecords = archives.pirate.length ? archives.pirate : (s.pirate_recent_reports || []);
   const miningRecords = archives.mining.length ? archives.mining : (s.mining_recent_reports || []);
   const expRecords = archives.exp.length ? archives.exp : (s.exp_recent_reports || []);
+  const xenoRecords = archives.xeno.length ? archives.xeno : (s.xeno_recent_reports || []);
 
   // Surveys
   {
@@ -2269,6 +2400,30 @@ async function rebuildAggregates() {
     out.expedition_resources_lost = expLost;
     out.wormhole_resources_lost = whLost;
     out.exp_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
+  }
+
+  // Xeno ruins surveys (full loot map per record — fully rebuildable)
+  {
+    const totals = { ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 };
+    const lost = emptyLost();
+    const daily = {};
+    for (const r of xenoRecords) {
+      addResources(totals, r.loot || {});
+      addLossCost(r.ships_destroyed_raw, ships, lost.destroyed, 1);
+      totals.missions += 1;
+      totals.ships_lost += r.ships_lost || 0;
+
+      const day = r.created_at.slice(0, 10);
+      if (!daily[day]) daily[day] = { day, ore: 0, silicates: 0, hydrogen: 0, missions: 0, ships_lost: 0 };
+      daily[day].ore += r.loot?.ore || 0;
+      daily[day].silicates += r.loot?.silicates || 0;
+      daily[day].hydrogen += r.loot?.hydrogen || 0;
+      daily[day].missions += 1;
+      daily[day].ships_lost += r.ships_lost || 0;
+    }
+    out.xeno_totals = totals;
+    out.xeno_resources_lost = lost;
+    out.xeno_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
   }
 
   await browser.storage.local.set(out);
@@ -2483,7 +2638,7 @@ async function scrape() {
   try {
     const planetId = await getHomePlanetId(token);
     const [shipyardData, reportData, pirateData, spyData, campScoutData,
-           miningData, expeditionData, wormholeData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
+           miningData, expeditionData, wormholeData, xenoMessagesData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
       apiFetch(`/api/planets/${planetId}/shipyard`, token).catch(() => null),   // 403s while ships are on patrol — fall back to cached catalog
       apiFetch(REPORTS_PATH, token),
       apiFetch(PIRATES_PATH, token),
@@ -2492,6 +2647,7 @@ async function scrape() {
       apiFetch(MINING_PATH, token).catch(() => ({ reports: [] })),
       apiFetch(EXPEDITION_PATH, token).catch(() => ({ reports: [] })),
       apiFetch(WORMHOLE_PATH, token).catch(() => ({ runs: [] })),
+      apiFetch(`${XENO_MESSAGES_PATH}?page=1`, token).catch(() => ({ notifications: [] })),
       apiFetch(SYSTEM_DEBRIS_PATH, token).catch(() => ({ debris: [] })),
       apiFetch(MISSIONS_PATH, token).catch(() => ({ missions: [] })),
       apiFetch(RESEARCH_PATH, token).catch(() => ({ research: [] })),
@@ -2521,6 +2677,7 @@ async function scrape() {
       const nPirates = await processPirateReports(pirateData.reports || [], ships, campZones);
       const nMining = await processMiningReports(miningData.reports || [], ships, zones);
       await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships, zones, wormholeZones, wormholeClasses || {});
+      await processXenoReports(xenoMessagesData.notifications || []);
       await processSystemDebris(systemDebrisData.debris || [], zones);
       await processMissions(missionsData.missions || [], zoneById || {}, ships);
       await browser.storage.local.set({
@@ -2560,6 +2717,7 @@ const WATCHED_URLS = [
   `${GAME_URL}/api/fleet/mining-reports*`,
   `${GAME_URL}/api/fleet/expedition-reports*`,
   `${GAME_URL}/api/fleet/wormhole-runs*`,
+  `${GAME_URL}/api/messages/system*`,
   `${GAME_URL}/api/fleet/system-debris*`,
   `${GAME_URL}/api/fleet/missions*`,
   `${GAME_URL}/api/research*`,
@@ -2608,6 +2766,10 @@ function routeIntercepted(url, json) {
     }
     if (url.includes('/camp-scout-reports')) {
       await processCampScoutReports(json.reports || []);
+      return;
+    }
+    if (url.includes('/messages/system')) {
+      await processXenoReports(json.notifications || []);
       return;
     }
     if (url.includes('/api/fleet/reports')) {   // PvP (distinct from *-reports)
