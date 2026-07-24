@@ -84,12 +84,15 @@ export async function confirmDialog(message, ships) {
   });
 }
 
-// Editable fleet dialog — the launch-time fleet editor (mirrors the live-search
-// panel's editor). Rows = union of seeded ships and ships available on the
-// source planet; each quantity is capped to availability. `seed` is
-// {shipDefId → wanted qty}, `avail` is {shipDefId → count on planet}. Resolves
-// to [{shipDefId, quantity}] on confirm (send once), or null on cancel.
-export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null }) {
+// Editable fleet dialog — the launch-time fleet editor. Rows = union of seeded
+// ships and ships available on the source planet; each quantity is capped to
+// availability. `seed` is {shipDefId → wanted qty}, `avail` is {shipDefId →
+// count on planet}. Resolves to [{shipDefId, quantity}] on confirm, or null.
+// `escortTemplates` is an array of fleet-template objects ({ id, name, ships })
+// tagged for the target field's zone — each gets a colour-coded button (green =
+// fleet already meets all quantities, red = at least one ship is below) that
+// merges the template ships into the current selection when clicked.
+export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2, escortTemplates = [] }) {
   const defs = await shipDefs();
   const ids = [...new Set([
     ...Object.keys(seed).map(Number),
@@ -127,8 +130,125 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
       rows.style.color = '#8b949e';
     }
     const ok = document.createElement('button');   // declared early for refresh()
-    const refresh = () => { ok.disabled = !effective().length; ok.style.opacity = ok.disabled ? '0.5' : '1'; };
-    const inputs = new Map();   // shipDefId → its qty <input>, so "Optimise" can update rows in place
+
+    // Escort template buttons — rebuilt on every state change so colours stay current.
+    let escortBtnRow = null;
+    let escortLabel = null;
+
+    // How many miners a template currently covers, given current fleet state.
+    // For per-miner templates: floor(min-limiting-ship / ratio).
+    // For absolute templates: miners fully covered (ratio=0 → 0 coverage).
+    const templateCoverage = (tpl) => {
+      const entries = Object.entries(tpl.ships || {});
+      if (!entries.length) return 0;
+      if (!tpl.escortPerMiner) {
+        // Absolute: either fully covering all miners or 0.
+        const allMet = entries.every(([id, qty]) => (state.get(Number(id)) || 0) >= Math.ceil(qty));
+        return allMet ? Infinity : 0;
+      }
+      return Math.min(...entries.map(([id, ratio]) =>
+        ratio > 0 ? Math.floor((state.get(Number(id)) || 0) / ratio) : Infinity
+      ));
+    };
+
+    const rebuildEscortBtns = () => {
+      if (!escortBtnRow) return;
+      escortBtnRow.textContent = '';
+
+      const minerCount = miningShipIds
+        ? [...miningShipIds].reduce((s, id) => s + (state.get(id) || 0), 0)
+        : 0;
+
+      if (escortLabel) {
+        const hasPerMiner = escortTemplates.some(t => t.escortPerMiner);
+        escortLabel.textContent = hasPerMiner
+          ? `Escort for this zone (${minerCount} miner${minerCount !== 1 ? 's' : ''}):`
+          : 'Escort for this zone:';
+      }
+
+      // Total miners covered by all templates combined (for Send button).
+      const totalCovered = Math.min(
+        minerCount,
+        escortTemplates.reduce((s, t) => s + Math.min(minerCount, templateCoverage(t)), 0)
+      );
+      const allCovered = minerCount === 0 || totalCovered >= minerCount;
+
+      // Colour the Send button based on escort sufficiency.
+      if (escortTemplates.length) {
+        ok.style.borderColor = allCovered ? '#2ea043' : '#f85149';
+        ok.style.background  = allCovered ? '#238636' : '#da3633';
+      }
+
+      for (const tpl of escortTemplates) {
+        const entries = Object.entries(tpl.ships || {});
+
+        // Remaining miners not yet covered by OTHER templates.
+        const otherCoverage = Math.min(
+          minerCount,
+          escortTemplates
+            .filter(t => t !== tpl)
+            .reduce((s, t) => s + Math.min(minerCount, templateCoverage(t)), 0)
+        );
+        const remainingForThis = Math.max(0, minerCount - otherCoverage);
+
+        // Required ships for the remaining miners.
+        const neededForRemaining = (ratio) => tpl.escortPerMiner
+          ? Math.ceil(ratio * remainingForThis)
+          : Math.ceil(ratio);
+
+        // Green = enough ships available on planet to cover remaining need.
+        const canFill = entries.length > 0 && entries.every(([id, ratio]) => {
+          const req = neededForRemaining(ratio);
+          return (avail[Number(id)] || 0) >= req;
+        });
+
+        const c = canFill ? '#56d364' : '#ff7b72';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = tpl.name;
+        btn.style.cssText = `padding:4px 12px;border-radius:6px;border:1px solid ${c};background:transparent;color:${c};cursor:pointer;font-size:0.82rem;white-space:nowrap;`;
+
+        if (tpl.escortPerMiner) {
+          const lines = entries.map(([id, ratio]) => {
+            const req = neededForRemaining(ratio);
+            const def = defs[Number(id)];
+            const avlStr = avail[Number(id)] || 0;
+            return `${ratio}× × ${remainingForThis} miners → ${req} ${def ? def.name : '#'+id} (${avlStr} avail)`;
+          });
+          btn.title = minerCount > 0
+            ? `${remainingForThis} miners uncovered:\n${lines.join('\n')}`
+            : `${tpl.name}: set mining ships first`;
+        } else {
+          btn.title = canFill
+            ? `Apply "${tpl.name}" (sufficient ships available)`
+            : `Cannot fully fill "${tpl.name}" — not enough ships on planet`;
+        }
+
+        btn.onclick = () => {
+          for (const [idStr, ratio] of entries) {
+            const id = Number(idStr);
+            const req = neededForRemaining(ratio);
+            if (req <= 0) continue;
+            // Add on top: set to max(current, required), capped to available.
+            const merged = Math.min(Math.max(state.get(id) || 0, req), avail[id] || 0);
+            if (merged > 0) {
+              state.set(id, merged);
+              const inp = inputs.get(id);
+              if (inp) inp.value = String(merged);
+            }
+          }
+          refresh();
+        };
+        escortBtnRow.append(btn);
+      }
+    };
+
+    const refresh = () => {
+      ok.disabled = !effective().length;
+      ok.style.opacity = ok.disabled ? '0.5' : '1';
+      rebuildEscortBtns();
+    };
+    const inputs = new Map();   // shipDefId → qty <input>, so "Optimise" can update rows in place
     for (const id of ids) {
       const def = defs[id] || {};
       const max = avail[id] || 0;
@@ -160,9 +280,23 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
       inputs.set(id, inp);
     }
     box.append(rows);
+    // Escort template buttons section — only rendered when templates are configured.
+    // Escort template buttons section — only rendered when templates are configured.
+    if (escortTemplates.length) {
+      const escortSection = document.createElement('div');
+      escortSection.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid #30363d;';
+      escortLabel = document.createElement('div');
+      escortLabel.style.cssText = 'font-size:0.78rem;color:#8b949e;margin-bottom:6px;';
+      escortLabel.textContent = 'Escort for this zone:';
+      escortBtnRow = document.createElement('div');
+      escortBtnRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+      escortSection.append(escortLabel, escortBtnRow);
+      box.append(escortSection);
+      rebuildEscortBtns();
+    }
 
     const btns = document.createElement('div');
-    btns.style.cssText = 'margin-top:18px;display:flex;gap:10px;justify-content:flex-end';
+    btns.style.cssText = 'margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end';
     const mk = (b, label, primary) => {
       b.textContent = label;
       b.style.cssText = `padding:7px 16px;border-radius:6px;border:1px solid #39405a;cursor:pointer;${primary ? 'background:#238636;color:#fff;border-color:#2ea043' : 'background:#2a3146;color:#e6e8ee'}`;
@@ -180,13 +314,39 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
       opt.textContent = 'Optimise Mining Fleet';
       opt.title = 'Set the recommended count for mining ships only — escort/combat ships untouched';
       opt.style.cssText = 'padding:7px 16px;border-radius:6px;border:1px solid #1f6feb;background:#1f6feb;color:#fff;cursor:pointer;margin-right:auto';
+
+      // Excavator checkbox — shown only when an Excavator is available on the planet.
+      let excavatorChecked = localStorage.getItem('nx-af-excavator') === '1';
+      const excavatorDef = excavatorShipDefId != null && (avail[excavatorShipDefId] || 0) > 0
+        ? { shipDefId: excavatorShipDefId, avail: avail[excavatorShipDefId] } : null;
+      if (excavatorDef) {
+        const excRow = document.createElement('div');
+        excRow.style.cssText = 'margin-right:auto;display:inline-flex;align-items:center;gap:5px;font-size:0.85rem;color:#8b949e;cursor:pointer';
+        excRow.title = 'Include an Excavator: +20% fleet extraction capacity in the recommendation';
+        const excChk = document.createElement('input');
+        excChk.type = 'checkbox';
+        excChk.checked = excavatorChecked;
+        excChk.addEventListener('change', () => {
+          excavatorChecked = excChk.checked;
+          localStorage.setItem('nx-af-excavator', excavatorChecked ? '1' : '0');
+        });
+        excRow.append(excChk, document.createTextNode('Excavator +20%'));
+        btns.append(excRow);
+      }
+
       opt.onclick = () => {
         for (const id of miningShipIds || []) {
           state.delete(id);
           const inp = inputs.get(id);
           if (inp) inp.value = '0';
         }
-        for (const s of recShips) {
+        let ships = [...recShips];
+        if (excavatorDef && excavatorChecked) {
+          ships = ships.map(s => ({ ...s, quantity: Math.ceil(s.quantity / excavatorBonus) }));
+          const q = Math.min(1, excavatorDef.avail);
+          if (q > 0) ships.push({ shipDefId: excavatorDef.shipDefId, quantity: q });
+        }
+        for (const s of ships) {
           const q = Math.min(s.quantity, avail[s.shipDefId] || 0);
           const inp = inputs.get(s.shipDefId);
           if (q > 0) { state.set(s.shipDefId, q); if (inp) inp.value = String(q); }
@@ -357,7 +517,8 @@ export function fmtCountdown(ms) {
 }
 
 const MISSION_WORK_LABEL = { survey: 'Surveying', investigate: 'Investigating',
-  collect_debris: 'Collecting', collect_salvage: 'Collecting', expedition: 'Exploring' };
+  collect_debris: 'Collecting', collect_salvage: 'Collecting', expedition: 'Exploring',
+  mine: 'Mining', raid: 'Raiding', patrol: 'Patrolling' };
 
 // Where a fleet is in its round trip: outbound (departs→arrives), on-site work
 // (arrives→returnDeparts), or returning (returnDeparts→returnArrives). Returns

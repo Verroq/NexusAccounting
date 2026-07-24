@@ -626,6 +626,12 @@
                background:#21262d; border:1px solid #30363d; color:#e6edf3;
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
+      <label>Cache TTL (min)
+        <input id="af-cache-ttl" type="number" min="0" max="1440" value="30" step="5" style="width:70px;
+               background:#21262d; border:1px solid #30363d; color:#e6edf3;
+               padding:4px 8px; border-radius:6px; font-size:0.85rem;" 
+               title="How long to cache asteroid field data (0 = no cache, 1440 = 24h)" />
+      </label>
       <label>Type
         <span id="af-type" class="res-icons" style="grid-template-columns: repeat(6, auto);"></span>
       </label>
@@ -655,12 +661,6 @@
                background:#21262d; border:1px solid #30363d; color:#e6edf3;
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
-      <label>Cache TTL (min)
-        <input id="ls-cache-ttl" type="number" min="0" max="1440" value="30" step="5" style="width:70px;
-               background:#21262d; border:1px solid #30363d; color:#e6edf3;
-               padding:4px 8px; border-radius:6px; font-size:0.85rem;" 
-               title="How long to cache asteroid field data (0 = no cache, 1440 = 24h)" />
-      </label>
       <label>Type
         <span id="ls-type" class="res-icons" style="grid-template-columns: repeat(6, auto);"></span>
       </label>
@@ -674,9 +674,6 @@
     <div class="finder-controls" id="af-template" style="margin-top:0;">
       <label>Fleet template
         <select id="af-template-select"></select>
-      </label>
-      <label style="flex-direction:row; gap:5px;" title="Include an Excavator: +20% fleet extraction capacity in the ship recommendation">
-        <input id="af-excavator" type="checkbox" />Excavator +20%
       </label>
       <span style="color:#8b949e; font-size:0.8rem;">🚀 on a row opens the fleet editor seeded from the ship recommendation. Edit templates in the Fleets tab.</span>
     </div>
@@ -847,6 +844,10 @@
       <span id="ft-status" style="color:#8b949e; font-size:0.8rem;"></span>
       <div id="ft-legend" style="display:flex; flex-wrap:wrap; gap:10px 16px; margin:6px 0 10px; font-size:0.78rem;"></div>
       <table class="fleet-table"><tbody id="ft-ships"></tbody></table>
+      <div style="margin-top:10px; padding-top:8px; border-top:1px solid #30363d;">
+        <div style="font-size:0.78rem; color:#8b949e; margin-bottom:6px;">Escort for zone:</div>
+        <div id="ft-escort-zones" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      </div>
     </div>
   </div>
 

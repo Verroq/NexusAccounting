@@ -30,7 +30,7 @@ const REC_SHIP = {
 };
 const REC_CYCLES = 10;   // ships to clear the field in this many mining cycles
 const EXCAVATOR_BONUS = 1.2;   // +20% fleet extraction capacity when an Excavator is present
-const afExcavator = () => document.getElementById('af-excavator').checked;
+const afExcavator = () => false;  // Excavator toggle moved to the fleet dialog
 // Mining ships the recommendation manages; other template ships (escort/combat)
 // are left untouched when seeding the launch fleet.
 const MINING_SHIPS = new Set([...Object.values(REC_SHIP).map(s => s[0]), 'Excavator']);
@@ -53,12 +53,12 @@ let afSort = { key: 'distance', dir: 1 };
 let afPage = 1;
 const AF_PER_PAGE = 25;
 const MINING_DURATION = 600;   // seconds; fixed for asteroid mining missions
-const ASTEROID_CACHE_TTL = 15 * 60 * 1000;   // fields drain fast — refetch after 15 min
 let afTemplates = [];        // fleet templates, managed in the Fleets tab
 let afMap = null;            // { byId: {id→{x,y,sectorId,visibility}}, systems: [...] }, cached
 const sectorSystems = {};   // sectorId → systems[] (name/zone/planetCount), cached
 let afAllShips = [];        // every ship def: [{ shipDefId, name, imageUrl }]
 let afAvailTimer = null;    // periodic availability poll
+let afMissions = [];        // current in-flight missions from the fleet API
 
 export async function initAsteroidsTab() {
   if (afInited) return;
@@ -109,9 +109,6 @@ export async function initAsteroidsTab() {
   pSel.addEventListener('change', () => { rememberSelection('af-planet', pSel.value); setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
   document.getElementById('af-scan').addEventListener('click', scan);
   document.getElementById('af-template-select').addEventListener('change', e => { rememberSelection('af-template-select', e.target.value); computeFuel(); });
-  const excChk = document.getElementById('af-excavator');
-  excChk.checked = localStorage.getItem('nx-af-excavator') === '1';
-  excChk.addEventListener('change', () => { localStorage.setItem('nx-af-excavator', excChk.checked ? '1' : '0'); renderAsteroids(); });
   document.getElementById('af-results-head').addEventListener('click', e => {
     const th = e.target.closest('th.sortable');
     if (!th) return;
@@ -132,7 +129,7 @@ export async function initAsteroidsTab() {
   // Live-search controls.
   document.getElementById('ls-search').addEventListener('click', toggleLiveSearch);
   document.getElementById('ls-planet').addEventListener('change', saveLiveSearchIfOn);
-  for (const id of ['ls-mult-min', 'ls-qty-min', 'ls-left-min', 'ls-near', 'ls-cache-ttl']) {
+  for (const id of ['ls-mult-min', 'ls-qty-min', 'ls-left-min', 'ls-near']) {
     document.getElementById(id).addEventListener('input', e => {
       if (parseFloat(e.target.value) < 0) e.target.value = '';   // positive only
       saveLiveSearchIfOn();
@@ -145,7 +142,10 @@ export async function initAsteroidsTab() {
   updateAfAvail();
   if (!afAvailTimer) {
     afAvailTimer = setInterval(() => {
-      if (document.getElementById('asteroids-content').style.display !== 'none') updateAfAvail();
+      if (document.getElementById('asteroids-content').style.display !== 'none') {
+        updateAfAvail();
+        refreshSlots();
+      }
     }, 10000);   // catch returning mining fleets without a reload
   }
 
@@ -252,7 +252,6 @@ function readLsConfig() {
     qtyMin: num('ls-qty-min'),
     leftMin: num('ls-left-min'),
     near: Math.max(1, Math.min(500, parseInt(document.getElementById('ls-near').value, 10) || 25)),
-    cacheTtlMin: Math.max(0, Math.min(1440, parseInt(document.getElementById('ls-cache-ttl').value, 10) || 30)),
     types: [...lsTypeFilter],
     zones: [...lsZoneFilter],
   };
@@ -290,7 +289,6 @@ async function loadLiveSearch() {
     document.getElementById('ls-qty-min').value = cfg.qtyMin ?? '';
     document.getElementById('ls-left-min').value = cfg.leftMin ?? '';
     document.getElementById('ls-near').value = cfg.near ?? 25;
-    document.getElementById('ls-cache-ttl').value = cfg.cacheTtlMin ?? 30;
     lsTypeFilter.clear(); (cfg.types || []).forEach(t => lsTypeFilter.add(t));
     lsZoneFilter.clear(); (cfg.zones || []).forEach(z => lsZoneFilter.add(z));
     lsRunning = !!cfg.enabled;
@@ -330,7 +328,7 @@ async function scan() {
   const cache = planet_scan_cache || {};
 
   // Use user-configured cache TTL for asteroid fields (in milliseconds)
-  const cacheTtlMs = (parseInt(document.getElementById('ls-cache-ttl').value, 10) || 30) * 60 * 1000;
+  const cacheTtlMs = (parseInt(document.getElementById('af-cache-ttl').value, 10) || 30) * 60 * 1000;
 
   afRunning = true;
   btn.textContent = 'Stop';
@@ -398,12 +396,13 @@ function distance(f) {
 
 // Recommended fleet to clear a field in REC_CYCLES cycles:
 //   ships = ceil( remaining / (rate * cycles * richness) )
+// With excavator: rate is boosted +20%, so fewer ships needed.
 // Returns { count, name, shipDefId } or null when it can't be computed.
-function recommend(f) {
+function recommend(f, withExcavatorBonus = false) {
   const spec = REC_SHIP[f.type];
   if (!spec || !f.remaining || !f.mult) return null;
   const [name, rate] = spec;
-  const cap = rate * (afExcavator() ? EXCAVATOR_BONUS : 1);
+  const cap = rate * (withExcavatorBonus ? EXCAVATOR_BONUS : 1);
   const count = Math.ceil(f.remaining / (cap * REC_CYCLES * f.mult));
   const def = afAllShips.find(d => d.name === name);
   return { count, name, shipDefId: def ? def.shipDefId : null };
@@ -416,18 +415,20 @@ async function refreshTemplates() {
   const saved = await rememberedSelections();
   const want = saved['af-template-select'] || sel.value;   // survives tabs/sessions
   sel.textContent = '';
-  if (!afTemplates.length) {
+  // Escort-tagged templates are not mining templates — exclude from dropdown.
+  const miningTemplates = afTemplates.filter(t => !(t.escortZones && t.escortZones.length));
+  if (!miningTemplates.length) {
     const o = document.createElement('option');
     o.value = ''; o.textContent = '— none (create one in Fleets) —';
     sel.appendChild(o);
     return;
   }
-  for (const t of afTemplates) {
+  for (const t of miningTemplates) {
     const o = document.createElement('option');
     o.value = t.id; o.textContent = t.name;
     sel.appendChild(o);
   }
-  if (want && afTemplates.some(t => String(t.id) === want)) sel.value = want;
+  if (want && miningTemplates.some(t => String(t.id) === want)) sel.value = want;
 }
 
 // Open the editable fleet dialog seeded from the ship recommendation (falling
@@ -452,16 +453,22 @@ async function sendMineMission(f) {
 
   const rec = recommend(f);
   const recShips = rec && rec.shipDefId != null ? [{ shipDefId: rec.shipDefId, quantity: rec.count }] : [];
-  if (afExcavator()) {
-    const exc = afAllShips.find(d => d.name === 'Excavator');
-    if (exc && (avail[exc.shipDefId] || 0) > 0) recShips.push({ shipDefId: exc.shipDefId, quantity: 1 });
-  }
+  const exc = afAllShips.find(d => d.name === 'Excavator');
   const miningShipIds = new Set(afAllShips.filter(d => MINING_SHIPS.has(d.name)).map(d => d.shipDefId));
+
+  // Escort templates: fleet templates tagged for this field's zone.
+  const fieldZone = f.zone && f.zone !== '—' ? f.zone : null;
+  const escortTemplates = fieldZone
+    ? afTemplates.filter(t => (t.escortZones || []).includes(fieldZone))
+    : [];
 
   const ships = await editFleetDialog({
     title: `Mine ${f.name}`,
     subtitle: `To: ${f.name} (${f.system})\nFrom: ${planet ? planet.name : planetId}`,
     avail, seed, recShips, miningShipIds,
+    excavatorShipDefId: exc ? exc.shipDefId : null,
+    excavatorBonus: EXCAVATOR_BONUS,
+    escortTemplates,
   });
   if (!ships || !ships.length) return;   // cancelled or emptied
 
@@ -478,10 +485,59 @@ async function sendMineMission(f) {
 }
 
 // "used/max fleet slots" — both come from the missions endpoint.
+// Also stores the mission list for the active-fleet markers on the table.
 async function refreshSlots() {
   const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
   if (mi.maxFleetSlots != null) {
     document.getElementById('af-slots').textContent = `${(mi.missions || []).length}/${mi.maxFleetSlots} fleet slots`;
+  }
+  afMissions = mi.missions || [];
+  applyMissionMarkers();
+}
+
+// Apply (or refresh) the in-flight fleet markers on the current table rows.
+// Called after renderAsteroids() and after every refreshSlots() poll.
+// Only mining missions (missionType 'mine') are relevant here.
+function applyMissionMarkers() {
+  // Build a map: targetSystemId → mining missions count.
+  const bySystem = new Map();
+  for (const m of afMissions) {
+    if (m.missionType !== 'mine' || !m.targetSystemId) continue;
+    bySystem.set(m.targetSystemId, (bySystem.get(m.targetSystemId) || 0) + 1);
+  }
+
+  for (const tr of document.querySelectorAll('#af-results-tbody tr')) {
+    const sysId = Number(tr.dataset.system);
+    if (!sysId) continue;
+
+    // Remove any previous marker so we start clean on each refresh.
+    const prev = tr.querySelector('.af-mission-badge');
+    if (prev) prev.remove();
+    tr.style.removeProperty('border-left');
+
+    const count = bySystem.get(sysId);
+    if (!count) continue;
+
+    tr.style.borderLeft = '3px solid #f0883e';
+
+    const firstTd = tr.children[1];
+    if (!firstTd) continue;
+    const badge = document.createElement('span');
+    badge.className = 'af-mission-badge';
+    badge.style.cssText = 'display:inline-block;margin-left:5px;font-size:0.7rem;padding:1px 5px;border-radius:4px;background:#f0883e22;border:1px solid #f0883e;color:#f0883e;vertical-align:middle;cursor:default;';
+    badge.textContent = count > 1 ? `⛏ ×${count}` : '⛏';
+
+    // Tooltip: stage of each mining mission in this system.
+    const miningHere = afMissions.filter(m => m.missionType === 'mine' && m.targetSystemId === sysId);
+    badge.title = miningHere.map(m => {
+      const now = Date.now();
+      const arr  = m.arrivesAt      ? new Date(m.arrivesAt).getTime()      : null;
+      const rdep = m.returnDepartsAt ? new Date(m.returnDepartsAt).getTime() : null;
+      const stage = arr && now < arr ? 'En route' : rdep && now < rdep ? 'Mining' : 'Returning';
+      return `Fleet: ${stage}`;
+    }).join('\n');
+
+    firstTd.appendChild(badge);
   }
 }
 
@@ -578,6 +634,7 @@ export function renderAsteroids() {
   }
   document.getElementById('af-count').textContent = `${rows.length} fields`;
   computeFuel();
+  applyMissionMarkers();
 }
 
 // Fill the Fuel Cost column: one fuel-estimate per visible row for the selected
