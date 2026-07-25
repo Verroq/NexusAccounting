@@ -677,6 +677,10 @@
         <select id="af-template-select"></select>
       </label>
       <button id="af-calc-escorts" title="Calculate fuel and travel time for all escort options">Calculate Escort Options</button>
+      <label style="margin-left: 20px;">
+        <input id="af-only-available" type="checkbox" />
+        Only available escorts
+      </label>
       <span style="color:#8b949e; font-size:0.8rem;">🚀 on a row opens the fleet editor seeded from the ship recommendation. Edit templates in the Fleets tab.</span>
     </div>
 
@@ -705,7 +709,8 @@
             <th class="sortable" data-key="distance">Distance</th>
             <th title="Hydrogen to send the selected template here">Fuel Cost</th>
             <th class="sortable" data-key="recShips" title="Recommended ships to clear the field in 10 mining cycles">Ships Recommendation</th>
-            <th>Escort Options</th>
+            <th class="sortable" data-key="escortName" title="Escort template for this row">Escort</th>
+            <th class="sortable" data-key="yieldPerSec" title="Resource yield per minute with this escort">Yield/min</th>
           </tr>
         </thead>
         <tbody id="af-results-tbody"></tbody>
