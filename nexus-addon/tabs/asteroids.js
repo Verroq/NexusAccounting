@@ -365,6 +365,7 @@ async function scan() {
   afRunning = true;
   btn.textContent = 'Stop';
   afFields = [];
+  afEscortStats.clear();  // Reset to normal mode when new fields are scanned
   afPage = 1;
   let scanned = 0, errors = 0;
   try {
