@@ -3,7 +3,9 @@
 // is defined here on both Chrome (polyfilled) and Firefox (native). Tests import
 // this file directly with a stubbed `browser`, skipping the polyfill entirely.
 
-const GAME_URL = 'https://s0.nexuslegacy.space';
+const DEFAULT_GAME_URL = 'https://s0.nexuslegacy.space';
+const GAME_TAB_URL = 'https://*.nexuslegacy.space/*';
+const GAME_HOST_RE = /^s\d+\.nexuslegacy\.space$/i;
 const REPORTS_PATH = '/api/fleet/survey-reports';
 const PIRATES_PATH = '/api/fleet/pirate-reports';
 const PVP_PATH = '/api/fleet/reports';   // player-vs-player combat reports
@@ -27,6 +29,66 @@ const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes; add a MIGRATIONS entry for it.
 const SCHEMA_VERSION = 10;
+
+let cachedGameUrl = null;
+
+function hostFromUrl(url) {
+  try { return new URL(url).hostname; }
+  catch { return null; }
+}
+
+function isGameHost(host) {
+  return !!host && GAME_HOST_RE.test(host);
+}
+
+function normalizeGameUrl(url) {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return null;
+  }
+}
+
+async function persistGameUrl(url) {
+  const normalized = normalizeGameUrl(url);
+  if (!normalized) return;
+  const host = hostFromUrl(normalized);
+  if (!isGameHost(host)) return;
+  cachedGameUrl = normalized;
+  await browser.storage.local.set({ game_url: normalized });
+}
+
+async function getGameTabs() {
+  const tabs = await browser.tabs.query({ url: GAME_TAB_URL });
+  return tabs.filter(t => isGameHost(hostFromUrl(t.url)));
+}
+
+async function getGameUrl() {
+  if (cachedGameUrl) return cachedGameUrl;
+
+  try {
+    const { game_url } = await browser.storage.local.get('game_url');
+    if (game_url && isGameHost(hostFromUrl(game_url))) {
+      cachedGameUrl = normalizeGameUrl(game_url);
+      return cachedGameUrl;
+    }
+  } catch { /* ignore storage read errors */ }
+
+  try {
+    const tabs = await getGameTabs();
+    const active = tabs.find(t => t.active && t.windowId != null) || tabs[0];
+    if (active?.url) {
+      const u = normalizeGameUrl(active.url);
+      if (u) {
+        await persistGameUrl(u);
+        return u;
+      }
+    }
+  } catch { /* ignore tab query errors */ }
+
+  return DEFAULT_GAME_URL;
+}
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
@@ -184,20 +246,20 @@ async function liveSearchScan() {
 
 // Clicking a live-search notification focuses (or opens) the game tab and asks
 // its content script to show the draggable matches window.
-const GAME_ORIGIN = 'https://s0.nexuslegacy.space/';
 browser.notifications?.onClicked?.addListener(async id => {
   if (!id.startsWith(LS_ALARM)) return;
   browser.notifications.clear(id);
-  const tabs = await browser.tabs.query({ url: '*://s0.nexuslegacy.space/*' });
+  const tabs = await getGameTabs();
   if (tabs.length) {
     const t = tabs[0];
     await browser.tabs.update(t.id, { active: true });
+    if (t.url) await persistGameUrl(t.url);
     if (t.windowId != null) browser.windows.update(t.windowId, { focused: true });
     browser.tabs.sendMessage(t.id, { type: 'SHOW_LS_RESULTS' }).catch(() => {});
   } else {
     // No game tab open — flag it so the content script shows the panel on load.
     await browser.storage.local.set({ live_search_open_panel: true });
-    browser.tabs.create({ url: GAME_ORIGIN });
+    browser.tabs.create({ url: `${await getGameUrl()}/` });
   }
 });
 
@@ -307,7 +369,8 @@ async function startResearch(researchId, planetId, useFragments = false) {
   try {
     const body = { planetId };
     if (useFragments) body.useFragments = true;
-    const r = await fetch(`${GAME_URL}/api/research/${researchId}/start`, {
+    const gameUrl = await getGameUrl();
+    const r = await fetch(`${gameUrl}/api/research/${researchId}/start`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -495,7 +558,7 @@ class NexusAPIError extends Error {
 // cookie — so fall back to searching every cookie store domain-wide.
 async function getToken() {
   const NAME = 'nexus_token';
-  const urls = [GAME_URL, 'https://nexuslegacy.space'];
+  const urls = [await getGameUrl(), 'https://nexuslegacy.space'];
 
   const lookup = async (storeId) => {
     const store = storeId ? { storeId } : {};
@@ -529,7 +592,7 @@ async function getToken() {
   }
 
   console.warn(`[NexusAccounting] nexus_token not found. Checked default + stores: [${storeIds.join(', ')}]. ` +
-    `Open the game (logged in) in a normal tab, or check the cookie exists on s0.nexuslegacy.space.`);
+    `Open the game (logged in) in a normal tab, or check the cookie exists on a universe host like s0.nexuslegacy.space.`);
   return null;
 }
 
@@ -567,6 +630,7 @@ async function rateLimitGate(polite = false) {
 // options: { polite?: boolean } - if true, uses larger rate-limit buffer for background ops
 async function apiFetch(path, token, options = {}) {
   const { polite = false } = options;
+  const gameUrl = await getGameUrl();
   let lastError = null;
   let delayMs = 1000;
   const maxAttempts = 4;
@@ -576,7 +640,7 @@ async function apiFetch(path, token, options = {}) {
     await rateLimitGate(polite);
     let r;
     try {
-      r = await fetch(`${GAME_URL}${path}`, {
+      r = await fetch(`${gameUrl}${path}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch (e) {
@@ -764,6 +828,7 @@ async function getShipDefs() {
   try {
     const planetId = await getHomePlanetId(token);
     const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token);
+    const gameUrl = await getGameUrl();
     const race = jwtRace(token);
     // Also load stored ship defs (have fuelRate from scrape)
     const { ships: storedShips } = await browser.storage.local.get('ships');
@@ -774,7 +839,7 @@ async function getShipDefs() {
       key: s.key || '',
       name: s.name || `#${s.id}`,
       cargoCapacity: s.cargoCapacity || 0,
-      imageUrl: (race && s.key) ? `https://s0.nexuslegacy.space/api/images/ships/${race}/${s.key}.webp` : null,
+      imageUrl: (race && s.key) ? `${gameUrl}/api/images/ships/${race}/${s.key}.webp` : null,
       shipClass: s.shipClass || '',
       miningCargo: s.miningCargoCapacity || 0,
       sortOrder: s.sortOrder || 0,
@@ -833,15 +898,14 @@ async function gamePost(path, body) {
   if (!(body.ships || []).length) return { error: 'No ships selected.' };
   if (path === '/api/fleet/fuel-estimate') await fuelEstimateGate();
   const token = await getToken();
-  // Use native API (chrome for Chrome, browser for Firefox via polyfill)
-  const api = typeof chrome !== 'undefined' && chrome.tabs ? chrome : browser;
-  const tabs = await api.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
+  const tabs = await getGameTabs();
   if (!tabs.length) return { error: 'Open the Nexus Legacy game in a tab first.' };
+  if (tabs[0].url) await persistGameUrl(tabs[0].url);
 
   // Preferred path: delegate to the content script which is already running in
   // the page context with the correct origin and session cookies.
   try {
-    const tabs = await browser.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
+    const tabs = await getGameTabs();
     if (!tabs.length) return { error: 'Open the Nexus Legacy game in a tab first.' };
     // Retry on 429, honouring Retry-After, then exponential backoff — same policy as apiFetch.
     for (let attempt = 0; ; attempt++) {
@@ -2734,19 +2798,19 @@ async function scrape() {
 // open a report in game.
 
 const WATCHED_URLS = [
-  `${GAME_URL}/api/fleet/survey-reports*`,
-  `${GAME_URL}/api/fleet/pirate-reports*`,
-  `${GAME_URL}/api/fleet/reports*`,   // PvP combat reports
-  `${GAME_URL}/api/fleet/spy-reports*`,
-  `${GAME_URL}/api/fleet/camp-scout-reports*`,
-  `${GAME_URL}/api/fleet/mining-reports*`,
-  `${GAME_URL}/api/fleet/expedition-reports*`,
-  `${GAME_URL}/api/fleet/wormhole-runs*`,
-  `${GAME_URL}/api/messages/system*`,
-  `${GAME_URL}/api/fleet/system-debris*`,
-  `${GAME_URL}/api/fleet/missions*`,
-  `${GAME_URL}/api/research*`,
-  `${GAME_URL}/api/planets/*/shipyard*`,
+  'https://*.nexuslegacy.space/api/fleet/survey-reports*',
+  'https://*.nexuslegacy.space/api/fleet/pirate-reports*',
+  'https://*.nexuslegacy.space/api/fleet/reports*',   // PvP combat reports
+  'https://*.nexuslegacy.space/api/fleet/spy-reports*',
+  'https://*.nexuslegacy.space/api/fleet/camp-scout-reports*',
+  'https://*.nexuslegacy.space/api/fleet/mining-reports*',
+  'https://*.nexuslegacy.space/api/fleet/expedition-reports*',
+  'https://*.nexuslegacy.space/api/fleet/wormhole-runs*',
+  'https://*.nexuslegacy.space/api/messages/system*',
+  'https://*.nexuslegacy.space/api/fleet/system-debris*',
+  'https://*.nexuslegacy.space/api/fleet/missions*',
+  'https://*.nexuslegacy.space/api/research*',
+  'https://*.nexuslegacy.space/api/planets/*/shipyard*',
 ];
 
 // Best-effort debounce so a burst of game calls to the same endpoint triggers
@@ -2758,6 +2822,7 @@ browser.webRequest.onCompleted.addListener(
   details => {
     if (details.tabId === -1) return;                       // our own re-fetches
     if (details.statusCode < 200 || details.statusCode >= 300) return;
+    persistGameUrl(details.url).catch(() => {});
     const path = new URL(details.url).pathname;
     if (refetchPending.has(path)) return;
     refetchPending.add(path);
@@ -2776,7 +2841,7 @@ async function refetchEndpoint(path) {
   } catch {
     return;
   }
-  routeIntercepted(GAME_URL + path, json);
+  routeIntercepted(path, json);
 }
 
 function routeIntercepted(url, json) {
