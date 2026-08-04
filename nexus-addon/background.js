@@ -28,6 +28,15 @@ const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes; add a MIGRATIONS entry for it.
 const SCHEMA_VERSION = 10;
 
+const DEFAULT_RECORDS_CAP = 5000;
+// Resolve the stored records_cap into a slice length. A stored 0 means
+// "unlimited" (Infinity) — JSON storage cannot persist Infinity, so 0 is the
+// on-disk sentinel. Missing/null falls back to the default cap.
+function resolveRecordsCap(stored) {
+  if (stored === 0) return Infinity;
+  return stored ?? DEFAULT_RECORDS_CAP;
+}
+
 // ── Setup ──────────────────────────────────────────────────────────────────
 
 browser.runtime.onInstalled.addListener(async details => {
@@ -1259,7 +1268,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
     'seen_ids', 'totals', 'daily', 'hourly', 'resources_lost',
     'event_breakdown', 'recent_reports', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 5000;
+  const recordsCap = resolveRecordsCap(stored.records_cap);
 
   const seenIds = new Set(stored.seen_ids || []);
   const totals = stored.totals || {
@@ -1406,7 +1415,7 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
     'pirate_seen_ids', 'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports', 'records_cap',
   ]);
-  const recordsCap = pstored.records_cap ?? 5000;
+  const recordsCap = resolveRecordsCap(pstored.records_cap);
 
   const pirateSeen = new Set(pstored.pirate_seen_ids || []);
   const pirateTotals = pstored.pirate_totals || {
@@ -1713,7 +1722,7 @@ function addResources(target, res) {
 // debris field, and the loot (gained if we attacked, lost if we defended).
 async function processPvpReports(reports) {
   const stored = await browser.storage.local.get(['pvp_seen_ids', 'pvp_recent_reports', 'records_cap']);
-  const cap = stored.records_cap ?? 5000;
+  const cap = resolveRecordsCap(stored.records_cap);
   const seen = new Set(stored.pvp_seen_ids || []);
   const recent = [...(stored.pvp_recent_reports || [])];
   const CORE = ['ore', 'silicates', 'hydrogen', 'alloys'];
@@ -1786,7 +1795,7 @@ async function processMiningReports(reports, ships, zones = {}) {
     'mining_seen_ids', 'mining_totals', 'mining_daily', 'mining_resources_lost',
     'mining_recent_reports', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 5000;
+  const recordsCap = resolveRecordsCap(stored.records_cap);
 
   const seen = new Set(stored.mining_seen_ids || []);
   const totals = stored.mining_totals || {
@@ -1931,7 +1940,7 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
     'exp_seen_ids', 'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
     'expedition_resources_lost', 'wormhole_resources_lost', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 5000;
+  const recordsCap = resolveRecordsCap(stored.records_cap);
 
   const emptyTotals = () => ({ ore: 0, silicates: 0, hydrogen: 0, alloys: 0, rare: {}, missions: 0, ships_lost: 0 });
   const seen = new Set(stored.exp_seen_ids || []);
@@ -2051,7 +2060,7 @@ async function processXenoReports(messages) {
   const stored = await browser.storage.local.get([
     'xeno_seen_ids', 'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 5000;
+  const recordsCap = resolveRecordsCap(stored.records_cap);
 
   const seen = new Set(stored.xeno_seen_ids || []);
   const totals = stored.xeno_totals || {
@@ -2177,7 +2186,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
     'debris_collected', 'debris_collection_log', 'debris_collection_ids',
     'debris_resources_lost', 'debris_loss_ids', 'records_cap',
   ]);
-  const recordsCap = stored.records_cap ?? 5000;
+  const recordsCap = resolveRecordsCap(stored.records_cap);
   const total = stored.debris_collected || { ore: 0, silicates: 0, alloys: 0, hydrogen: 0 };
   const log = [...(stored.debris_collection_log || [])];
   const seen = new Set(stored.debris_collection_ids || []);
@@ -2864,5 +2873,5 @@ export {
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
-  fieldMatches, purgeOldData, freshestToken,
+  fieldMatches, purgeOldData, freshestToken, resolveRecordsCap,
 };
