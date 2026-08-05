@@ -464,34 +464,32 @@ document.getElementById('import-file').addEventListener('change', async function
 
 // ── Share spy intel ─────────────────────────────────────────────────────────
 
-// Persist the sync URL on edit.
+// Persist Discord creds on edit. discord.com is in host_permissions, so no
+// runtime permission request is needed.
 (async () => {
-  const { intel_sync_url } = await browser.storage.local.get('intel_sync_url');
-  const el = document.getElementById('intel-sync-url');
-  if (el) el.value = intel_sync_url || '';
+  const { discord_bot_token, discord_channel_id } =
+    await browser.storage.local.get(['discord_bot_token', 'discord_channel_id']);
+  const t = document.getElementById('discord-token');
+  const c = document.getElementById('discord-channel');
+  if (t) t.value = discord_bot_token || '';
+  if (c) c.value = discord_channel_id || '';
 })();
-document.getElementById('intel-sync-url').addEventListener('change', async function () {
-  await browser.storage.local.set({ intel_sync_url: this.value.trim() });
-  this.style.borderColor = '#3fb950';
-  setTimeout(() => { this.style.borderColor = '#30363d'; }, 800);
+function flashSaved(el) {
+  el.style.borderColor = '#3fb950';
+  setTimeout(() => { el.style.borderColor = '#30363d'; }, 800);
+}
+document.getElementById('discord-token').addEventListener('change', async function () {
+  await browser.storage.local.set({ discord_bot_token: this.value.trim() });
+  flashSaved(this);
+});
+document.getElementById('discord-channel').addEventListener('change', async function () {
+  await browser.storage.local.set({ discord_channel_id: this.value.trim() });
+  flashSaved(this);
 });
 
-// Cross-origin fetch to a user URL needs its origin granted at runtime (MV3
-// optional_host_permissions). Must be called from a user gesture — it is.
-async function ensureSyncPermission() {
-  const url = document.getElementById('intel-sync-url').value.trim();
-  if (!url) return true; // file-only path, no network
-  try {
-    return await browser.permissions.request({ origins: [new URL(url).origin + '/*'] });
-  } catch {
-    return false;
-  }
-}
-
-// Push spy reports to the alliance sync URL (if set) AND download a file. The
-// file is always produced so sharing works even without a URL.
+// Post spy reports to the alliance Discord channel (if creds set) AND download
+// a file. The file is always produced so sharing works even without Discord.
 document.getElementById('btn-share-spy').addEventListener('click', async function () {
-  if (!(await ensureSyncPermission())) { alert('Permission for the sync URL was denied.'); return; }
   const res = await browser.runtime.sendMessage({ type: 'SHARE_SPY_INTEL' });
   if (res.error) { alert(`Share failed: ${res.error}`); return; }
   const blob = new Blob([JSON.stringify(res.payload)], { type: 'application/json' });
@@ -503,14 +501,13 @@ document.getElementById('btn-share-spy').addEventListener('click', async functio
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   const p = res.posted;
-  if (p?.error) alert(`Shared to file; network push failed: ${p.error}`);
-  this.textContent = p?.ok ? `Pushed ${p.added}, file ✓` : `Shared ${res.count} (file) ✓`;
+  if (p?.error) alert(`Shared to file; Discord post failed: ${p.error}`);
+  this.textContent = p?.ok ? `Posted ${p.count}, file ✓` : `Shared ${res.count} (file) ✓`;
   setTimeout(() => { this.textContent = 'Share spy intel'; }, 2500);
 });
 
-// Pull the alliance bucket from the sync URL and merge into local intel.
+// Pull intel from the alliance Discord channel and merge into local intel.
 document.getElementById('btn-sync-spy').addEventListener('click', async function () {
-  if (!(await ensureSyncPermission())) { alert('Permission for the sync URL was denied.'); return; }
   this.textContent = 'Syncing…';
   const res = await browser.runtime.sendMessage({ type: 'SYNC_SPY_INTEL' });
   if (res.error) { alert(`Sync failed: ${res.error}`); this.textContent = 'Sync intel'; return; }
