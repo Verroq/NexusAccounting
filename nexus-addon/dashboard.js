@@ -462,12 +462,36 @@ document.getElementById('import-file').addEventListener('change', async function
   }
 });
 
-// ── Share spy intel (PoC) ──────────────────────────────────────────────────
+// ── Share spy intel ─────────────────────────────────────────────────────────
 
-// Bundle this player's spy reports (+ alliance/author identity) and download
-// them as a file an ally can import. The background also attempts a stubbed
-// push to an alliance intel endpoint; the file is the transport that works now.
+// Persist the sync URL on edit.
+(async () => {
+  const { intel_sync_url } = await browser.storage.local.get('intel_sync_url');
+  const el = document.getElementById('intel-sync-url');
+  if (el) el.value = intel_sync_url || '';
+})();
+document.getElementById('intel-sync-url').addEventListener('change', async function () {
+  await browser.storage.local.set({ intel_sync_url: this.value.trim() });
+  this.style.borderColor = '#3fb950';
+  setTimeout(() => { this.style.borderColor = '#30363d'; }, 800);
+});
+
+// Cross-origin fetch to a user URL needs its origin granted at runtime (MV3
+// optional_host_permissions). Must be called from a user gesture — it is.
+async function ensureSyncPermission() {
+  const url = document.getElementById('intel-sync-url').value.trim();
+  if (!url) return true; // file-only path, no network
+  try {
+    return await browser.permissions.request({ origins: [new URL(url).origin + '/*'] });
+  } catch {
+    return false;
+  }
+}
+
+// Push spy reports to the alliance sync URL (if set) AND download a file. The
+// file is always produced so sharing works even without a URL.
 document.getElementById('btn-share-spy').addEventListener('click', async function () {
+  if (!(await ensureSyncPermission())) { alert('Permission for the sync URL was denied.'); return; }
   const res = await browser.runtime.sendMessage({ type: 'SHARE_SPY_INTEL' });
   if (res.error) { alert(`Share failed: ${res.error}`); return; }
   const blob = new Blob([JSON.stringify(res.payload)], { type: 'application/json' });
@@ -478,8 +502,21 @@ document.getElementById('btn-share-spy').addEventListener('click', async functio
   a.download = `nexus-spy-intel${tag}-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  this.textContent = `Shared ${res.count} ✓`;
+  const p = res.posted;
+  if (p?.error) alert(`Shared to file; network push failed: ${p.error}`);
+  this.textContent = p?.ok ? `Pushed ${p.added}, file ✓` : `Shared ${res.count} (file) ✓`;
   setTimeout(() => { this.textContent = 'Share spy intel'; }, 2500);
+});
+
+// Pull the alliance bucket from the sync URL and merge into local intel.
+document.getElementById('btn-sync-spy').addEventListener('click', async function () {
+  if (!(await ensureSyncPermission())) { alert('Permission for the sync URL was denied.'); return; }
+  this.textContent = 'Syncing…';
+  const res = await browser.runtime.sendMessage({ type: 'SYNC_SPY_INTEL' });
+  if (res.error) { alert(`Sync failed: ${res.error}`); this.textContent = 'Sync intel'; return; }
+  await loadAll();
+  this.textContent = res.empty ? 'Nothing shared yet' : `+${res.added} (${res.total}) ✓`;
+  setTimeout(() => { this.textContent = 'Sync intel'; }, 2500);
 });
 
 document.getElementById('btn-import-spy').addEventListener('click', () => {
