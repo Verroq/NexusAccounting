@@ -462,6 +462,49 @@ document.getElementById('import-file').addEventListener('change', async function
   }
 });
 
+// ── Share spy intel (PoC) ──────────────────────────────────────────────────
+
+// Bundle this player's spy reports (+ alliance/author identity) and download
+// them as a file an ally can import. The background also attempts a stubbed
+// push to an alliance intel endpoint; the file is the transport that works now.
+document.getElementById('btn-share-spy').addEventListener('click', async function () {
+  const res = await browser.runtime.sendMessage({ type: 'SHARE_SPY_INTEL' });
+  if (res.error) { alert(`Share failed: ${res.error}`); return; }
+  const blob = new Blob([JSON.stringify(res.payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const tag = res.alliance?.tag ? `-${res.alliance.tag}` : '';
+  a.download = `nexus-spy-intel${tag}-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  this.textContent = `Shared ${res.count} ✓`;
+  setTimeout(() => { this.textContent = 'Share spy intel'; }, 2500);
+});
+
+document.getElementById('btn-import-spy').addEventListener('click', () => {
+  document.getElementById('share-import-file').click();
+});
+
+document.getElementById('share-import-file').addEventListener('change', async function () {
+  const file = this.files[0];
+  this.value = '';
+  if (!file) return;
+  const btn = document.getElementById('btn-import-spy');
+  try {
+    const payload = JSON.parse(await file.text());
+    const res = await browser.runtime.sendMessage({ type: 'IMPORT_SHARED_SPY_INTEL', payload });
+    if (res.error) throw new Error(res.error);
+    await loadAll();
+    btn.textContent = `+${res.added} from ${res.from} ✓`;
+  } catch (e) {
+    alert(`Import failed: ${e.message}`);
+    btn.textContent = 'Error';
+  } finally {
+    setTimeout(() => { btn.textContent = 'Import ally intel'; }, 2500);
+  }
+});
+
 // ── Init ───────────────────────────────────────────────────────────────────
 
 // On launch, if the stored report count is very large, offer a one-click purge
