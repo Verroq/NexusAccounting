@@ -16,11 +16,9 @@
   ],
   "host_permissions": [
     "https://*.nexuslegacy.space/*",
-    "https://nexuslegacy.space/*"
-  ],
-  "optional_host_permissions": [
-    "https://*/*",
-    "http://*/*"
+    "https://nexuslegacy.space/*",
+    "https://discord.com/*",
+    "https://cdn.discordapp.com/*"
   ],
   "background": {
     "service_worker": "background-sw.js",

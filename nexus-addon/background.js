@@ -439,26 +439,28 @@ async function getAlliance() {
 }
 
 // ── Spy intel sharing ───────────────────────────────────────────────────────
-// Share spy reports with your alliance. Two transports:
-//   1. Network: a JSON store whose base URL the user sets (intel_sync_url). The
-//      addon keeps one shared bucket per alliance tag at {url}/<TAG>; sharing is
-//      a read-modify-write (GET bucket, merge my reports, PUT back), so the
-//      bucket accumulates every member's intel. Any store speaking GET/PUT JSON
-//      works (self-hosted, a cloud function, a JSON-bin).
-//   2. File: shareSpyIntel always returns the payload so the dashboard can also
-//      offer it as a downloadable file — the offline fallback, no URL needed.
+// Share spy reports with your alliance via a private Discord channel. The
+// alliance's own channel membership IS the access control — only people in the
+// channel see the intel, so there's no auth code and no game secret to manage.
+//   Share: upload the payload as a JSON attachment to the channel (bot POST).
+//   Sync:  read recent messages, fetch our attachments, merge into local intel.
+//          A tag guard drops any payload not from your alliance, so a mis-set
+//          channel can't leak another alliance's intel into your simulator.
+//   File:  shareSpyIntel still returns the payload for a downloadable-file
+//          fallback, and importSharedSpyIntel ingests one — works with no bot.
 const SHARE_SPY_VERSION = 1;
+const DISCORD_API = 'https://discord.com/api/v10';
+const INTEL_FILENAME = /^nexus-spy-intel.*\.json$/i;
 
-// Resolve the per-alliance bucket URL, or null if no sync URL is configured.
-async function intelBucketUrl(tag) {
-  const { intel_sync_url } = await browser.storage.local.get('intel_sync_url');
-  if (!intel_sync_url || !tag) return null;
-  return intel_sync_url.replace(/\/+$/, '') + '/' + encodeURIComponent(tag);
+async function discordCreds() {
+  const { discord_bot_token, discord_channel_id } =
+    await browser.storage.local.get(['discord_bot_token', 'discord_channel_id']);
+  return { token: discord_bot_token, channel: discord_channel_id };
 }
 
 // Dedup spy reports by id (newest created_at wins), tag imports with their
-// source, and cap at INTEL_KEEP. Pure — shared by file import, network sync,
-// and the share read-modify-write. Returns { merged, added } (added = new ids).
+// source, and cap at INTEL_KEEP. Pure — shared by file import and Discord sync.
+// Returns { merged, added } (added = new ids).
 function mergeSpyReports(base, incoming, sharedBy) {
   const byId = {};
   for (const r of (base || [])) byId[r.id] = r;
@@ -475,16 +477,6 @@ function mergeSpyReports(base, incoming, sharedBy) {
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
     .slice(0, INTEL_KEEP);
   return { merged, added };
-}
-
-// GET a shared bucket, tolerating 404/empty and KV wrappers ({ record: ... }).
-async function fetchIntelBucket(url) {
-  const res = await fetch(url);
-  if (res.status === 404) return { spy_reports: [] };
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json().catch(() => ({}));
-  const b = data.record || data;
-  return { spy_reports: Array.isArray(b.spy_reports) ? b.spy_reports : [] };
 }
 
 async function shareSpyIntel() {
@@ -505,29 +497,30 @@ async function shareSpyIntel() {
     shared_at: new Date().toISOString(),
     author: { id: author.id ?? author.userId ?? null, username },
     alliance: { tag: alliance.tag, name: alliance.name },
+    universe_key: me.universeKey ?? author.universeKey ?? null,
     spy_reports: reports,
   };
 
-  // Network push: merge my reports into the alliance bucket and write it back.
-  // ponytail: read-modify-write races if two members share within the same
-  // window — last writer wins on conflicting ids. Fine at alliance scale; move
-  // the merge server-side (append endpoint) if concurrent sharing grows.
-  const url = await intelBucketUrl(alliance.tag);
+  // Upload the payload as a JSON attachment to the alliance's Discord channel.
+  const { token, channel } = await discordCreds();
   let posted;
-  if (!url) {
-    posted = { ok: false, skipped: true, reason: 'No intel sync URL set — file download only.' };
+  if (!token || !channel) {
+    posted = { ok: false, skipped: true, reason: 'No Discord bot token/channel set — file download only.' };
   } else {
     try {
-      const bucket = await fetchIntelBucket(url);
-      const mine = reports.map(r => ({ ...r, shared_by: r.shared_by || username }));
-      const { merged, added } = mergeSpyReports(bucket.spy_reports, mine);
-      const res = await fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nexus_shared_spy_intel: SHARE_SPY_VERSION, updated_at: new Date().toISOString(), spy_reports: merged }),
+      const fd = new FormData();
+      const filename = `nexus-spy-intel-${alliance.tag || 'x'}-${Date.now()}.json`;
+      fd.append('payload_json', JSON.stringify({
+        content: `🛰️ Spy intel from ${username || 'a member'} — ${reports.length} report(s)`,
+      }));
+      fd.append('files[0]', new Blob([JSON.stringify(payload)], { type: 'application/json' }), filename);
+      const res = await fetch(`${DISCORD_API}/channels/${channel}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bot ${token}` }, // do NOT set Content-Type — FormData sets the multipart boundary
+        body: fd,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      posted = { ok: true, added, total: merged.length };
+      if (!res.ok) throw new Error(`Discord ${res.status}`);
+      posted = { ok: true, count: reports.length };
     } catch (e) {
       posted = { ok: false, error: e.message };
     }
@@ -536,21 +529,46 @@ async function shareSpyIntel() {
   return { ok: true, payload, posted, count: reports.length, alliance: payload.alliance };
 }
 
-// Pull the alliance bucket from the sync URL and merge it into local intel.
+// Read recent channel messages, fetch every nexus-spy-intel attachment, and
+// merge the reports into local intel. Payloads from a different alliance tag
+// (or universe) are dropped — the guard against pulling foreign intel.
 async function syncSpyIntel() {
   const alliance = await getAlliance();
   if (alliance.error) return { error: alliance.error };
-  const url = await intelBucketUrl(alliance.tag);
-  if (!url) return { error: 'Set an Intel sync URL first, then Sync.' };
-  let bucket;
+  const { token, channel } = await discordCreds();
+  if (!token || !channel) return { error: 'Set a Discord bot token and channel ID first, then Sync.' };
+  const myUniverse = alliance.universeKey ?? null;
+
+  let messages;
   try {
-    bucket = await fetchIntelBucket(url);
+    const res = await fetch(`${DISCORD_API}/channels/${channel}/messages?limit=50`, {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (!res.ok) return { error: `Discord ${res.status}` };
+    messages = await res.json();
   } catch (e) {
     return { error: `Sync failed: ${e.message}` };
   }
-  if (!bucket.spy_reports.length) return { ok: true, added: 0, total: 0, empty: true };
+  const collected = [];
+  for (const m of (messages || [])) {
+    for (const a of (m.attachments || [])) {
+      if (!INTEL_FILENAME.test(a.filename || '')) continue;
+      try {
+        const r = await fetch(a.url); // Discord CDN URL, no auth
+        if (!r.ok) continue;
+        const p = await r.json();
+        if (p.nexus_shared_spy_intel !== SHARE_SPY_VERSION || !Array.isArray(p.spy_reports)) continue;
+        if (p.alliance?.tag && alliance.tag && p.alliance.tag !== alliance.tag) continue; // foreign alliance
+        if (p.universe_key && myUniverse && p.universe_key !== myUniverse) continue;       // foreign universe
+        const from = p.author?.username || 'an ally';
+        for (const rep of p.spy_reports) collected.push({ ...rep, shared_by: rep.shared_by || from });
+      } catch { /* skip unreadable/oversized attachment */ }
+    }
+  }
+  if (!collected.length) return { ok: true, added: 0, total: 0, empty: true };
+
   const { spy_reports } = await nsGet(['spy_reports']);
-  const { merged, added } = mergeSpyReports(spy_reports, bucket.spy_reports, 'an ally');
+  const { merged, added } = mergeSpyReports(spy_reports, collected);
   await nsSet({ spy_reports: merged });
   return { ok: true, added, total: merged.length };
 }

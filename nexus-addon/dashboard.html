@@ -39,9 +39,10 @@
     <button id="btn-export">Export JSON</button>
     <button id="btn-import">Import JSON</button>
     <input id="import-file" type="file" accept=".json,application/json" style="display:none;" />
-    <input id="intel-sync-url" type="url" placeholder="Intel sync URL (optional)" title="Base URL of a JSON store your alliance shares. The addon GET/PUTs {url}/<ALLIANCE_TAG>. Leave blank to share by file only." style="width:200px;" />
-    <button id="btn-share-spy" title="Share your spy reports with your alliance: push to the sync URL (if set) and download a file.">Share spy intel</button>
-    <button id="btn-sync-spy" title="Pull spy intel your alliance shared to the sync URL.">Sync intel</button>
+    <input id="discord-token" type="password" placeholder="Discord bot token" title="Bot token for your alliance's Discord. Leave blank to share by file only." style="width:150px;" />
+    <input id="discord-channel" type="text" placeholder="Channel ID" title="ID of the private alliance channel the bot posts to and reads from." style="width:110px;" />
+    <button id="btn-share-spy" title="Share your spy reports with your alliance: post to the Discord channel (if set) and download a file.">Share spy intel</button>
+    <button id="btn-sync-spy" title="Pull spy intel your alliance posted to the Discord channel.">Sync intel</button>
     <button id="btn-import-spy" title="Merge spy intel from an ally's shared file.">Import file</button>
     <input id="share-import-file" type="file" accept=".json,application/json" style="display:none;" />
     <a href="simulator.html" style="color:#58a6ff; margin-left:auto;">Combat Simulator →</a>
