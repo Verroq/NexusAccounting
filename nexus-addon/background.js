@@ -314,6 +314,8 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me');
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
+  if (msg.type === 'SHARE_SPY_INTEL') return shareSpyIntel();
+  if (msg.type === 'IMPORT_SHARED_SPY_INTEL') return importSharedSpyIntel(msg.payload);
   if (msg.type === 'GET_PLAYER_RANK') return getPlayerRanks(msg.name);
   if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
@@ -433,6 +435,68 @@ async function getAlliance() {
   } catch (err) {
     return { error: err.message };
   }
+}
+
+// ── Spy intel sharing (PoC) ─────────────────────────────────────────────────
+// Bundle this player's stored spy reports with alliance + author identity into
+// a portable payload allies can import. Two transports: (1) a stub POST to an
+// alliance intel endpoint — the "real" push, and (2) the payload is returned so
+// the dashboard can offer it as a downloadable file — the transport that
+// actually works today.
+const SHARE_SPY_VERSION = 1;
+
+async function shareSpyIntel() {
+  const [me, alliance, stored] = await Promise.all([
+    apiGet('/api/auth/me'),
+    getAlliance(),
+    browser.storage.local.get('spy_reports'),
+  ]);
+  if (me.error) return { error: me.error };
+  if (alliance.error) return { error: alliance.error };
+  const reports = stored.spy_reports || [];
+  if (!reports.length) return { error: 'No spy reports to share yet — scan a target first.' };
+
+  const author = me.user || me;
+  const payload = {
+    nexus_shared_spy_intel: SHARE_SPY_VERSION,
+    shared_at: new Date().toISOString(),
+    author: { id: author.id ?? author.userId ?? null, username: author.username || author.name || null },
+    alliance: { tag: alliance.tag, name: alliance.name },
+    spy_reports: reports,
+  };
+
+  // ponytail: real version POSTs to a server that fans this payload out to every
+  // alliance member (or writes to a shared inbox they poll). No such game/alliance
+  // intel endpoint exists, so this push is stubbed — the file download below is
+  // the working transport. Replace `posted` with a real fetch to that endpoint.
+  const posted = { ok: false, stub: true, target: '/api/alliances/intel/spy (does not exist yet)' };
+
+  return { ok: true, payload, posted, count: reports.length, alliance: payload.alliance };
+}
+
+// Merge an ally's shared payload into local spy_reports (dedup by report id,
+// keeping the newest), so their intel shows up in the simulator's report picker.
+async function importSharedSpyIntel(payload) {
+  if (!payload || payload.nexus_shared_spy_intel !== SHARE_SPY_VERSION || !Array.isArray(payload.spy_reports)) {
+    return { error: 'Not a Nexus shared-spy-intel file.' };
+  }
+  const { spy_reports } = await browser.storage.local.get('spy_reports');
+  const byId = {};
+  for (const r of (spy_reports || [])) byId[r.id] = r;
+  let added = 0;
+  for (const r of payload.spy_reports) {
+    if (r == null || r.id == null) continue;
+    const existing = byId[r.id];
+    if (!existing || (r.created_at || '').localeCompare(existing.created_at || '') > 0) {
+      byId[r.id] = { ...r, shared_by: payload.author?.username || null };
+      if (!existing) added++;
+    }
+  }
+  const merged = Object.values(byId)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    .slice(0, INTEL_KEEP);
+  await browser.storage.local.set({ spy_reports: merged });
+  return { ok: true, added, total: merged.length, from: payload.author?.username || 'an ally' };
 }
 
 // Look up a player's per-category leaderboard ranks by exact name (finder
