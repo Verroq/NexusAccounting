@@ -18,6 +18,10 @@
     "https://*.nexuslegacy.space/*",
     "https://nexuslegacy.space/*"
   ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
   "background": {
     "service_worker": "background-sw.js",
     "scripts": ["background-sw.js"],

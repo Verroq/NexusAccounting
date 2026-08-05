@@ -315,6 +315,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
   if (msg.type === 'SHARE_SPY_INTEL') return shareSpyIntel();
+  if (msg.type === 'SYNC_SPY_INTEL') return syncSpyIntel();
   if (msg.type === 'IMPORT_SHARED_SPY_INTEL') return importSharedSpyIntel(msg.payload);
   if (msg.type === 'GET_PLAYER_RANK') return getPlayerRanks(msg.name);
   if (msg.type === 'GET_RESOURCES') return getResources();
@@ -437,19 +438,60 @@ async function getAlliance() {
   }
 }
 
-// ── Spy intel sharing (PoC) ─────────────────────────────────────────────────
-// Bundle this player's stored spy reports with alliance + author identity into
-// a portable payload allies can import. Two transports: (1) a stub POST to an
-// alliance intel endpoint — the "real" push, and (2) the payload is returned so
-// the dashboard can offer it as a downloadable file — the transport that
-// actually works today.
+// ── Spy intel sharing ───────────────────────────────────────────────────────
+// Share spy reports with your alliance. Two transports:
+//   1. Network: a JSON store whose base URL the user sets (intel_sync_url). The
+//      addon keeps one shared bucket per alliance tag at {url}/<TAG>; sharing is
+//      a read-modify-write (GET bucket, merge my reports, PUT back), so the
+//      bucket accumulates every member's intel. Any store speaking GET/PUT JSON
+//      works (self-hosted, a cloud function, a JSON-bin).
+//   2. File: shareSpyIntel always returns the payload so the dashboard can also
+//      offer it as a downloadable file — the offline fallback, no URL needed.
 const SHARE_SPY_VERSION = 1;
+
+// Resolve the per-alliance bucket URL, or null if no sync URL is configured.
+async function intelBucketUrl(tag) {
+  const { intel_sync_url } = await browser.storage.local.get('intel_sync_url');
+  if (!intel_sync_url || !tag) return null;
+  return intel_sync_url.replace(/\/+$/, '') + '/' + encodeURIComponent(tag);
+}
+
+// Dedup spy reports by id (newest created_at wins), tag imports with their
+// source, and cap at INTEL_KEEP. Pure — shared by file import, network sync,
+// and the share read-modify-write. Returns { merged, added } (added = new ids).
+function mergeSpyReports(base, incoming, sharedBy) {
+  const byId = {};
+  for (const r of (base || [])) byId[r.id] = r;
+  let added = 0;
+  for (const r of (incoming || [])) {
+    if (r == null || r.id == null) continue;
+    const existing = byId[r.id];
+    if (!existing || (r.created_at || '').localeCompare(existing.created_at || '') > 0) {
+      byId[r.id] = sharedBy ? { ...r, shared_by: r.shared_by || sharedBy } : r;
+      if (!existing) added++;
+    }
+  }
+  const merged = Object.values(byId)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    .slice(0, INTEL_KEEP);
+  return { merged, added };
+}
+
+// GET a shared bucket, tolerating 404/empty and KV wrappers ({ record: ... }).
+async function fetchIntelBucket(url) {
+  const res = await fetch(url);
+  if (res.status === 404) return { spy_reports: [] };
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json().catch(() => ({}));
+  const b = data.record || data;
+  return { spy_reports: Array.isArray(b.spy_reports) ? b.spy_reports : [] };
+}
 
 async function shareSpyIntel() {
   const [me, alliance, stored] = await Promise.all([
     apiGet('/api/auth/me'),
     getAlliance(),
-    browser.storage.local.get('spy_reports'),
+    nsGet(['spy_reports']),
   ]);
   if (me.error) return { error: me.error };
   if (alliance.error) return { error: alliance.error };
@@ -457,46 +499,72 @@ async function shareSpyIntel() {
   if (!reports.length) return { error: 'No spy reports to share yet — scan a target first.' };
 
   const author = me.user || me;
+  const username = author.username || author.name || null;
   const payload = {
     nexus_shared_spy_intel: SHARE_SPY_VERSION,
     shared_at: new Date().toISOString(),
-    author: { id: author.id ?? author.userId ?? null, username: author.username || author.name || null },
+    author: { id: author.id ?? author.userId ?? null, username },
     alliance: { tag: alliance.tag, name: alliance.name },
     spy_reports: reports,
   };
 
-  // ponytail: real version POSTs to a server that fans this payload out to every
-  // alliance member (or writes to a shared inbox they poll). No such game/alliance
-  // intel endpoint exists, so this push is stubbed — the file download below is
-  // the working transport. Replace `posted` with a real fetch to that endpoint.
-  const posted = { ok: false, stub: true, target: '/api/alliances/intel/spy (does not exist yet)' };
+  // Network push: merge my reports into the alliance bucket and write it back.
+  // ponytail: read-modify-write races if two members share within the same
+  // window — last writer wins on conflicting ids. Fine at alliance scale; move
+  // the merge server-side (append endpoint) if concurrent sharing grows.
+  const url = await intelBucketUrl(alliance.tag);
+  let posted;
+  if (!url) {
+    posted = { ok: false, skipped: true, reason: 'No intel sync URL set — file download only.' };
+  } else {
+    try {
+      const bucket = await fetchIntelBucket(url);
+      const mine = reports.map(r => ({ ...r, shared_by: r.shared_by || username }));
+      const { merged, added } = mergeSpyReports(bucket.spy_reports, mine);
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nexus_shared_spy_intel: SHARE_SPY_VERSION, updated_at: new Date().toISOString(), spy_reports: merged }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      posted = { ok: true, added, total: merged.length };
+    } catch (e) {
+      posted = { ok: false, error: e.message };
+    }
+  }
 
   return { ok: true, payload, posted, count: reports.length, alliance: payload.alliance };
 }
 
-// Merge an ally's shared payload into local spy_reports (dedup by report id,
-// keeping the newest), so their intel shows up in the simulator's report picker.
+// Pull the alliance bucket from the sync URL and merge it into local intel.
+async function syncSpyIntel() {
+  const alliance = await getAlliance();
+  if (alliance.error) return { error: alliance.error };
+  const url = await intelBucketUrl(alliance.tag);
+  if (!url) return { error: 'Set an Intel sync URL first, then Sync.' };
+  let bucket;
+  try {
+    bucket = await fetchIntelBucket(url);
+  } catch (e) {
+    return { error: `Sync failed: ${e.message}` };
+  }
+  if (!bucket.spy_reports.length) return { ok: true, added: 0, total: 0, empty: true };
+  const { spy_reports } = await nsGet(['spy_reports']);
+  const { merged, added } = mergeSpyReports(spy_reports, bucket.spy_reports, 'an ally');
+  await nsSet({ spy_reports: merged });
+  return { ok: true, added, total: merged.length };
+}
+
+// Merge an ally's shared file payload into local spy_reports (offline fallback).
 async function importSharedSpyIntel(payload) {
   if (!payload || payload.nexus_shared_spy_intel !== SHARE_SPY_VERSION || !Array.isArray(payload.spy_reports)) {
     return { error: 'Not a Nexus shared-spy-intel file.' };
   }
-  const { spy_reports } = await browser.storage.local.get('spy_reports');
-  const byId = {};
-  for (const r of (spy_reports || [])) byId[r.id] = r;
-  let added = 0;
-  for (const r of payload.spy_reports) {
-    if (r == null || r.id == null) continue;
-    const existing = byId[r.id];
-    if (!existing || (r.created_at || '').localeCompare(existing.created_at || '') > 0) {
-      byId[r.id] = { ...r, shared_by: payload.author?.username || null };
-      if (!existing) added++;
-    }
-  }
-  const merged = Object.values(byId)
-    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
-    .slice(0, INTEL_KEEP);
-  await browser.storage.local.set({ spy_reports: merged });
-  return { ok: true, added, total: merged.length, from: payload.author?.username || 'an ally' };
+  const { spy_reports } = await nsGet(['spy_reports']);
+  const from = payload.author?.username || 'an ally';
+  const { merged, added } = mergeSpyReports(spy_reports, payload.spy_reports, from);
+  await nsSet({ spy_reports: merged });
+  return { ok: true, added, total: merged.length, from };
 }
 
 // Look up a player's per-category leaderboard ranks by exact name (finder
@@ -3057,7 +3125,7 @@ export {
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
-  fieldMatches, purgeOldData, freshestToken, resolveRecordsCap,
+  fieldMatches, purgeOldData, freshestToken, resolveRecordsCap, mergeSpyReports,
   nsGet, nsSet, nsRemove, gameUrlFor, setCurrentUniverse, getCurrentUniverse,
   processSpyReports, processCampScoutReports,
 };
