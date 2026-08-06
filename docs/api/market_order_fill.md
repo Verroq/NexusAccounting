@@ -1,6 +1,6 @@
 # /api/market/orders/{orderId}/fill
 
-Executes a market trade against an existing order.
+Legacy direct-fill endpoint for market orders.
 
 ## Method
 
@@ -10,19 +10,15 @@ Executes a market trade against an existing order.
 
 ```json
 {
-  "fillAmount": 1000,
-  "buyerHubId": 44
+  "offerAmount": 1000
 }
 ```
 
 ## Response Structure
 
-```json
-{}
-```
+No successful payload was observed in current live checks.
 
 ## Notes
 
-- The client currently handles this as a success-or-error operation.
-- The exact success payload is not fully documented yet; the addon now captures and shows the raw response in the fill modal for inspection.
-- This is the best candidate for discovering per-trade fee data at execution time if the server returns it.
+- Safe invalid probe on `s0` returned `410 MARKET_DIRECT_FILL_DISABLED` with message: `Direct market fills are no longer available. Refresh the game to use the order book.`
+- This indicates direct fills are currently disabled in the game backend.

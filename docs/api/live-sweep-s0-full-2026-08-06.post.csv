@@ -1,0 +1,15 @@
+"endpoint","method","status","ok","topKeys","message","code"
+"/api/fleet/collect-debris","POST","400","False","error,code","Invalid request body","VALIDATION_ERROR"
+"/api/fleet/collect-salvage","POST","400","False","error,code","Invalid request body","VALIDATION_ERROR"
+"/api/fleet/dispatch","POST","400","False","error,code","Invalid request body","VALIDATION_ERROR"
+"/api/fleet/expedition","POST","400","False","error,code","Invalid request body","VALIDATION_ERROR"
+"/api/fleet/fuel-estimate","POST","400","False","error,code","Invalid request: sourcePlanetId: Number must be greater than 0; targetSystemId: Number must be greater than 0; ships: Select at least one ship or attach the leadership vessel","VALIDATION_ERROR"
+"/api/fleet/investigate","POST","400","False","error,code","Invalid request body","VALIDATION_ERROR"
+"/api/fleet/mine","POST","400","False","error,code","Invalid request body","VALIDATION_ERROR"
+"/api/fleet/survey","POST","400","False","error,code","Invalid request body","VALIDATION_ERROR"
+"/api/fleet/xeno-survey","POST","400","False","error,code","Invalid request body","VALIDATION_ERROR"
+"/api/market/orders/-1/fill","POST","410","False","error,code","Direct market fills are no longer available. Refresh the game to use the order book.","MARKET_DIRECT_FILL_DISABLED"
+"/api/moons/49793/dispatch","POST","400","False","error,code","Invalid request body","VALIDATION_ERROR"
+"/api/moons/49793/recall","POST","400","False","error,details","Validation error",
+"/api/moons/49793/send","POST","400","False","error,details","Validation error",
+"/api/research/-1/start","POST","400","False","error,details","Validation error",

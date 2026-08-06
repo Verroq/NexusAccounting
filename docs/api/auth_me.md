@@ -1,8 +1,23 @@
 # /api/auth/me
 
-This endpoint returns the currently authenticated user's profile and colonized planets.
+Returns the currently authenticated player account plus a compact list of the
+player's colonized planets.
 
-## Payload Structure
+## Method
+
+`GET`
+
+## Authentication
+
+- Requires a logged-in game session.
+- Called with browser credentials (`credentials: include`) in addon fetch code.
+- Returns 401 when the session is missing or expired.
+
+## Query Parameters
+
+None.
+
+## Response Structure
 
 ```json
 {
@@ -18,20 +33,24 @@ This endpoint returns the currently authenticated user's profile and colonized p
             "hydrogenProductionBonus": 0.08,
             "alloysProductionBonus": 0.08,
             "miningYieldBonus": 0.1,
-            "storageBonus": 0.15
+            "storageBonus": 0.15,
+            "cargoBonus": 0.1
         },
-        "diplomatDoctrine": null,
-        "pendingDoctrine": null,
-        "doctrineActiveAt": null,
         "genesisCode": "ABCDEF",
         "precursorFragments": 15,
         "createdAt": "2026-01-01T12:00:00.000Z",
         "lastLoginAt": "2026-06-20T10:00:00.000Z",
-        "starterBoostUntil": null,
         "isAdmin": false,
         "commandCenterActive": true,
         "commandCenterExpiresAt": "2026-07-20T10:00:00.000Z",
         "preferredLanguage": "en",
+        "steamId": "12345678901234567",
+        "steamAvatarUrl": "https://avatars.steamstatic.com/random_avatar_full.jpg",
+        "marketingEmailsOptIn": false,
+        "diplomatDoctrine": null,
+        "pendingDoctrine": null,
+        "doctrineActiveAt": null,
+        "starterBoostUntil": null,
         "lastLeaderChangeAt": null,
         "privateMessagesMutedUntil": null,
         "privateMessagesMuteReason": null,
@@ -42,10 +61,7 @@ This endpoint returns the currently authenticated user's profile and colonized p
         "profileDeletionRequestedAt": null,
         "profileDeletionScheduledAt": null,
         "leaderChangeUses": 0,
-        "traderSummonUses": 0,
-        "steamId": "12345678901234567",
-        "steamAvatarUrl": "https://avatars.steamstatic.com/random_avatar_full.jpg",
-        "marketingEmailsOptIn": false
+        "traderSummonUses": 0
     },
     "planets": [
         {
@@ -64,6 +80,29 @@ This endpoint returns the currently authenticated user's profile and colonized p
 }
 ```
 
-### Important Notes
-- The `id` field within `user` maps to the `userId` in the web application's internal model (e.g. from the JWT token). When parsing `getUserProfile()`, ensure you handle both the `/api/auth/me` structure and the standard JWT extension token structure.
-- The `planets` array provides a comprehensive list of all colonies owned by the player, including their exact coordinates and system names.
+## Field Notes
+
+- `user.id` is the canonical logged-in player identifier.
+- `planets` is intentionally lightweight and focused on colony identity/location
+    fields rather than full economy/fleet state.
+- `planets[].systemX` and `planets[].systemY` are used for distance calculations
+    in galaxy tooling.
+- `activeLeaderBonuses` is sparse and bonus keys can vary by current leader.
+
+## Addon Usage Notes
+
+- Finder tab:
+    - Uses `user.id` for ownership filtering.
+    - Uses `planets[].systemX/systemY` and `planets[].systemName` for origin pickers
+        and distance calculations.
+- Logistics/Quartermaster:
+    - Uses `user.id` (and fallback `user.userId` when present) to identify owned
+        moons in system payloads.
+    - Uses `activeLeaderBonuses.cargoBonus` to compute effective cargo capacity.
+
+## Compatibility Notes
+
+- Treat `user.id` as equivalent to `userId` used in other endpoint payloads and
+    internal models.
+- Consumer code should tolerate nullable account-state fields (vacation,
+    doctrine, moderation, deletion schedule).
