@@ -487,22 +487,11 @@ document.getElementById('discord-channel').addEventListener('change', async func
   flashSaved(this);
 });
 
-// Post spy reports to the alliance Discord channel (if creds set) AND download
-// a file. The file is always produced so sharing works even without Discord.
+// Post spy reports to the alliance Discord channel.
 document.getElementById('btn-share-spy').addEventListener('click', async function () {
   const res = await browser.runtime.sendMessage({ type: 'SHARE_SPY_INTEL' });
   if (res.error) { alert(`Share failed: ${res.error}`); return; }
-  const blob = new Blob([JSON.stringify(res.payload)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  const tag = res.alliance?.tag ? `-${res.alliance.tag}` : '';
-  a.download = `nexus-spy-intel${tag}-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  const p = res.posted;
-  if (p?.error) alert(`Shared to file; Discord post failed: ${p.error}`);
-  this.textContent = p?.ok ? `Posted ${p.count}, file ✓` : `Shared ${res.count} (file) ✓`;
+  this.textContent = `Posted ${res.count} ✓`;
   setTimeout(() => { this.textContent = 'Share spy intel'; }, 2500);
 });
 
@@ -514,29 +503,6 @@ document.getElementById('btn-sync-spy').addEventListener('click', async function
   await loadAll();
   this.textContent = res.empty ? 'Nothing shared yet' : `+${res.added} (${res.total}) ✓`;
   setTimeout(() => { this.textContent = 'Sync intel'; }, 2500);
-});
-
-document.getElementById('btn-import-spy').addEventListener('click', () => {
-  document.getElementById('share-import-file').click();
-});
-
-document.getElementById('share-import-file').addEventListener('change', async function () {
-  const file = this.files[0];
-  this.value = '';
-  if (!file) return;
-  const btn = document.getElementById('btn-import-spy');
-  try {
-    const payload = JSON.parse(await file.text());
-    const res = await browser.runtime.sendMessage({ type: 'IMPORT_SHARED_SPY_INTEL', payload });
-    if (res.error) throw new Error(res.error);
-    await loadAll();
-    btn.textContent = `+${res.added} from ${res.from} ✓`;
-  } catch (e) {
-    alert(`Import failed: ${e.message}`);
-    btn.textContent = 'Error';
-  } finally {
-    setTimeout(() => { btn.textContent = 'Import ally intel'; }, 2500);
-  }
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────

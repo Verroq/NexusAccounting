@@ -319,7 +319,6 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
   if (msg.type === 'SHARE_SPY_INTEL') return shareSpyIntel();
   if (msg.type === 'SYNC_SPY_INTEL') return syncSpyIntel();
-  if (msg.type === 'IMPORT_SHARED_SPY_INTEL') return importSharedSpyIntel(msg.payload);
   if (msg.type === 'GET_PLAYER_RANK') return getPlayerRanks(msg.name);
   if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
@@ -449,8 +448,6 @@ async function getAlliance() {
 //   Sync:  read recent messages, fetch our attachments, merge into local intel.
 //          A tag guard drops any payload not from your alliance, so a mis-set
 //          channel can't leak another alliance's intel into your simulator.
-//   File:  shareSpyIntel still returns the payload for a downloadable-file
-//          fallback, and importSharedSpyIntel ingests one — works with no bot.
 const SHARE_SPY_VERSION = 1;
 const DISCORD_API = 'https://discord.com/api/v10';
 const INTEL_FILENAME = /^nexus-spy-intel.*\.json$/i;
@@ -493,6 +490,9 @@ async function shareSpyIntel() {
   const reports = stored.spy_reports || [];
   if (!reports.length) return { error: 'No spy reports to share yet — scan a target first.' };
 
+  const { token, channel } = await discordCreds();
+  if (!token || !channel) return { error: 'Set a Discord bot token and channel ID first.' };
+
   const author = me.user || me;
   const username = author.username || author.name || null;
   const payload = {
@@ -505,31 +505,24 @@ async function shareSpyIntel() {
   };
 
   // Upload the payload as a JSON attachment to the alliance's Discord channel.
-  const { token, channel } = await discordCreds();
-  let posted;
-  if (!token || !channel) {
-    posted = { ok: false, skipped: true, reason: 'No Discord bot token/channel set — file download only.' };
-  } else {
-    try {
-      const fd = new FormData();
-      const filename = `nexus-spy-intel-${alliance.tag || 'x'}-${Date.now()}.json`;
-      fd.append('payload_json', JSON.stringify({
-        content: `🛰️ Spy intel from ${username || 'a member'} — ${reports.length} report(s)`,
-      }));
-      fd.append('files[0]', new Blob([JSON.stringify(payload)], { type: 'application/json' }), filename);
-      const res = await fetch(`${DISCORD_API}/channels/${channel}/messages`, {
-        method: 'POST',
-        headers: { Authorization: `Bot ${token}` }, // do NOT set Content-Type — FormData sets the multipart boundary
-        body: fd,
-      });
-      if (!res.ok) throw new Error(`Discord ${res.status}`);
-      posted = { ok: true, count: reports.length };
-    } catch (e) {
-      posted = { ok: false, error: e.message };
-    }
+  try {
+    const fd = new FormData();
+    const filename = `nexus-spy-intel-${alliance.tag || 'x'}-${Date.now()}.json`;
+    fd.append('payload_json', JSON.stringify({
+      content: `🛰️ Spy intel from ${username || 'a member'} — ${reports.length} report(s)`,
+    }));
+    fd.append('files[0]', new Blob([JSON.stringify(payload)], { type: 'application/json' }), filename);
+    const res = await fetch(`${DISCORD_API}/channels/${channel}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bot ${token}` }, // do NOT set Content-Type — FormData sets the multipart boundary
+      body: fd,
+    });
+    if (!res.ok) throw new Error(`Discord ${res.status}`);
+  } catch (e) {
+    return { error: `Discord post failed: ${e.message}` };
   }
 
-  return { ok: true, payload, posted, count: reports.length, alliance: payload.alliance };
+  return { ok: true, count: reports.length, alliance: { tag: alliance.tag, name: alliance.name } };
 }
 
 // Read recent channel messages, fetch every nexus-spy-intel attachment, and
@@ -574,18 +567,6 @@ async function syncSpyIntel() {
   const { merged, added } = mergeSpyReports(spy_reports, collected);
   await nsSet({ spy_reports: merged });
   return { ok: true, added, total: merged.length };
-}
-
-// Merge an ally's shared file payload into local spy_reports (offline fallback).
-async function importSharedSpyIntel(payload) {
-  if (!payload || payload.nexus_shared_spy_intel !== SHARE_SPY_VERSION || !Array.isArray(payload.spy_reports)) {
-    return { error: 'Not a Nexus shared-spy-intel file.' };
-  }
-  const { spy_reports } = await nsGet(['spy_reports']);
-  const from = payload.author?.username || 'an ally';
-  const { merged, added } = mergeSpyReports(spy_reports, payload.spy_reports, from);
-  await nsSet({ spy_reports: merged });
-  return { ok: true, added, total: merged.length, from };
 }
 
 // Look up a player's per-category leaderboard ranks by exact name (finder
