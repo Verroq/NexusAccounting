@@ -80,6 +80,11 @@
       "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["browser-polyfill.js", "ship-upgrade.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://s0.nexuslegacy.space/*"],
+      "js": ["ingame-tabs.js"],
+      "run_at": "document_idle"
     }
   ],
   "icons": {
