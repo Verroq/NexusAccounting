@@ -458,43 +458,63 @@ async function apiGet(path) {
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 
+// Decode a JWT's exp claim (seconds since epoch). Returns 0 when unparseable,
+// so a token with a readable expiry always beats an opaque one.
+function jwtExp(token) {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(payload)).exp ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Pick the freshest token from a set of candidates. Duplicate nexus_token
+// cookies (host-only vs domain-wide, or across stores) can shadow each other,
+// and cookies.get tie-breaks by creation date — so after a re-login a stale
+// leftover can still win. Choosing the latest exp makes the fresh token win.
+function freshestToken(tokens) {
+  const list = [...tokens].filter(Boolean);
+  if (!list.length) return null;
+  return list.sort((a, b) => jwtExp(b) - jwtExp(a))[0];
+}
+
 // Find the nexus_token cookie. It can live outside the default store — a
 // Firefox container tab, a private window, or as a partitioned (CHIPS)
-// cookie — so fall back to searching every cookie store domain-wide.
+// cookie — so search every cookie store domain-wide, gather every match, and
+// return the freshest (a stale duplicate must not shadow a fresh re-login).
 async function getToken() {
   const NAME = 'nexus_token';
   const urls = [GAME_URL, 'https://nexuslegacy.space'];
+  const found = new Set();
 
-  const lookup = async (storeId) => {
+  const collect = async (storeId) => {
     const store = storeId ? { storeId } : {};
     for (const url of urls) {
       try {
         const c = await browser.cookies.get({ url, name: NAME, ...store });
-        if (c?.value) return c.value;
+        if (c?.value) found.add(c.value);
       } catch { /* store may not support get */ }
     }
     try {
       const all = await browser.cookies.getAll({ domain: 'nexuslegacy.space', name: NAME, ...store });
-      const hit = (all || []).find(c => c.value);
-      if (hit) return hit.value;
+      for (const c of (all || [])) if (c.value) found.add(c.value);
     } catch { /* ignore */ }
-    return null;
   };
 
-  const direct = await lookup(null);
-  if (direct) return direct;
+  await collect(null);
 
   let storeIds = [];
   try {
     const stores = await browser.cookies.getAllCookieStores();
     storeIds = (stores || []).map(s => s.id);
-    for (const s of (stores || [])) {
-      const v = await lookup(s.id);
-      if (v) return v;
-    }
+    for (const s of (stores || [])) await collect(s.id);
   } catch (e) {
     console.warn('[NexusAccounting] getAllCookieStores failed:', e.message);
   }
+
+  const token = freshestToken(found);
+  if (token) return token;
 
   console.warn(`[NexusAccounting] nexus_token not found. Checked default + stores: [${storeIds.join(', ')}]. ` +
     `Open the game (logged in) in a normal tab, or check the cookie exists on s0.nexuslegacy.space.`);
@@ -2705,5 +2725,5 @@ export {
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
-  fieldMatches, purgeOldData,
+  fieldMatches, purgeOldData, freshestToken,
 };
