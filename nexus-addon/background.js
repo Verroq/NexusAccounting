@@ -471,18 +471,20 @@ function jwtRace(token) {
 }
 
 // The player's race, needed to build ship image URLs (/api/images/ships/{race}/…).
-// Newer JWTs dropped the `race` claim, so fall back to /api/auth/me. Cached — race
-// doesn't change within a session.
+// Newer JWTs dropped the `race` claim, so fall back to /api/auth/me, then to
+// 'terran' as a last resort so images always resolve. A resolved race is cached;
+// the 'terran' default is not, so a later successful auth/me can still correct it.
 let _race = null;
 async function resolveRace(token) {
   if (_race) return _race;
-  _race = jwtRace(token);
-  if (_race) return _race;
+  const fromJwt = jwtRace(token);
+  if (fromJwt) return (_race = fromJwt);
   try {
     const me = await apiFetch('/api/auth/me', token);
-    _race = me?.user?.race ?? me?.race ?? null;
-  } catch { /* leave null — images just fall back to no icon */ }
-  return _race;
+    const r = me?.user?.race ?? me?.race ?? null;
+    if (r) return (_race = r);
+  } catch { /* fall through to default */ }
+  return 'terran';
 }
 
 // All open orders from a paginated orders endpoint (public market or alliance
