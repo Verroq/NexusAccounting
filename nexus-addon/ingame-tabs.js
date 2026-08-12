@@ -144,6 +144,157 @@ document.addEventListener('click', e => {
   if (e.target.closest('[data-nexus-ingame-scan]')) { e.preventDefault(); openPanel(); }
 });
 
+// ── Game-styled fleet picker ────────────────────────────────────────────────
+// The embedded Scouting tab (tabs/scouting.js, inside our iframe) can't reach the
+// game's CSS, so it asks us — running in the game window — to render the fleet
+// picker here using the game's own .spy-modal classes. Mounted in the game DOM,
+// it inherits the game stylesheet and looks native. We post the chosen
+// [{shipDefId, quantity}] back to the iframe, which does the actual POST through
+// the game session. Cancel / close posts back null.
+function openFleetModal(msg, source) {
+  document.getElementById('nexus-fleet-modal')?.remove();
+  const reply = ships =>
+    source && source.postMessage({ __nxFleetResult: true, reportId: msg.reportId, ships }, '*');
+
+  const qty = new Map();   // shipDefId → selected qty
+  for (const s of (msg.ships || [])) if (s.seed > 0) qty.set(s.shipDefId, s.seed);
+
+  // ponytail: the game normally renders .spy-modal inside its own overlay/portal.
+  // We supply our own fixed backdrop and reuse the game's inner classes so the
+  // body inherits the game CSS. If a game restyle ties .spy-modal to a specific
+  // parent, this wrapper is where to adjust.
+  const overlay = document.createElement('div');
+  overlay.id = 'nexus-fleet-modal';
+  overlay.style.cssText =
+    'position:fixed; inset:0; z-index:2147483647; display:flex;' +
+    'align-items:center; justify-content:center; background:rgba(0,0,0,0.6);';
+
+  const modal = document.createElement('div');
+  modal.className = 'spy-modal';
+
+  const header = document.createElement('div');
+  header.className = 'spy-modal-header';
+  const h3 = document.createElement('h3');
+  h3.textContent = msg.title || 'Investigate Anomaly';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'modal-close';
+  closeBtn.textContent = '✕';
+  header.append(h3, closeBtn);
+
+  const body = document.createElement('div');
+  body.className = 'spy-modal-body';
+  if (msg.subtitle) {
+    const sect = document.createElement('div');
+    sect.className = 'spy-modal-section';
+    const info = document.createElement('div');
+    info.className = 'spy-target-info';
+    const strong = document.createElement('strong');
+    strong.textContent = msg.subtitle;
+    info.append(strong);
+    sect.append(info);
+    body.append(sect);
+  }
+
+  const section = document.createElement('div');
+  section.className = 'spy-modal-section';
+  const label = document.createElement('label');
+  label.className = 'section-label';
+  const list = document.createElement('div');
+  list.className = 'ship-select-list';
+  list.style.cssText = 'max-height:45vh; overflow-y:auto;';
+
+  const confirmBtn = document.createElement('button');   // referenced by refresh()
+  const total = () => [...qty.values()].reduce((a, b) => a + b, 0);
+  const refresh = () => {
+    const n = total();
+    label.textContent = `Select Fleet (${n} selected)`;
+    confirmBtn.disabled = n === 0;
+    confirmBtn.textContent = `Investigate (${n} ships)`;
+  };
+
+  for (const s of (msg.ships || [])) {
+    const row = document.createElement('div');
+    row.className = 'ship-select-row';
+    const name = document.createElement('span');
+    name.className = 'ship-select-name';
+    if (s.imageUrl) {
+      const img = document.createElement('img');
+      img.src = s.imageUrl; img.width = 36; img.height = 36; img.alt = s.name;
+      name.append(img);
+    }
+    const nm = document.createElement('span');
+    nm.textContent = s.name;
+    name.append(nm);
+
+    const controls = document.createElement('div');
+    controls.className = 'ship-select-controls';
+    const stepper = document.createElement('div');
+    stepper.className = 'qty-control ship-quantity-stepper';
+    const dec = document.createElement('button');
+    dec.type = 'button'; dec.className = 'qty-step-btn'; dec.textContent = '-';
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.min = '0'; inp.max = String(s.available); inp.inputMode = 'numeric';
+    inp.value = String(qty.get(s.shipDefId) || 0);
+    const inc = document.createElement('button');
+    inc.type = 'button'; inc.className = 'qty-step-btn'; inc.textContent = '+';
+    const maxBtn = document.createElement('button');
+    maxBtn.type = 'button'; maxBtn.className = 'qty-max-btn'; maxBtn.textContent = 'Max';
+    const setQ = v => {
+      v = Math.max(0, Math.min(s.available, v | 0));
+      inp.value = String(v);
+      if (v > 0) qty.set(s.shipDefId, v); else qty.delete(s.shipDefId);
+      refresh();
+    };
+    dec.addEventListener('click', () => setQ((qty.get(s.shipDefId) || 0) - 1));
+    inc.addEventListener('click', () => setQ((qty.get(s.shipDefId) || 0) + 1));
+    maxBtn.addEventListener('click', () => setQ(s.available));
+    inp.addEventListener('change', () => setQ(parseInt(inp.value, 10) || 0));
+    stepper.append(dec, inp, inc, maxBtn);
+
+    const avail = document.createElement('span');
+    avail.className = 'ship-select-available';
+    avail.textContent = `/${s.available}`;
+    controls.append(stepper, avail);
+
+    row.append(name, controls);
+    list.append(row);
+  }
+  if (!(msg.ships || []).length) {
+    list.textContent = 'No ships on the source planet.';
+  }
+  section.append(label, list);
+  body.append(section);
+
+  const footer = document.createElement('div');
+  footer.className = 'spy-modal-footer';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'cancel-modal-btn';
+  cancelBtn.textContent = 'Cancel';
+  confirmBtn.className = 'confirm-investigate-btn';
+  footer.append(cancelBtn, confirmBtn);
+
+  const finish = ships => { overlay.remove(); reply(ships); };
+  closeBtn.addEventListener('click', () => finish(null));
+  cancelBtn.addEventListener('click', () => finish(null));
+  overlay.addEventListener('click', e => { if (e.target === overlay) finish(null); });
+  confirmBtn.addEventListener('click', () => {
+    const ships = [...qty.entries()]
+      .map(([shipDefId, quantity]) => ({ shipDefId, quantity }))
+      .filter(s => s.quantity > 0);
+    finish(ships.length ? ships : null);
+  });
+
+  modal.append(header, body, footer);
+  overlay.append(modal);
+  document.body.append(overlay);
+  refresh();
+}
+
+window.addEventListener('message', e => {
+  const d = e.data;
+  if (d && d.__nxOpenFleetModal) openFleetModal(d, e.source);
+});
+
 injectLink();
 // Re-inject the sidebar link when the game re-renders its nav.
 new MutationObserver(injectLink)
