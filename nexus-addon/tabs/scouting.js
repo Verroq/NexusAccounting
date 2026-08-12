@@ -501,6 +501,13 @@ async function investigate(report) {
   const planetId = Number(document.getElementById('sc-planet').value);
   const planet = scPlanets.find(p => p.id === planetId);
 
+  // Embedded in the game page (ingame-tabs.js iframe): defer to the game's own
+  // native "Investigate Anomaly" (.spy-modal) instead of our confirmation +
+  // background POST. The game then handles source/fleet selection and the actual
+  // launch. ingame-tabs.js (running in the game window) opens the modal and posts
+  // back the outcome. window.top !== window means we're inside the iframe.
+  if (window.top !== window) { openGameInvestigateModal(report, status); return; }
+
   const r = await templateShips(document.getElementById('sc-inv-template').value, planetId);
   if (r.error) { status.textContent = r.error; return; }
   if (!await confirmDialog(`Investigate ${report.systemName} (${report.eventTitle || report.eventType})?\n\n` +
@@ -518,6 +525,32 @@ async function investigate(report) {
   loadActiveSurveys();
   setTimeout(loadActiveSurveys, 2000);   // retry for post-POST API lag → prompt bar
   updateAvail();
+}
+
+// Ask the game window (ingame-tabs.js) to open the native Investigate modal for
+// this anomaly. Cross-document postMessage: our iframe is the extension origin
+// embedded in the game page, so we target '*' and ingame-tabs.js validates the
+// message shape. It replies with { __nxInvestigateResult: { ok | error } }.
+function openGameInvestigateModal(report, status) {
+  status.textContent = `Opening game investigate for ${report.systemName}…`;
+  const onReply = e => {
+    const d = e.data;
+    if (!d || !d.__nxInvestigateResult || d.reportId !== report.id) return;
+    window.removeEventListener('message', onReply);
+    status.textContent = d.__nxInvestigateResult.ok
+      ? `Opened game investigate for ${report.systemName} — finish in the game modal.`
+      : `Couldn't open game investigate: ${d.__nxInvestigateResult.error || 'trigger not found'}.`;
+  };
+  window.addEventListener('message', onReply);
+  window.parent.postMessage({
+    __nxOpenInvestigate: true,
+    reportId: report.id,
+    systemId: report.systemId,
+    systemName: report.systemName,
+  }, '*');
+  // Safety net: if the game page never replies (old build without the handler),
+  // clear the listener and tell the user rather than hanging silently.
+  setTimeout(() => window.removeEventListener('message', onReply), 8000);
 }
 
 // ── Live debris fields ─────────────────────────────────────────────────────

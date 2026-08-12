@@ -144,6 +144,75 @@ document.addEventListener('click', e => {
   if (e.target.closest('[data-nexus-ingame-scan]')) { e.preventDefault(); openPanel(); }
 });
 
+// ── Open the GAME's native "Investigate Anomaly" modal ──────────────────────
+// The embedded Scouting tab (tabs/scouting.js, inside our iframe) asks us to
+// launch investigate through the game's own UI instead of our confirmation +
+// background POST. We run in the game window, so we can drive the game DOM: find
+// the anomaly's native Investigate trigger and click it, letting the game mount
+// its .spy-modal for fleet selection + confirm. We reply to the iframe with the
+// outcome so it can update its status line.
+//
+// If the game already has the modal open, we treat that as success (nothing to
+// do). We never POST /api/fleet/investigate ourselves here — the game's own
+// .confirm-investigate-btn does that once the user picks a fleet.
+function openGameInvestigate(msg, source) {
+  const reply = payload =>
+    source && source.postMessage({ __nxInvestigateResult: payload, reportId: msg.reportId }, '*');
+
+  // Already showing the game's Investigate modal → nothing to open.
+  if (document.querySelector('.spy-modal')) { reply({ ok: true }); return; }
+
+  const trigger = findInvestigateTrigger(msg);
+  if (!trigger) {
+    reply({ ok: false, error: 'game Investigate button not found on this page' });
+    return;
+  }
+  trigger.click();
+  // Confirm the modal actually mounted (React may render async). Poll briefly.
+  let tries = 0;
+  const check = () => {
+    if (document.querySelector('.spy-modal')) { reply({ ok: true }); return; }
+    if (++tries > 20) { reply({ ok: false, error: 'clicked trigger but modal did not open' }); return; }
+    setTimeout(check, 100);
+  };
+  check();
+}
+
+// Locate the game's native per-anomaly "Investigate" control.
+// ponytail: The game is a live React SPA and its anomaly-list markup is NOT in
+// our source, so this selector is a best-effort guess and MUST be confirmed
+// against the live DOM. A real version needs: (1) the container/row the game
+// renders for a pending anomaly, ideally keyed by systemId/reportId (e.g. a
+// data-* attribute or the row that shows msg.systemName), and (2) the exact
+// clickable element inside it that mounts .spy-modal (a button labelled
+// "Investigate"). Until confirmed we scan visible buttons/links whose text is
+// "Investigate" and, when a systemName is given, prefer one inside a row that
+// also contains that name. Returns null if nothing plausible is found (caller
+// surfaces a clear message — nothing silently breaks).
+function findInvestigateTrigger(msg) {
+  const clickables = [...document.querySelectorAll('button, a, [role="button"]')];
+  const isInvestigate = el =>
+    /^\s*investigate\b/i.test((el.textContent || '').trim());
+  const candidates = clickables.filter(isInvestigate);
+  if (!candidates.length) return null;
+  if (candidates.length === 1) return candidates[0];
+  // Multiple anomalies on screen: prefer the button whose surrounding row also
+  // mentions this anomaly's system name.
+  if (msg.systemName) {
+    const named = candidates.find(el => {
+      const row = el.closest('tr, li, .card, [class*="anomaly"], [class*="row"]') || el.parentElement;
+      return row && row.textContent && row.textContent.includes(msg.systemName);
+    });
+    if (named) return named;
+  }
+  return candidates[0];   // fall back to the first Investigate control
+}
+
+window.addEventListener('message', e => {
+  const d = e.data;
+  if (d && d.__nxOpenInvestigate) openGameInvestigate(d, e.source);
+});
+
 injectLink();
 // Re-inject the sidebar link when the game re-renders its nav.
 new MutationObserver(injectLink)
