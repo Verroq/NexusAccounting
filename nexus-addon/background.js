@@ -470,6 +470,21 @@ function jwtRace(token) {
   }
 }
 
+// The player's race, needed to build ship image URLs (/api/images/ships/{race}/…).
+// Newer JWTs dropped the `race` claim, so fall back to /api/auth/me. Cached — race
+// doesn't change within a session.
+let _race = null;
+async function resolveRace(token) {
+  if (_race) return _race;
+  _race = jwtRace(token);
+  if (_race) return _race;
+  try {
+    const me = await apiFetch('/api/auth/me', token);
+    _race = me?.user?.race ?? me?.race ?? null;
+  } catch { /* leave null — images just fall back to no icon */ }
+  return _race;
+}
+
 // All open orders from a paginated orders endpoint (public market or alliance
 // trade), across every page.
 async function getOrders(path) {
@@ -851,7 +866,7 @@ async function getShipDefs() {
   try {
     const planetId = await getHomePlanetId(token);
     const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token);
-    const race = jwtRace(token);
+    const race = await resolveRace(token);
     const ships = (data.ships || []).map(s => ({
       shipDefId: s.id,
       key: s.key || '',
