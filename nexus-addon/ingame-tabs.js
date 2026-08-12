@@ -164,7 +164,7 @@ function openGameInvestigate(msg, source) {
 
   const trigger = findInvestigateTrigger(msg);
   if (!trigger) {
-    reply({ ok: false, error: 'game Investigate button not found on this page' });
+    reply({ ok: false, error: "open the game's Survey reports so the anomaly card is visible, then retry" });
     return;
   }
   trigger.click();
@@ -178,34 +178,27 @@ function openGameInvestigate(msg, source) {
   check();
 }
 
-// Locate the game's native per-anomaly "Investigate" control.
-// ponytail: The game is a live React SPA and its anomaly-list markup is NOT in
-// our source, so this selector is a best-effort guess and MUST be confirmed
-// against the live DOM. A real version needs: (1) the container/row the game
-// renders for a pending anomaly, ideally keyed by systemId/reportId (e.g. a
-// data-* attribute or the row that shows msg.systemName), and (2) the exact
-// clickable element inside it that mounts .spy-modal (a button labelled
-// "Investigate"). Until confirmed we scan visible buttons/links whose text is
-// "Investigate" and, when a systemName is given, prefer one inside a row that
-// also contains that name. Returns null if nothing plausible is found (caller
-// surfaces a clear message — nothing silently breaks).
+// Locate the game's native per-anomaly "Investigate" control. Confirmed against
+// the live DOM: the game lists anomaly survey report cards
+// (.report-card.survey-anomaly-report-card), each holding
+// <button class="investigate-btn">Investigate</button>, and the card's
+// .rep-location shows the system (e.g. "G46-28 · Dead Space"). We match by system
+// name so the right card's button is clicked when several anomalies are listed.
+// ponytail: the game exposes no per-anomaly id on the card, so we match on the
+// visible system name. The button only exists while the game is showing its
+// Survey reports — if the card isn't rendered we return null and the caller tells
+// the user to open them (nothing silently breaks).
 function findInvestigateTrigger(msg) {
-  const clickables = [...document.querySelectorAll('button, a, [role="button"]')];
-  const isInvestigate = el =>
-    /^\s*investigate\b/i.test((el.textContent || '').trim());
-  const candidates = clickables.filter(isInvestigate);
-  if (!candidates.length) return null;
-  if (candidates.length === 1) return candidates[0];
-  // Multiple anomalies on screen: prefer the button whose surrounding row also
-  // mentions this anomaly's system name.
-  if (msg.systemName) {
-    const named = candidates.find(el => {
-      const row = el.closest('tr, li, .card, [class*="anomaly"], [class*="row"]') || el.parentElement;
-      return row && row.textContent && row.textContent.includes(msg.systemName);
+  const btns = [...document.querySelectorAll('button.investigate-btn')];
+  if (!btns.length) return null;
+  if (btns.length > 1 && msg.systemName) {
+    const named = btns.find(b => {
+      const card = b.closest('.report-card') || b.parentElement;
+      return card && (card.textContent || '').includes(msg.systemName);
     });
     if (named) return named;
   }
-  return candidates[0];   // fall back to the first Investigate control
+  return btns[0];   // single anomaly, or no name match → first Investigate button
 }
 
 window.addEventListener('message', e => {
