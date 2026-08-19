@@ -561,6 +561,8 @@ test('migration v11 copies flat legacy keys to s0__-prefixed keys without deleti
     wormhole_classes: { 9: 'II' },
     spy_reports: [{ id: 1, created_at: '2026-06-01T00:00:00Z' }],
     camp_scout_reports: [{ id: 2, created_at: '2026-06-01T00:00:00Z' }],
+    fuel_log: [{ created_at: '2026-06-01T00:00:00Z', type: 'survey', zone: 'safe', fuel: 12 }],
+    fuel_counted_ids: [501],
   });
   const bg = await loadBackground();
 
@@ -577,11 +579,14 @@ test('migration v11 copies flat legacy keys to s0__-prefixed keys without deleti
   assert.deepEqual(raw.s0__wormhole_classes, { 9: 'II' });
   assert.deepEqual(raw.s0__spy_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
   assert.deepEqual(raw.s0__camp_scout_reports, [{ id: 2, created_at: '2026-06-01T00:00:00Z' }]);
+  assert.deepEqual(raw.s0__fuel_log, [{ created_at: '2026-06-01T00:00:00Z', type: 'survey', zone: 'safe', fuel: 12 }]);
+  assert.deepEqual(raw.s0__fuel_counted_ids, [501]);
   // originals left in place — deliberate, see MIGRATIONS[11] in background.js
   assert.deepEqual(raw.totals, { ore: 500, missions: 3 });
   assert.deepEqual(raw.recent_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
   assert.deepEqual(raw.system_zones, { A1: 'safe' });
   assert.deepEqual(raw.spy_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
+  assert.deepEqual(raw.fuel_log, [{ created_at: '2026-06-01T00:00:00Z', type: 'survey', zone: 'safe', fuel: 12 }]);
   // out-of-scope keys are never copied
   assert.equal(raw.s0__ships, undefined);
   assert.ok(raw.schema_version >= 11);
@@ -624,6 +629,38 @@ test('processSpyReports/processCampScoutReports read and write the active univer
 
   bg.setCurrentUniverse('nf');
   assert.equal((await bg.nsGet(['spy_reports'])).spy_reports, undefined, 'nf has its own empty intel, unaffected by the s0 writes');
+});
+
+test('nsGet/nsSet namespace fuel_log/fuel_counted_ids the same as other SCOPED_KEYS', async () => {
+  makeBrowserStub();
+  const bg = await loadBackground();
+
+  await bg.nsSet({ fuel_log: [{ fuel: 12 }], fuel_counted_ids: [501] });
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(Object.keys(raw).sort(), ['s0__fuel_counted_ids', 's0__fuel_log']);
+
+  bg.setCurrentUniverse('nf');
+  assert.equal((await bg.nsGet(['fuel_log'])).fuel_log, undefined, 'nf sees no s0 fuel log');
+  assert.equal((await bg.nsGet(['fuel_counted_ids'])).fuel_counted_ids, undefined, 'nf sees no s0 counted ids');
+});
+
+test('processMissions fuel counting writes fuel_log/fuel_counted_ids to the active universe\'s namespaced key', async () => {
+  const store = makeBrowserStub();
+  const bg = await loadBackground();
+  const ships = { scout: { key: 'scout', fuelRate: 1 } };
+
+  await bg.processMissions([{
+    id: 501, missionType: 'survey', status: 'outbound', targetSystemId: 5, distance: 10,
+    departsAt: '2026-06-10T10:00:00Z', fleetComposition: [{ shipKey: 'scout', quantity: 2 }],
+  }], { 5: 'safe' }, ships);
+
+  assert.equal(store.fuel_log.length, 1, 'stored under the s0-prefixed slot (via the store Proxy)');
+  assert.equal(store.fuel_log[0].zone, 'safe');
+  assert.ok(store.fuel_log[0].fuel > 0);
+  assert.deepEqual(store.fuel_counted_ids, [501]);
+
+  bg.setCurrentUniverse('nf');
+  assert.equal((await bg.nsGet(['fuel_log'])).fuel_log, undefined, 'nf has its own empty fuel log, unaffected by the s0 write');
 });
 
 test('drift detection flags corruption; rebuild repairs and clears it', async () => {

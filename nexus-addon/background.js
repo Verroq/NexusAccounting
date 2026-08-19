@@ -2218,7 +2218,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
   // miss the second; counting per mission catches every trip).
   if (missions && missions.length) {
     const { fuel_log, fuel_counted_ids } =
-      await browser.storage.local.get(['fuel_log', 'fuel_counted_ids']);
+      await nsGet(['fuel_log', 'fuel_counted_ids']);
     const counted = new Set(fuel_counted_ids || []);
     const flog = [...(fuel_log || [])];
     for (const m of missions) {
@@ -2239,7 +2239,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
       });
     }
     const countedArr = [...counted];
-    await browser.storage.local.set({
+    await nsSet({
       fuel_log: flog.slice(0, 4000),
       fuel_counted_ids: countedArr.slice(Math.max(0, countedArr.length - 5000)),
     });

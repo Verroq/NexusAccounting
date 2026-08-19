@@ -33,7 +33,7 @@ export async function loadAll() {
   // setting/cache that isn't scoped to a universe.
   const [scoped, globalKeys] = await Promise.all([
     nsGet(SCOPED_KEYS),
-    browser.storage.local.get(['ships', 'records_cap', 'research', 'research_speed_mult', 'active_research', 'fuel_log']),
+    browser.storage.local.get(['ships', 'records_cap', 'research', 'research_speed_mult', 'active_research']),
   ]);
   setStore({ ...scoped, ...globalKeys });
 
