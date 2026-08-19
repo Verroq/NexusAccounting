@@ -10,12 +10,7 @@
 // (records_cap, selected_universe), ship/shipyard defs (ships, fleet_templates),
 // research (research, research_speed_mult, active_research — per-universe
 // research is a follow-up, out of scope for now), fuel_log/fuel_counted_ids
-// (paired global counters), zone/coords caches (system_zones,
-// system_zone_by_id, camp_zones, wormhole_zones, wormhole_classes, etc. —
-// technically universe-specific but out of the scope this list was built for;
-// see the multi-universe branch's final report for the call-out), and
-// spy_reports/camp_scout_reports (consumed only by the separate simulator
-// page, not dashboard.js — left global to avoid touching that page).
+// (paired global counters).
 //
 // Archive shard keys (e.g. `survey_archive_2026-06`) are dynamic — namespaced
 // directly by appendToArchive/loadArchive/purgeOldData, not listed here.
@@ -41,4 +36,12 @@ export const SCOPED_KEYS = [
   'archive_index',
   // Scrape status
   'last_scrape', 'last_error', 'stats_drift',
+  // Zone/coords caches (security-zone lookups built from the galaxy map, camps,
+  // and wormholes — technically per-universe since each universe has its own
+  // galaxy)
+  'system_zones', 'system_zone_by_id', 'system_zones_at',
+  'system_coords_by_id', 'system_coords_by_name',
+  'camp_zones', 'wormhole_zones', 'wormhole_classes',
+  // Intel (consumed by the standalone simulator page, not dashboard.js)
+  'spy_reports', 'camp_scout_reports',
 ];

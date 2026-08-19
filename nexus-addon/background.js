@@ -1151,7 +1151,7 @@ const ZONE_REFRESH_MS = 24 * 3600 * 1000;
 
 async function getSystemZones(token) {
   const { system_zones, system_zones_at, system_coords_by_id } =
-    await browser.storage.local.get(['system_zones', 'system_zones_at', 'system_coords_by_id']);
+    await nsGet(['system_zones', 'system_zones_at', 'system_coords_by_id']);
   if (system_zones && system_zones_at && system_coords_by_id && Date.now() - system_zones_at < ZONE_REFRESH_MS) {
     return system_zones;
   }
@@ -1171,7 +1171,7 @@ async function getSystemZones(token) {
         if (s.name) coordsByName[s.name] = { x: s.x, y: s.y };
       }
     }
-    await browser.storage.local.set({
+    await nsSet({
       system_zones: map, system_zone_by_id: byId, system_zones_at: Date.now(),
       system_coords_by_id: coordsById, system_coords_by_name: coordsByName,
     });
@@ -1183,7 +1183,7 @@ async function getSystemZones(token) {
 
 async function getSystemCoords(names, ids) {
   const { system_coords_by_id, system_coords_by_name } =
-    await browser.storage.local.get(['system_coords_by_id', 'system_coords_by_name']);
+    await nsGet(['system_coords_by_id', 'system_coords_by_name']);
   const byId = system_coords_by_id || {};
   const byName = system_coords_by_name || {};
   const result = {};
@@ -1212,15 +1212,15 @@ async function getCampZones(token, zones) {
   try {
     camps = (await apiFetch(PIRATE_CAMPS_PATH, token)).camps || [];
   } catch {
-    const { camp_zones } = await browser.storage.local.get('camp_zones');
+    const { camp_zones } = await nsGet(['camp_zones']);
     return camp_zones || {};
   }
-  const { camp_zones } = await browser.storage.local.get('camp_zones');
+  const { camp_zones } = await nsGet(['camp_zones']);
   const map = { ...(camp_zones || {}) };   // keep camps that have since despawned
   for (const c of camps) {
     if (c.id != null) map[c.id] = resolveZone(c.systemName, zones);
   }
-  await browser.storage.local.set({ camp_zones: map });
+  await nsSet({ camp_zones: map });
   return map;
 }
 
@@ -1231,10 +1231,10 @@ async function getWormholeZones(token, zones) {
   try {
     holes = (await apiFetch(WORMHOLES_PATH, token)).wormholes || [];
   } catch {
-    const { wormhole_zones } = await browser.storage.local.get('wormhole_zones');
+    const { wormhole_zones } = await nsGet(['wormhole_zones']);
     return wormhole_zones || {};
   }
-  const got = await browser.storage.local.get(['wormhole_zones', 'wormhole_classes']);
+  const got = await nsGet(['wormhole_zones', 'wormhole_classes']);
   const map = { ...(got.wormhole_zones || {}) };       // keep wormholes that have closed
   const classes = { ...(got.wormhole_classes || {}) };
   for (const w of holes) {
@@ -1242,7 +1242,7 @@ async function getWormholeZones(token, zones) {
     map[w.id] = resolveZone(w.systemName, zones);
     if (w.wormholeClass) classes[w.id] = w.wormholeClass;
   }
-  await browser.storage.local.set({ wormhole_zones: map, wormhole_classes: classes });
+  await nsSet({ wormhole_zones: map, wormhole_classes: classes });
   return map;
 }
 
@@ -1629,7 +1629,7 @@ function extractFleet(arr) {
 // Spy reports → defender intel for the simulator (latest INTEL_KEEP kept).
 async function processSpyReports(reports) {
   if (!reports.length) return 0;
-  const { spy_reports } = await browser.storage.local.get('spy_reports');
+  const { spy_reports } = await nsGet(['spy_reports']);
   const byId = {};
   for (const r of (spy_reports || [])) byId[r.id] = r;
   for (const r of reports) {
@@ -1650,14 +1650,14 @@ async function processSpyReports(reports) {
   const merged = Object.values(byId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, INTEL_KEEP);
-  await browser.storage.local.set({ spy_reports: merged });
+  await nsSet({ spy_reports: merged });
   return merged.length;
 }
 
 // Camp scout reports → pirate camp intel (shape unseen so far — parsed tolerantly).
 async function processCampScoutReports(reports) {
   if (!reports.length) return 0;
-  const { camp_scout_reports } = await browser.storage.local.get('camp_scout_reports');
+  const { camp_scout_reports } = await nsGet(['camp_scout_reports']);
   const byId = {};
   for (const r of (camp_scout_reports || [])) byId[r.id] = r;
   for (const r of reports) {
@@ -1674,7 +1674,7 @@ async function processCampScoutReports(reports) {
   const merged = Object.values(byId)
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
     .slice(0, INTEL_KEEP);
-  await browser.storage.local.set({ camp_scout_reports: merged });
+  await nsSet({ camp_scout_reports: merged });
   return merged.length;
 }
 
@@ -2807,7 +2807,7 @@ async function scrape() {
       getWormholeZones(token, zones),
     ]);
     const { wormhole_classes: wormholeClasses, system_zone_by_id: zoneById } =
-      await browser.storage.local.get(['wormhole_classes', 'system_zone_by_id']);
+      await nsGet(['wormhole_classes', 'system_zone_by_id']);
 
     await enqueue(async () => {
       // Shipyard can 403 (e.g. ships on patrol) — reuse the last-known catalog so
@@ -2930,12 +2930,13 @@ function routeIntercepted(url, json) {
       return;
     }
     if (url.includes('/system-debris')) {
-      const { system_zones } = await browser.storage.local.get('system_zones');
+      const { system_zones } = await nsGet(['system_zones']);
       await processSystemDebris(json.debris || [], system_zones || {});
       return;
     }
     if (url.includes('/missions')) {
-      const { system_zone_by_id, ships } = await browser.storage.local.get(['system_zone_by_id', 'ships']);
+      const { system_zone_by_id } = await nsGet(['system_zone_by_id']);
+      const { ships } = await browser.storage.local.get('ships');
       await processMissions(json.missions || [], system_zone_by_id || {}, ships || {});
       return;
     }
@@ -2947,8 +2948,9 @@ function routeIntercepted(url, json) {
       });
       return;
     }
-    const { ships, system_zones, camp_zones, wormhole_zones, wormhole_classes } =
-      await browser.storage.local.get(['ships', 'system_zones', 'camp_zones', 'wormhole_zones', 'wormhole_classes']);
+    const { ships } = await browser.storage.local.get('ships');
+    const { system_zones, camp_zones, wormhole_zones, wormhole_classes } =
+      await nsGet(['system_zones', 'camp_zones', 'wormhole_zones', 'wormhole_classes']);
     if (!ships) return; // no catalog yet — the next full scrape bootstraps it
     const zones = system_zones || {};
     const wz = wormhole_zones || {};
@@ -2978,4 +2980,5 @@ export {
   systemFromLocation, resolveZone, backfillZones, processMissions,
   fieldMatches, purgeOldData, freshestToken, resolveRecordsCap,
   nsGet, nsSet, nsRemove, gameUrlFor, setCurrentUniverse, getCurrentUniverse,
+  processSpyReports, processCampScoutReports,
 };

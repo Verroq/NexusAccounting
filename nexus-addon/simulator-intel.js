@@ -153,8 +153,18 @@ function classifyDefenses(buildings) {
 let intelReports = [];
 
 async function loadIntelReports() {
-  const { spy_reports, camp_scout_reports } =
-    await browser.storage.local.get(['spy_reports', 'camp_scout_reports']);
+  // The simulator is a standalone page (no dashboard.js/common.js import
+  // graph), so this reads the same universe-namespaced keys the dashboard
+  // writes, scoped by the same `selected_universe` preference the dashboard's
+  // universe dropdown persists (default 's0') — see storage-keys.js for why
+  // spy_reports/camp_scout_reports are namespaced. Same pattern as
+  // simulator-validate.js's pirate_recent_reports read.
+  const { selected_universe } = await browser.storage.local.get('selected_universe');
+  const universe = selected_universe || 's0';
+  const spyKey = `${universe}__spy_reports`;
+  const campKey = `${universe}__camp_scout_reports`;
+  const { [spyKey]: spy_reports, [campKey]: camp_scout_reports } =
+    await browser.storage.local.get([spyKey, campKey]);
   intelReports = [];
   for (const r of (camp_scout_reports || [])) {
     if (!r.fleet?.length) continue;

@@ -552,6 +552,15 @@ test('migration v11 copies flat legacy keys to s0__-prefixed keys without deleti
     },
     'survey_archive_2026-06': [{ id: 1, created_at: '2026-06-01T00:00:00Z', ore: 500 }],
     ships: { 1: { key: 'scout' } },   // out-of-scope key: must NOT get an s0__ copy
+    // Zone/coords caches and simulator intel — added to SCOPED_KEYS alongside
+    // the rest; must migrate the same way as any other in-scope key.
+    system_zones: { A1: 'safe' },
+    system_zone_by_id: { 1: 'safe' },
+    camp_zones: { 5: 'safe' },
+    wormhole_zones: { 9: 'safe' },
+    wormhole_classes: { 9: 'II' },
+    spy_reports: [{ id: 1, created_at: '2026-06-01T00:00:00Z' }],
+    camp_scout_reports: [{ id: 2, created_at: '2026-06-01T00:00:00Z' }],
   });
   const bg = await loadBackground();
 
@@ -562,15 +571,59 @@ test('migration v11 copies flat legacy keys to s0__-prefixed keys without deleti
   assert.deepEqual(raw.s0__recent_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
   assert.deepEqual(raw.s0__seen_ids, [1]);
   assert.deepEqual(raw['s0__survey_archive_2026-06'], [{ id: 1, created_at: '2026-06-01T00:00:00Z', ore: 500 }]);
+  assert.deepEqual(raw.s0__system_zones, { A1: 'safe' });
+  assert.deepEqual(raw.s0__camp_zones, { 5: 'safe' });
+  assert.deepEqual(raw.s0__wormhole_zones, { 9: 'safe' });
+  assert.deepEqual(raw.s0__wormhole_classes, { 9: 'II' });
+  assert.deepEqual(raw.s0__spy_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
+  assert.deepEqual(raw.s0__camp_scout_reports, [{ id: 2, created_at: '2026-06-01T00:00:00Z' }]);
   // originals left in place — deliberate, see MIGRATIONS[11] in background.js
   assert.deepEqual(raw.totals, { ore: 500, missions: 3 });
   assert.deepEqual(raw.recent_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
+  assert.deepEqual(raw.system_zones, { A1: 'safe' });
+  assert.deepEqual(raw.spy_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
   // out-of-scope keys are never copied
   assert.equal(raw.s0__ships, undefined);
   assert.ok(raw.schema_version >= 11);
 
   // functionally readable through the new namespaced path, not just present on disk
   assert.equal((await bg.loadArchive('survey')).length, 1);
+});
+
+test('nsGet/nsSet namespace the zone/coords caches and simulator intel keys the same as other SCOPED_KEYS', async () => {
+  makeBrowserStub();
+  const bg = await loadBackground();
+
+  await bg.nsSet({
+    system_zones: { A1: 'safe' }, camp_zones: { 5: 'safe' }, wormhole_zones: { 9: 'safe' },
+    spy_reports: [{ id: 1 }], camp_scout_reports: [{ id: 2 }],
+  });
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(Object.keys(raw).sort(), [
+    's0__camp_scout_reports', 's0__camp_zones', 's0__spy_reports', 's0__system_zones', 's0__wormhole_zones',
+  ]);
+
+  bg.setCurrentUniverse('nf');
+  assert.equal((await bg.nsGet(['system_zones'])).system_zones, undefined, 'nf sees no s0 zone data');
+  assert.equal((await bg.nsGet(['spy_reports'])).spy_reports, undefined, 'nf sees no s0 intel');
+});
+
+test('processSpyReports/processCampScoutReports read and write the active universe\'s namespaced key', async () => {
+  const store = makeBrowserStub();
+  const bg = await loadBackground();
+
+  await bg.processSpyReports([{
+    id: 1, createdAt: '2026-06-10T10:00:00Z', outcome: 'success', targetPlanetName: 'P1',
+  }]);
+  await bg.processCampScoutReports([{
+    id: 2, createdAt: '2026-06-10T10:00:00Z', campId: 5, fleet: [{ key: 'scout', quantity: 1 }],
+  }]);
+
+  assert.equal(store.spy_reports.length, 1, 'stored under the s0-prefixed slot (via the store Proxy)');
+  assert.equal(store.camp_scout_reports.length, 1);
+
+  bg.setCurrentUniverse('nf');
+  assert.equal((await bg.nsGet(['spy_reports'])).spy_reports, undefined, 'nf has its own empty intel, unaffected by the s0 writes');
 });
 
 test('drift detection flags corruption; rebuild repairs and clears it', async () => {
