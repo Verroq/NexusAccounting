@@ -30,7 +30,6 @@ const REC_SHIP = {
 };
 const REC_CYCLES = 10;   // ships to clear the field in this many mining cycles
 const EXCAVATOR_BONUS = 1.2;   // +20% fleet extraction capacity when an Excavator is present
-const afExcavator = () => false;  // Excavator toggle moved to the fleet dialog
 // Mining ships the recommendation manages; other template ships (escort/combat)
 // are left untouched when seeding the launch fleet.
 const MINING_SHIPS = new Set([...Object.values(REC_SHIP).map(s => s[0]), 'Excavator']);
@@ -413,14 +412,14 @@ function distance(f) {
 
 // Recommended fleet to clear a field in REC_CYCLES cycles:
 //   ships = ceil( remaining / (rate * cycles * richness) )
-// With excavator: rate is boosted +20%, so fewer ships needed.
+// The Excavator +20% bonus is applied by the fleet dialog's own "Optimise"
+// button (editFleetDialog's excavatorBonus option), not here.
 // Returns { count, name, shipDefId } or null when it can't be computed.
-function recommend(f, withExcavatorBonus = false) {
+function recommend(f) {
   const spec = REC_SHIP[f.type];
   if (!spec || !f.remaining || !f.mult) return null;
   const [name, rate] = spec;
-  const cap = rate * (withExcavatorBonus ? EXCAVATOR_BONUS : 1);
-  const count = Math.ceil(f.remaining / (cap * REC_CYCLES * f.mult));
+  const count = Math.ceil(f.remaining / (rate * REC_CYCLES * f.mult));
   const def = afAllShips.find(d => d.name === name);
   return { count, name, shipDefId: def ? def.shipDefId : null };
 }

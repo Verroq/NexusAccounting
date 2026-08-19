@@ -281,7 +281,6 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
     }
     box.append(rows);
     // Escort template buttons section — only rendered when templates are configured.
-    // Escort template buttons section — only rendered when templates are configured.
     if (escortTemplates.length) {
       const escortSection = document.createElement('div');
       escortSection.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid #30363d;';

@@ -19,11 +19,11 @@ This folder documents the Nexus Legacy game API capabilities that are currently 
 ## Live Audit (Primary: S0)
 
 - Primary validation target: `https://s0.nexuslegacy.space`
-- Full sweep summary (GET + safe POST probes): [live-sweep-s0-full-2026-08-06.md](./live-sweep-s0-full-2026-08-06.md)
-- GET status table: [live-sweep-s0-full-2026-08-06.get.csv](./live-sweep-s0-full-2026-08-06.get.csv)
-- POST probe table: [live-sweep-s0-full-2026-08-06.post.csv](./live-sweep-s0-full-2026-08-06.post.csv)
-- Code adaptation mapping: [code-adaptation-report-s0-2026-08-06.md](./code-adaptation-report-s0-2026-08-06.md)
-- Secondary host comparison: [api-delta-s0-vs-nf-normalized-2026-08-06.md](./api-delta-s0-vs-nf-normalized-2026-08-06.md)
+- Full sweep summary (GET + safe POST probes): [live-sweep-s0-full-2026-08-06.md](./_sweeps/live-sweep-s0-full-2026-08-06.md)
+- GET status table: [live-sweep-s0-full-2026-08-06.get.csv](./_sweeps/live-sweep-s0-full-2026-08-06.get.csv)
+- POST probe table: [live-sweep-s0-full-2026-08-06.post.csv](./_sweeps/live-sweep-s0-full-2026-08-06.post.csv)
+- Code adaptation mapping: [code-adaptation-report-s0-2026-08-06.md](./_sweeps/code-adaptation-report-s0-2026-08-06.md)
+- Secondary host comparison: [api-delta-s0-vs-nf-normalized-2026-08-06.md](./_sweeps/api-delta-s0-vs-nf-normalized-2026-08-06.md)
 
 ## Endpoint Index
 
