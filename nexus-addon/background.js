@@ -458,48 +458,73 @@ async function apiGet(path) {
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 
-// Decode a JWT's exp claim (seconds since epoch). Returns 0 when unparseable,
-// so a token with a readable expiry always beats an opaque one.
-function jwtExp(token) {
+// Decode a JWT's payload. Returns {} when unparseable, so callers reading any
+// claim off it (exp, kind) get undefined instead of throwing.
+function jwtPayload(token) {
   try {
     const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(payload)).exp ?? 0;
+    return JSON.parse(atob(payload));
   } catch {
-    return 0;
+    return {};
   }
 }
 
-// Pick the freshest token from a set of candidates. Duplicate nexus_token
-// cookies (host-only vs domain-wide, or across stores) can shadow each other,
-// and cookies.get tie-breaks by creation date — so after a re-login a stale
-// leftover can still win. Choosing the latest exp makes the fresh token win.
-function freshestToken(tokens) {
-  const list = [...tokens].filter(Boolean);
-  if (!list.length) return null;
-  return list.sort((a, b) => jwtExp(b) - jwtExp(a))[0];
+// exp claim (seconds since epoch). 0 when unparseable, so a token with a
+// readable expiry always beats an opaque one.
+function jwtExp(token) {
+  return jwtPayload(token).exp ?? 0;
 }
 
-// Find the nexus_token cookie. It can live outside the default store — a
-// Firefox container tab, a private window, or as a partitioned (CHIPS)
-// cookie — so search every cookie store domain-wide, gather every match, and
-// return the freshest (a stale duplicate must not shadow a fresh re-login).
+// Pick the freshest, correctly-scoped token from a set of candidates.
+// Duplicate cookies (host-only vs domain-wide, or across stores) can shadow
+// each other, and cookies.get tie-breaks by creation date — so after a
+// re-login a stale leftover can still win. Choosing the latest exp makes the
+// fresh token win. Tokens explicitly carrying a non-"game" kind (e.g. the
+// account/lobby session) are filtered out — the game API rejects them with
+// 401 WRONG_TOKEN_KIND, so surfacing one here just trades a clear "not
+// found" warning for a confusing API error later. A missing/unparseable
+// `kind` claim is not treated as disqualifying — only a *known-wrong* kind
+// is excluded, so tokens from a future/older shape without the claim still
+// work.
+function freshestToken(tokens) {
+  const candidates = [...tokens].filter(t => {
+    if (!t) return false;
+    const kind = jwtPayload(t).kind;
+    return kind == null || kind === 'game';
+  });
+  if (!candidates.length) return null;
+  return candidates.sort((a, b) => jwtExp(b) - jwtExp(a))[0];
+}
+
+// Find the game-session cookie. The server moved the per-universe session
+// from a plain `nexus_token` cookie to a host-only `__Host-nexus-game`
+// cookie once multi-universe support shipped (`nexus_token` now carries the
+// account/lobby-level session instead, kind:"lobby", which the game API
+// rejects). Both names are searched — and `kind` filtered above — so a
+// server-side rename doesn't silently break auth again. The cookie can live
+// outside the default store — a Firefox container tab, a private window, or
+// as a partitioned (CHIPS) cookie — so search every cookie store domain-wide,
+// gather every match, and return the freshest (a stale duplicate must not
+// shadow a fresh re-login).
 async function getToken() {
-  const NAME = 'nexus_token';
+  const NAMES = ['__Host-nexus-game', 'nexus_token'];
   const urls = [GAME_URL, 'https://nexuslegacy.space'];
   const found = new Set();
 
   const collect = async (storeId) => {
     const store = storeId ? { storeId } : {};
-    for (const url of urls) {
+    for (const name of NAMES) {
+      for (const url of urls) {
+        try {
+          const c = await browser.cookies.get({ url, name, ...store });
+          if (c?.value) found.add(c.value);
+        } catch { /* store may not support get */ }
+      }
       try {
-        const c = await browser.cookies.get({ url, name: NAME, ...store });
-        if (c?.value) found.add(c.value);
-      } catch { /* store may not support get */ }
+        const all = await browser.cookies.getAll({ domain: 'nexuslegacy.space', name, ...store });
+        for (const c of (all || [])) if (c.value) found.add(c.value);
+      } catch { /* ignore */ }
     }
-    try {
-      const all = await browser.cookies.getAll({ domain: 'nexuslegacy.space', name: NAME, ...store });
-      for (const c of (all || [])) if (c.value) found.add(c.value);
-    } catch { /* ignore */ }
   };
 
   await collect(null);
@@ -516,8 +541,9 @@ async function getToken() {
   const token = freshestToken(found);
   if (token) return token;
 
-  console.warn(`[NexusAccounting] nexus_token not found. Checked default + stores: [${storeIds.join(', ')}]. ` +
-    `Open the game (logged in) in a normal tab, or check the cookie exists on s0.nexuslegacy.space.`);
+  console.warn(`[NexusAccounting] Game session token not found (checked cookies: ${NAMES.join(', ')}; ` +
+    `default + stores: [${storeIds.join(', ')}]). Open the game (logged in) in a normal tab, or check the ` +
+    `cookie exists on s0.nexuslegacy.space.`);
   return null;
 }
 
