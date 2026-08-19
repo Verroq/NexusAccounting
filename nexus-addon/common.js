@@ -9,6 +9,27 @@ export function setActiveTab(t) { activeTab = t; }
 
 export const PER_PAGE = 20;
 
+// ── Multi-universe read scope ───────────────────────────────────────────────
+// The dashboard's own "which universe am I viewing" preference (independent
+// of whichever universe the background service worker's live game session
+// currently belongs to — see background.js's currentUniverse). Set once by
+// dashboard.js's loadAll() from the persisted `selected_universe` key, and
+// read by any tab file that needs a namespaced key outside the central
+// `store` snapshot (e.g. tabs/scouting.js's own debris_fields poll).
+export let selectedUniverse = 's0';
+export function setSelectedUniverse(u) { selectedUniverse = u; }
+
+// Mirrors background.js's nsGet, scoped to selectedUniverse. The canonical
+// list of namespaced key names lives in storage-keys.js so the write side
+// (background.js) and every read site here stay in sync on what's prefixed.
+export async function nsGet(keys) {
+  const prefixed = keys.map(k => `${selectedUniverse}__${k}`);
+  const raw = await browser.storage.local.get(prefixed);
+  const out = {};
+  for (const k of keys) out[k] = raw[`${selectedUniverse}__${k}`];
+  return out;
+}
+
 // shipDefId → def ({ name, imageUrl, … }), fetched once and cached.
 let _shipDefs = null;
 async function shipDefs() {

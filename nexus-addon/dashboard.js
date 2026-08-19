@@ -4,7 +4,8 @@
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-import { activeTab, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setStore, store } from './common.js';
+import { activeTab, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, nsGet, periodLabelFor, renderMarkdown, renderNetCards, selectedUniverse, setActiveTab, setSelectedUniverse, setStore, store } from './common.js';
+import { SCOPED_KEYS } from './storage-keys.js';
 import { renderBattlesTab } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
@@ -22,20 +23,19 @@ import { getEventBreakdownForMode, getResourcesLostForMode, getSeriesForMode, ge
 import { renderTechTreeTab } from './tabs/techtree.js';
 
 export async function loadAll() {
-  setStore(await browser.storage.local.get([
-    'totals', 'daily', 'hourly', 'resources_lost', 'event_breakdown',
-    'recent_reports', 'ships', 'last_scrape', 'last_error', 'records_cap',
-    'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
-    'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports',
-    'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports',
-    'debris_fields', 'debris_last_check',
-    'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
-    'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
-    'expedition_resources_lost', 'wormhole_resources_lost', 'stats_drift',
-    'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'xeno_resources_lost',
-    'pvp_recent_reports',
-    'research', 'research_speed_mult', 'active_research', 'fuel_log',
-  ]));
+  const { selected_universe } = await browser.storage.local.get('selected_universe');
+  setSelectedUniverse(selected_universe || 's0');
+  const universeSelect = document.getElementById('universe-select');
+  if (universeSelect) universeSelect.value = selectedUniverse;
+
+  // SCOPED_KEYS (shared with background.js — see storage-keys.js) covers the
+  // namespaced scraped-data keys; everything else here is a plain global
+  // setting/cache that isn't scoped to a universe.
+  const [scoped, globalKeys] = await Promise.all([
+    nsGet(SCOPED_KEYS),
+    browser.storage.local.get(['ships', 'records_cap', 'research', 'research_speed_mult', 'active_research', 'fuel_log']),
+  ]);
+  setStore({ ...scoped, ...globalKeys });
 
   // A stored 0 means "unlimited"; missing falls back to the default cap.
   document.getElementById('records-cap').value = store.records_cap ?? 5000;
@@ -48,13 +48,14 @@ export async function loadAll() {
 export async function updateStorageFooter() {
   const el = document.getElementById('storage-footer');
   if (!el) return;
+  const nsKey = k => `${selectedUniverse}__${k}`;
   const all = await browser.storage.local.get(null);
-  const idx = all.archive_index || {};
-  const reports = (idx.survey?.count || all.recent_reports?.length || 0) +
-    (idx.pirate?.count || all.pirate_recent_reports?.length || 0) +
-    (idx.mining?.count || all.mining_recent_reports?.length || 0) +
-    (idx.exp?.count || all.exp_recent_reports?.length || 0) +
-    (idx.xeno?.count || all.xeno_recent_reports?.length || 0);
+  const idx = all[nsKey('archive_index')] || {};
+  const reports = (idx.survey?.count || all[nsKey('recent_reports')]?.length || 0) +
+    (idx.pirate?.count || all[nsKey('pirate_recent_reports')]?.length || 0) +
+    (idx.mining?.count || all[nsKey('mining_recent_reports')]?.length || 0) +
+    (idx.exp?.count || all[nsKey('exp_recent_reports')]?.length || 0) +
+    (idx.xeno?.count || all[nsKey('xeno_recent_reports')]?.length || 0);
   let bytes = 0;
   try { bytes = JSON.stringify(all).length; } catch { /* ignore */ }
   const size = bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
@@ -214,6 +215,15 @@ export function positionControls() {
 
 // ── Controls ───────────────────────────────────────────────────────────────
 
+// Which universe's stored data to VIEW. Independent of which universe the
+// background scraper is actively scraping (that follows the live game
+// session — see background.js's currentUniverse). Switching this only
+// changes what loadAll() reads; it does not trigger a scrape.
+document.getElementById('universe-select')?.addEventListener('change', async function () {
+  await browser.storage.local.set({ selected_universe: this.value });
+  await loadAll();
+});
+
 document.getElementById('btn-scrape').addEventListener('click', async function () {
   this.disabled = true;
   this.textContent = 'Scraping…';
@@ -297,7 +307,11 @@ document.getElementById('btn-save-cap').addEventListener('click', async function
 // ── Rebuild aggregates ─────────────────────────────────────────────────────
 
 document.getElementById('btn-rebuild').addEventListener('click', async function () {
-  const s = await browser.storage.local.get([
+  // Display-only count for the confirm dialog, scoped to the universe currently
+  // selected for viewing. Note: REBUILD_AGGREGATES itself runs in background.js
+  // against ITS currentUniverse (the live game session), which may differ from
+  // the universe selected here — see the multi-universe branch notes.
+  const s = await nsGet([
     'archive_index',
     'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports', 'xeno_recent_reports',
   ]);
@@ -418,7 +432,7 @@ document.getElementById('import-file').addEventListener('change', async function
 // down to the last 3 days. Runs once (not on every scrape-driven reload).
 const PURGE_WARN_THRESHOLD = 10000;
 async function maybeWarnStorage() {
-  const all = await browser.storage.local.get([
+  const all = await nsGet([
     'archive_index', 'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports', 'xeno_recent_reports',
   ]);
   const idx = all.archive_index || {};
@@ -454,5 +468,7 @@ async function maybeShowWhatsNew() {
 }
 
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.last_scrape || changes.totals || changes.pirate_totals)) loadAll();
+  if (area !== 'local') return;
+  const p = `${selectedUniverse}__`;
+  if (changes[`${p}last_scrape`] || changes[`${p}totals`] || changes[`${p}pirate_totals`]) loadAll();
 });

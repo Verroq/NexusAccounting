@@ -26,7 +26,15 @@ document.getElementById('btn-validate').addEventListener('click', async function
   const summary = document.getElementById('validation-summary');
 
   try {
-    const { pirate_recent_reports } = await browser.storage.local.get('pirate_recent_reports');
+    // The simulator is a standalone page (no dashboard.js/common.js import
+    // graph), so this reads the same universe-namespaced key the dashboard
+    // writes, scoped by the same `selected_universe` preference the dashboard's
+    // universe dropdown persists (default 's0') — see storage-keys.js for why
+    // pirate_recent_reports is namespaced.
+    const { selected_universe } = await browser.storage.local.get('selected_universe');
+    const universe = selected_universe || 's0';
+    const key = `${universe}__pirate_recent_reports`;
+    const { [key]: pirate_recent_reports } = await browser.storage.local.get(key);
     const replayable = (pirate_recent_reports || [])
       .filter(r => r.attacker_fleet?.length && r.pirate_fleet?.length)
       .slice(0, 50);
