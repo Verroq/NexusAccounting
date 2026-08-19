@@ -615,7 +615,6 @@ export function renderAsteroids() {
   }
   document.getElementById('af-count').textContent = `${rows.length} fields`;
   computeFuel();
-  applyMissionMarkers();
 }
 
 // Fill the Fuel Cost column: one fuel-estimate per visible row for the selected
