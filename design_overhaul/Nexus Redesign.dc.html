@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/nocturne-131fa1f1-3d5f-4f72-88a1-c21650f409b4/styles.css">
+<script src="_ds/nocturne-131fa1f1-3d5f-4f72-88a1-c21650f409b4/_ds_bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+  body { margin:0; }
+  @keyframes nxpulse { 0%,100%{ opacity:1; transform:scale(1);} 50%{ opacity:.4; transform:scale(.8);} }
+  .nx-scroll::-webkit-scrollbar { width:10px; height:10px; }
+  .nx-scroll::-webkit-scrollbar-thumb { background:#3f424d; border-radius:8px; border:2px solid var(--color-bg); }
+  .nx-scroll::-webkit-scrollbar-track { background:transparent; }
+  .nx-nav-item:hover { background:color-mix(in srgb, var(--color-text) 6%, transparent) !important; }
+  .nx-chip { cursor:pointer; }
+  .nx-chip:hover { border-color:var(--color-accent) !important; }
+  .nx-rowbtn:hover { background:color-mix(in srgb, var(--color-accent) 16%, transparent) !important; }
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="--nx-pad:14px; --nx-row:9px 12px; display:grid; grid-template-columns:238px 1fr; height:820px; background:var(--color-bg); color:var(--color-text); font-family:var(--font-body); overflow:hidden;">
+
+  <!-- ─────────── SIDEBAR ─────────── -->
+  <aside class="nx-scroll" style="border-right:1px solid var(--color-divider); display:flex; flex-direction:column; overflow-y:auto; background:linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 6%, var(--color-bg)), var(--color-bg) 220px);">
+    <div style="display:flex; align-items:center; gap:10px; padding:18px 16px 14px;">
+      <div style="width:30px; height:30px; border-radius:8px; border:1px solid var(--color-accent); display:flex; align-items:center; justify-content:center; box-shadow:0 0 14px color-mix(in srgb, var(--color-accent) 45%, transparent);">
+        <svg viewBox="0 0 64 64" width="20" height="20" fill="none">
+          <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(-30 32 32)" stroke="var(--color-accent)" stroke-width="2.8"/>
+          <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(30 32 32)" stroke="color-mix(in srgb, var(--color-accent) 40%, transparent)" stroke-width="2"/>
+          <circle cx="32" cy="32" r="7.5" fill="var(--color-accent)"/>
+          <circle cx="50.5" cy="19.5" r="3.6" fill="var(--color-text)"/>
+        </svg>
+      </div>
+      <div style="line-height:1.1;">
+        <div style="font-family:var(--font-heading); font-weight:600; font-size:16px; letter-spacing:-0.01em;">Nexus</div>
+        <div style="font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:color-mix(in srgb, var(--color-text) 50%, transparent);">Accounting</div>
+      </div>
+    </div>
+
+    <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="4">
+      <div>
+        <div style="font-size:10px; letter-spacing:0.13em; text-transform:uppercase; color:color-mix(in srgb, var(--color-text) 42%, transparent); margin:14px 16px 5px;">{{ g.title }}</div>
+        <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4">
+          <div class="nx-nav-item" onClick="{{ it.onClick }}" style="{{ it.rowStyle }}">
+            <i class="{{ it.icon }}" style="font-size:16px; width:18px; text-align:center; color:{{ it.iconColor }};"></i>
+            <span style="flex:1;">{{ it.label }}</span>
+            <span style="{{ it.dotStyle }}"></span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+
+    <div style="margin-top:auto; padding:14px 16px; border-top:1px solid var(--color-divider); font-size:11px; color:color-mix(in srgb, var(--color-text) 50%, transparent);">
+      <div style="display:flex; align-items:center; gap:6px;"><i class="ph ph-database" style="font-size:13px;"></i> 47,912 reports · ~18.4 MB</div>
+    </div>
+  </aside>
+
+  <!-- ─────────── MAIN ─────────── -->
+  <main class="nx-scroll" style="overflow-y:auto; display:flex; flex-direction:column;">
+    <!-- topbar -->
+    <div style="position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:12px 16px; flex-wrap:wrap; padding:16px 24px; background:color-mix(in srgb, var(--color-bg) 82%, transparent); backdrop-filter:blur(10px); border-bottom:1px solid var(--color-divider);">
+      <div style="flex:1 1 220px; min-width:180px;">
+        <h1 style="font-size:22px; margin:0; letter-spacing:-0.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ screenTitle }}</h1>
+        <div style="font-size:12.5px; color:color-mix(in srgb, var(--color-text) 55%, transparent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ screenSub }}</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:color-mix(in srgb, var(--color-text) 60%, transparent);">
+        <span style="width:7px; height:7px; border-radius:50%; background:#6fce8f; box-shadow:0 0 8px #6fce8f; animation:nxpulse 2s infinite;"></span>
+        Scraped 2m ago
+      </div>
+      <div style="display:inline-flex; border:1px solid var(--color-divider); border-radius:var(--radius-md); overflow:hidden;">
+        <sc-for list="{{ viewOpts }}" as="v" hint-placeholder-count="3">
+          <div onClick="{{ v.onClick }}" style="{{ v.style }}">{{ v.label }}</div>
+        </sc-for>
+      </div>
+      <select style="background:var(--color-surface); color:var(--color-text); border:1px solid var(--color-divider); border-radius:var(--radius-md); padding:7px 10px; font:inherit; font-size:13px;">
+        <option>All zones</option><option>Sentinel</option><option>Open</option><option>Dead</option><option>Rift</option>
+      </select>
+      <button class="btn btn-primary"><i class="ph ph-arrows-clockwise"></i> Scrape Now</button>
+    </div>
+
+    <div style="padding:22px 24px 40px;">
+
+      <!-- ═══ GLOBAL ═══ -->
+      <sc-if value="{{ isGlobal }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <!-- hero -->
+        <div style="position:relative; overflow:hidden; border-radius:var(--radius-lg); padding:24px 26px; background:linear-gradient(120deg, color-mix(in srgb, var(--color-accent) 16%, var(--color-surface)), var(--color-surface) 62%); box-shadow:var(--shadow-sm);">
+          <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--color-accent); margin-bottom:6px;">Net gain · all sources · all time</div>
+              <div style="font-family:var(--font-heading); font-size:52px; line-height:1; font-weight:600; letter-spacing:-0.03em;">+12,847,900</div>
+              <div style="display:flex; align-items:center; gap:12px; margin-top:10px; font-size:12.5px; color:color-mix(in srgb, var(--color-text) 60%, transparent);">
+                <span style="color:#6fce8f; display:inline-flex; align-items:center; gap:4px;"><i class="ph-bold ph-trend-up"></i> 8.4% vs last week</span>
+                <span>weighted value · ore×1 · silicates×2 · hydrogen×3 · alloys×5 · artifacts×2000</span>
+              </div>
+            </div>
+            <svg viewBox="0 0 260 80" width="260" height="80" style="opacity:0.9;">
+              <defs><linearGradient id="spark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9184d9" stop-opacity="0.5"/><stop offset="1" stop-color="#9184d9" stop-opacity="0"/></linearGradient></defs>
+              <path d="M0,60 L20,54 L40,58 L60,44 L80,48 L100,34 L120,40 L140,26 L160,30 L180,20 L200,24 L220,12 L240,16 L260,6" fill="none" stroke="#9184d9" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+              <path d="M0,60 L20,54 L40,58 L60,44 L80,48 L100,34 L120,40 L140,26 L160,30 L180,20 L200,24 L220,12 L240,16 L260,6 L260,80 L0,80 Z" fill="url(#spark)"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- KPI strip -->
+        <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:14px;">
+          <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="5">
+            <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:var(--nx-pad); box-shadow:var(--shadow-sm); border-top:2px solid {{ k.color }};">
+              <div style="font-size:11px; letter-spacing:0.04em; text-transform:uppercase; color:color-mix(in srgb, var(--color-text) 52%, transparent);">{{ k.label }}</div>
+              <div style="font-family:var(--font-heading); font-size:26px; font-weight:600; margin:4px 0 4px; color:{{ k.color }}; letter-spacing:-0.02em;">{{ k.value }}</div>
+              <div style="font-size:11.5px; color:{{ k.trendColor }}; display:inline-flex; align-items:center; gap:3px;"><i class="{{ k.trendIcon }}"></i> {{ k.trend }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- charts -->
+        <div style="display:grid; grid-template-columns:1.55fr 1fr; gap:18px;">
+          <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px; box-shadow:var(--shadow-sm);">
+            <div style="font-family:var(--font-heading); font-size:15px; margin-bottom:12px;">Collected per period</div>
+            <canvas ref="{{ gPeriodRef }}" style="max-height:260px;"></canvas>
+          </div>
+          <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px; box-shadow:var(--shadow-sm);">
+            <div style="font-family:var(--font-heading); font-size:15px; margin-bottom:12px;">Collected composition</div>
+            <canvas ref="{{ gCompRef }}" style="max-height:260px;"></canvas>
+          </div>
+        </div>
+
+        <!-- source share -->
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px 20px; box-shadow:var(--shadow-sm);">
+          <div style="font-family:var(--font-heading); font-size:15px; margin-bottom:14px;">Share by source <span style="color:color-mix(in srgb,var(--color-text) 45%,transparent); font-size:12px; font-weight:400;">— weighted value</span></div>
+          <div style="display:flex; flex-direction:column; gap:11px;">
+            <sc-for list="{{ sources }}" as="s" hint-placeholder-count="7">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="width:96px; font-size:12.5px; color:color-mix(in srgb,var(--color-text) 75%,transparent);">{{ s.label }}</div>
+                <div style="flex:1; height:9px; border-radius:6px; background:color-mix(in srgb,var(--color-text) 7%,transparent); overflow:hidden;">
+                  <div style="height:100%; border-radius:6px; width:{{ s.width }}; background:{{ s.color }};"></div>
+                </div>
+                <div style="width:46px; text-align:right; font-size:12.5px; font-variant-numeric:tabular-nums; color:color-mix(in srgb,var(--color-text) 60%,transparent);">{{ s.pct }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ═══ SURVEYS ═══ -->
+      <sc-if value="{{ isSurveys }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+          <span style="font-size:12px; color:color-mix(in srgb,var(--color-text) 55%,transparent); margin-right:4px;">Event:</span>
+          <sc-for list="{{ eventChips }}" as="c" hint-placeholder-count="6">
+            <span class="nx-chip" style="{{ c.style }}">{{ c.label }}</span>
+          </sc-for>
+        </div>
+
+        <div>
+          <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:color-mix(in srgb,var(--color-text) 45%,transparent); margin-bottom:8px;">Resources collected</div>
+          <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px;">
+            <sc-for list="{{ surveyCollected }}" as="k" hint-placeholder-count="8">
+              <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:var(--nx-pad); box-shadow:var(--shadow-sm);">
+                <div style="font-size:11px; color:color-mix(in srgb,var(--color-text) 52%,transparent);">{{ k.label }}</div>
+                <div style="font-family:var(--font-heading); font-size:22px; font-weight:600; margin-top:3px; color:{{ k.color }};">{{ k.value }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+          <div>
+            <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:#e0736b; margin-bottom:8px;">Resources lost — destroyed ships</div>
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px;">
+              <sc-for list="{{ surveyLost }}" as="k" hint-placeholder-count="4">
+                <div style="background:color-mix(in srgb,#e0736b 8%,var(--color-surface)); border-radius:var(--radius-md); padding:var(--nx-pad); box-shadow:inset 0 0 0 1px color-mix(in srgb,#e0736b 22%,transparent);">
+                  <div style="font-size:11px; color:color-mix(in srgb,var(--color-text) 52%,transparent);">{{ k.label }}</div>
+                  <div style="font-family:var(--font-heading); font-size:20px; font-weight:600; margin-top:3px; color:#e0736b;">{{ k.value }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:#6fce8f; margin-bottom:8px;">Net gain</div>
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px;">
+              <sc-for list="{{ surveyNet }}" as="k" hint-placeholder-count="4">
+                <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:var(--nx-pad); box-shadow:var(--shadow-sm);">
+                  <div style="font-size:11px; color:color-mix(in srgb,var(--color-text) 52%,transparent);">{{ k.label }}</div>
+                  <div style="font-family:var(--font-heading); font-size:20px; font-weight:600; margin-top:3px; color:{{ k.color }};">{{ k.value }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:18px;">
+          <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px; box-shadow:var(--shadow-sm);">
+            <div style="font-family:var(--font-heading); font-size:15px; margin-bottom:12px;">Resources per period</div>
+            <canvas ref="{{ sPeriodRef }}" style="max-height:240px;"></canvas>
+          </div>
+          <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px; box-shadow:var(--shadow-sm);">
+            <div style="font-family:var(--font-heading); font-size:15px; margin-bottom:12px;">Event type breakdown</div>
+            <canvas ref="{{ sEventsRef }}" style="max-height:240px;"></canvas>
+          </div>
+        </div>
+
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px 20px; box-shadow:var(--shadow-sm);">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <div style="font-family:var(--font-heading); font-size:15px;">Recent reports</div>
+            <div style="display:flex; align-items:center; gap:10px; font-size:12.5px; color:color-mix(in srgb,var(--color-text) 55%,transparent);">
+              <button class="btn btn-secondary" style="padding:4px 10px; font-size:12px;" disabled>← Prev</button>
+              <span>Page 1 / 163</span>
+              <button class="btn btn-secondary" style="padding:4px 10px; font-size:12px;">Next →</button>
+            </div>
+          </div>
+          <div style="overflow-x:auto;" class="nx-scroll">
+            <table class="table">
+              <thead><tr>
+                <sc-for list="{{ surveyCols }}" as="h" hint-placeholder-count="9"><th style="white-space:nowrap;">{{ h }}</th></sc-for>
+              </tr></thead>
+              <tbody>
+                <sc-for list="{{ surveyRows }}" as="r" hint-placeholder-count="7">
+                  <tr>
+                    <td style="white-space:nowrap; padding:var(--nx-row);">{{ r.date }}</td>
+                    <td style="padding:var(--nx-row);">{{ r.system }}</td>
+                    <td style="padding:var(--nx-row);"><span class="tag tag-neutral" style="color:{{ r.zoneColor }};">{{ r.zone }}</span></td>
+                    <td style="padding:var(--nx-row);"><span class="tag" style="background:{{ r.evtBg }}; color:{{ r.evtColor }}; white-space:nowrap;">{{ r.event }}</span></td>
+                    <td style="padding:var(--nx-row); color:#e0894e; font-variant-numeric:tabular-nums;">{{ r.ore }}</td>
+                    <td style="padding:var(--nx-row); color:#7fb8f2; font-variant-numeric:tabular-nums;">{{ r.hydrogen }}</td>
+                    <td style="padding:var(--nx-row); color:#6fce8f; font-variant-numeric:tabular-nums;">{{ r.silicates }}</td>
+                    <td style="padding:var(--nx-row); color:#d8b055; font-variant-numeric:tabular-nums;">{{ r.alloys }}</td>
+                    <td style="padding:var(--nx-row); color:{{ r.lostColor }}; font-variant-numeric:tabular-nums;">{{ r.lost }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ═══ ASTEROIDS ═══ -->
+      <sc-if value="{{ isAsteroids }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-direction:column; gap:18px;">
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:16px 18px; box-shadow:var(--shadow-sm); display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end;">
+          <div class="field" style="margin:0;"><label>Mining from</label><select class="input" style="width:170px;"><option>Homeworld — G21-52</option><option>Colony Theta</option></select></div>
+          <div class="field" style="margin:0;"><label>Mult ≥</label><input class="input" style="width:78px;" value="1.5"></div>
+          <div class="field" style="margin:0;"><label>Qty ≥</label><input class="input" style="width:90px;" value="50,000"></div>
+          <div class="field" style="margin:0;"><label>Left % ≥</label><input class="input" style="width:78px;" value="40"></div>
+          <div class="field" style="margin:0;"><label>Nearest systems</label><input class="input" style="width:78px;" value="25"></div>
+          <div class="field" style="margin:0;"><label>Type</label>
+            <div style="display:flex; gap:6px;">
+              <sc-for list="{{ typeChips }}" as="c" hint-placeholder-count="4"><span class="nx-chip" style="{{ c.style }}">{{ c.label }}</span></sc-for>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-left:auto;"><i class="ph ph-radar"></i> Scan</button>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; font-size:12.5px; color:color-mix(in srgb,var(--color-text) 60%,transparent); padding:0 2px;">
+          <span style="color:color-mix(in srgb,var(--color-text) 75%,transparent);">On Homeworld:</span>
+          <span style="display:inline-flex; gap:6px; align-items:center;"><i class="ph ph-shipping-container" style="color:#7fb8f2;"></i> 42× Mining Vessel</span>
+          <span style="display:inline-flex; gap:6px; align-items:center;"><i class="ph ph-cube" style="color:#d8b055;"></i> 6× Excavator</span>
+          <span style="display:inline-flex; gap:6px; align-items:center;"><i class="ph ph-drop" style="color:#6fce8f;"></i> 14× Gas Collector</span>
+          <span style="margin-left:auto;">3 / 12 fleet slots in use</span>
+        </div>
+
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px 20px; box-shadow:var(--shadow-sm);">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <div style="font-family:var(--font-heading); font-size:15px;">Asteroid fields <span style="color:color-mix(in srgb,var(--color-text) 45%,transparent); font-size:12px; font-weight:400;">— 38 matches</span></div>
+          </div>
+          <div style="overflow-x:auto;" class="nx-scroll">
+            <table class="table">
+              <thead><tr>
+                <th></th><th>System</th><th>Type</th><th>Mult.</th><th style="min-width:150px;">Content</th><th>Left %</th><th>Zone</th><th>Outpost</th><th>Distance</th><th>Fuel</th><th>Ships rec.</th>
+              </tr></thead>
+              <tbody>
+                <sc-for list="{{ asteroidRows }}" as="r" hint-placeholder-count="7">
+                  <tr>
+                    <td style="padding:var(--nx-row);"><span class="nx-rowbtn" style="display:inline-flex; width:26px; height:26px; align-items:center; justify-content:center; border-radius:6px; border:1px solid var(--color-accent); color:var(--color-accent); cursor:pointer;"><i class="ph ph-rocket-launch"></i></span></td>
+                    <td style="padding:var(--nx-row); white-space:nowrap;">{{ r.system }}</td>
+                    <td style="padding:var(--nx-row);"><span style="display:inline-flex; gap:5px; align-items:center; color:{{ r.typeColor }};"><i class="{{ r.typeIcon }}"></i> {{ r.type }}</span></td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums; color:{{ r.multColor }}; font-weight:600;">{{ r.mult }}</td>
+                    <td style="padding:var(--nx-row);">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="flex:1; height:7px; border-radius:5px; background:color-mix(in srgb,var(--color-text) 8%,transparent); overflow:hidden;"><div style="height:100%; width:{{ r.leftWidth }}; background:{{ r.typeColor }}; border-radius:5px;"></div></div>
+                        <span style="font-size:11.5px; font-variant-numeric:tabular-nums; color:color-mix(in srgb,var(--color-text) 60%,transparent); white-space:nowrap;">{{ r.content }}</span>
+                      </div>
+                    </td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums;">{{ r.leftPct }}</td>
+                    <td style="padding:var(--nx-row);"><span class="tag tag-neutral" style="color:{{ r.zoneColor }};">{{ r.zone }}</span></td>
+                    <td style="padding:var(--nx-row); color:color-mix(in srgb,var(--color-text) 60%,transparent);">{{ r.outpost }}</td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums;">{{ r.distance }}</td>
+                    <td style="padding:var(--nx-row); color:#7fb8f2; font-variant-numeric:tabular-nums;">{{ r.fuel }}</td>
+                    <td style="padding:var(--nx-row); font-size:12px; color:color-mix(in srgb,var(--color-text) 70%,transparent); white-space:nowrap;">{{ r.rec }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ═══ TECH TREE ═══ -->
+      <sc-if value="{{ isTech }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+          <div style="position:relative;">
+            <i class="ph ph-magnifying-glass" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:color-mix(in srgb,var(--color-text) 45%,transparent); font-size:14px;"></i>
+            <input class="input" placeholder="Search research…" style="width:200px; padding-left:30px;">
+          </div>
+          <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:color-mix(in srgb,var(--color-text) 60%,transparent);">
+            <sc-for list="{{ legend }}" as="l" hint-placeholder-count="5">
+              <span style="display:inline-flex; align-items:center; gap:6px;"><span style="width:11px; height:11px; border-radius:3px; background:{{ l.color }};"></span>{{ l.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 288px; gap:16px; align-items:start;">
+          <!-- graph -->
+          <div class="nx-scroll" style="background:var(--color-surface); border-radius:var(--radius-md); box-shadow:var(--shadow-sm); overflow:auto; height:520px; position:relative;">
+            <div style="position:relative; width:{{ graphW }}; height:480px;">
+              <svg width="{{ graphW }}" height="480" style="position:absolute; top:0; left:0; pointer-events:none;">
+                <sc-for list="{{ edges }}" as="e" hint-placeholder-count="10"><path d="{{ e.d }}" fill="none" stroke="{{ e.color }}" stroke-width="{{ e.w }}"></path></sc-for>
+              </svg>
+              <sc-for list="{{ nodes }}" as="n" hint-placeholder-count="11">
+                <div style="{{ n.style }}">
+                  <div style="font-size:12.5px; line-height:1.2; color:var(--color-text); overflow:hidden;">{{ n.name }}</div>
+                  <div style="font-size:10.5px; margin-top:3px; color:{{ n.metaColor }};">{{ n.meta }}</div>
+                  <span style="{{ n.addStyle }}"><i class="ph-bold ph-plus"></i></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- queue -->
+          <div style="background:var(--color-surface); border-radius:var(--radius-md); box-shadow:var(--shadow-sm); padding:16px; height:520px; display:flex; flex-direction:column;">
+            <div style="font-family:var(--font-heading); font-size:15px; margin-bottom:10px;">Research queue</div>
+            <div style="font-size:11.5px; color:color-mix(in srgb,var(--color-text) 55%,transparent); margin-bottom:6px; display:flex; align-items:center; gap:6px;">Launch from <select class="input" style="height:28px; padding:2px 6px; font-size:12px; width:auto; flex:1;"><option>Homeworld</option></select></div>
+            <div class="nx-scroll" style="flex:1; overflow-y:auto; margin:6px 0;">
+              <sc-for list="{{ queue }}" as="q" hint-placeholder-count="3">
+                <div style="{{ q.wrap }}">
+                  <span style="color:color-mix(in srgb,var(--color-text) 40%,transparent); font-size:12px; min-width:16px;">{{ q.seq }}</span>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-size:12.5px; color:{{ q.nameColor }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ q.name }}</div>
+                    <div style="font-size:10.5px; color:color-mix(in srgb,var(--color-text) 45%,transparent);">{{ q.eta }}</div>
+                  </div>
+                  <i class="ph ph-x" style="color:#e0736b; cursor:pointer; font-size:13px;"></i>
+                </div>
+              </sc-for>
+            </div>
+            <div style="border-top:1px solid var(--color-divider); padding-top:10px; font-size:12px; color:color-mix(in srgb,var(--color-text) 60%,transparent); line-height:1.9;">
+              <div style="display:flex; justify-content:space-between;"><span>Silicates</span><span style="color:#6fce8f; font-variant-numeric:tabular-nums;">184,200</span></div>
+              <div style="display:flex; justify-content:space-between;"><span>Ore</span><span style="color:#e0894e; font-variant-numeric:tabular-nums;">42,000</span></div>
+              <div style="display:flex; justify-content:space-between;"><span>Total time</span><span style="color:var(--color-text); font-variant-numeric:tabular-nums;">6h 40m</span></div>
+            </div>
+            <button class="btn btn-secondary btn-block" style="margin-top:12px;"><i class="ph ph-trash"></i> Clear queue</button>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ═══ MARKET ═══ -->
+      <sc-if value="{{ isMarket }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-direction:column; gap:18px;">
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:16px 18px; box-shadow:var(--shadow-sm); display:flex; flex-wrap:wrap; gap:22px; align-items:center;">
+          <div>
+            <div style="font-size:11px; color:color-mix(in srgb,var(--color-text) 55%,transparent); margin-bottom:6px;">Market</div>
+            <div style="display:inline-flex; border:1px solid var(--color-divider); border-radius:var(--radius-md); overflow:hidden; font-size:13px;">
+              <span style="padding:6px 14px; box-shadow:inset 0 0 0 1px var(--color-accent); color:var(--color-accent);">Public</span>
+              <span style="padding:6px 14px; color:color-mix(in srgb,var(--color-text) 60%,transparent); border-left:1px solid var(--color-divider); cursor:pointer;">Alliance</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px; color:color-mix(in srgb,var(--color-text) 55%,transparent); margin-bottom:6px;">Buy (offered)</div>
+            <div style="display:flex; gap:6px;"><sc-for list="{{ buyChips }}" as="c" hint-placeholder-count="5"><span class="nx-chip" style="{{ c.style }}">{{ c.label }}</span></sc-for></div>
+          </div>
+          <div>
+            <div style="font-size:11px; color:color-mix(in srgb,var(--color-text) 55%,transparent); margin-bottom:6px;">Sell (you pay)</div>
+            <div style="display:flex; gap:6px;"><sc-for list="{{ sellChips }}" as="c" hint-placeholder-count="5"><span class="nx-chip" style="{{ c.style }}">{{ c.label }}</span></sc-for></div>
+          </div>
+          <div class="field" style="margin:0;"><label>Ratio wanted ≥</label><input class="input" style="width:90px;" placeholder="any" value="0.75"></div>
+          <button class="btn btn-secondary" style="margin-left:auto;"><i class="ph ph-x"></i> Clear</button>
+          <button class="btn btn-primary"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
+        </div>
+
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px 20px; box-shadow:var(--shadow-sm);">
+          <div style="font-family:var(--font-heading); font-size:15px; margin-bottom:8px;">Open offers <span style="color:color-mix(in srgb,var(--color-text) 45%,transparent); font-size:12px; font-weight:400;">— 214 orders</span></div>
+          <div style="overflow-x:auto;" class="nx-scroll">
+            <table class="table">
+              <thead><tr><th>Offering</th><th>For</th><th>Ratio</th><th>Available</th><th>Trader</th><th>Zone</th><th></th></tr></thead>
+              <tbody>
+                <sc-for list="{{ marketRows }}" as="r" hint-placeholder-count="8">
+                  <tr>
+                    <td style="padding:var(--nx-row);"><span style="display:inline-flex; gap:6px; align-items:center; color:{{ r.offerColor }};"><span style="width:9px; height:9px; border-radius:50%; background:{{ r.offerColor }};"></span>{{ r.offer }}</span></td>
+                    <td style="padding:var(--nx-row);"><span style="display:inline-flex; gap:6px; align-items:center; color:{{ r.forColor }};"><span style="width:9px; height:9px; border-radius:50%; background:{{ r.forColor }};"></span>{{ r.for }}</span></td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums; color:{{ r.ratioColor }}; font-weight:600;">{{ r.ratio }}</td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums;">{{ r.available }}</td>
+                    <td style="padding:var(--nx-row); color:color-mix(in srgb,var(--color-text) 70%,transparent);">{{ r.trader }}</td>
+                    <td style="padding:var(--nx-row);"><span class="tag tag-neutral" style="color:{{ r.zoneColor }};">{{ r.zone }}</span></td>
+                    <td style="padding:var(--nx-row);"><button class="btn btn-secondary" style="padding:4px 12px; font-size:12px;">Fill</button></td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ═══ SCOUTING ═══ -->
+      <sc-if value="{{ isScouting }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-direction:column; gap:18px;">
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:16px 18px; box-shadow:var(--shadow-sm); display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end;">
+          <div class="field" style="margin:0;"><label>Survey from</label><select class="input" style="width:190px;"><option>Homeworld (G21-52)</option><option>Colony Theta</option></select></div>
+          <div class="field" style="margin:0;"><label>Zone</label><div style="display:flex; gap:6px;"><sc-for list="{{ surveyZoneChips }}" as="c" hint-placeholder-count="4"><span class="nx-chip" style="{{ c.style }}">{{ c.label }}</span></sc-for></div></div>
+          <div class="field" style="margin:0;"><label>Probe template</label><select class="input" style="width:170px;"><option>Fast Probe ×3</option></select></div>
+          <button class="btn btn-primary"><i class="ph ph-radar"></i> Launch Scan</button>
+          <span style="margin-left:auto; font-size:12.5px; color:color-mix(in srgb,var(--color-text) 55%,transparent);">5 / 12 fleet slots</span>
+        </div>
+
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px 20px; box-shadow:var(--shadow-sm);">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <div style="font-family:var(--font-heading); font-size:15px;">Scanning fleets in transit</div>
+            <span style="font-size:12px; color:color-mix(in srgb,var(--color-text) 55%,transparent);">2 scanning</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <sc-for list="{{ transit }}" as="t" hint-placeholder-count="2">
+              <div>
+                <div style="font-size:13px; margin-bottom:5px;">{{ t.name }}</div>
+                <div style="{{ t.prog.trackStyle }}"><div style="{{ t.prog.fillStyle }}"></div></div>
+                <div style="{{ t.prog.capStyle }}"><span style="{{ t.prog.phaseStyle }}">{{ t.prog.phase }}</span><span style="{{ t.prog.etaStyle }}">{{ t.prog.eta }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px 20px; box-shadow:var(--shadow-sm);">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
+            <div style="font-family:var(--font-heading); font-size:15px;">Active surveys <span style="color:color-mix(in srgb,var(--color-text) 45%,transparent); font-size:12px; font-weight:400;">— 3 awaiting · 1 returning</span></div>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+              <span style="font-size:12px; color:color-mix(in srgb,var(--color-text) 55%,transparent);">Investigate template</span>
+              <select class="input" style="height:32px; padding:2px 8px; font-size:12px; width:auto;"><option>Strike Wing ×2</option></select>
+              <button class="btn btn-secondary" style="padding:5px 12px; font-size:12px;"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
+            </div>
+          </div>
+          <div style="overflow-x:auto;" class="nx-scroll">
+            <table class="table">
+              <thead><tr><th></th><th>Progress</th><th>System</th><th>Anomaly</th><th>Zone</th><th>Fuel</th><th>Travel</th><th>Expires in</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ surveyRows2 }}" as="r" hint-placeholder-count="4">
+                  <tr>
+                    <td style="padding:var(--nx-row);"><button class="{{ r.btn.cls }}" style="{{ r.btn.style }}">{{ r.btn.label }}</button></td>
+                    <td style="padding:var(--nx-row); min-width:140px;"><div style="{{ r.prog.trackStyle }}"><div style="{{ r.prog.fillStyle }}"></div></div><div style="{{ r.prog.capStyle }}"><span style="{{ r.prog.phaseStyle }}">{{ r.prog.phase }}</span><span style="{{ r.prog.etaStyle }}">{{ r.prog.eta }}</span></div></td>
+                    <td style="padding:var(--nx-row); white-space:nowrap;">{{ r.sys }}</td>
+                    <td style="padding:var(--nx-row);">{{ r.anomaly }}</td>
+                    <td style="padding:var(--nx-row);"><span class="tag tag-neutral" style="color:{{ r.zoneColor }};">{{ r.zone }}</span></td>
+                    <td style="padding:var(--nx-row); color:#7fb8f2; font-variant-numeric:tabular-nums;">{{ r.fuel }}</td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums;">{{ r.travel }}</td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums;">{{ r.expires }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px 20px; box-shadow:var(--shadow-sm);">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+            <div style="font-family:var(--font-heading); font-size:15px;">Live debris fields</div>
+            <span style="font-size:11.5px; color:color-mix(in srgb,var(--color-text) 45%,transparent);">Last check 1:41 PM</span>
+            <div style="display:flex; gap:6px;"><sc-for list="{{ debrisZoneChips }}" as="c" hint-placeholder-count="4"><span class="nx-chip" style="{{ c.style }}">{{ c.label }}</span></sc-for></div>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span style="font-size:12px; color:color-mix(in srgb,var(--color-text) 55%,transparent);">Collect with</span>
+              <sc-for list="{{ cargoChips }}" as="c" hint-placeholder-count="4"><span class="nx-chip" style="{{ c.style }}">{{ c.label }}</span></sc-for>
+            </div>
+          </div>
+          <div style="overflow-x:auto;" class="nx-scroll">
+            <table class="table">
+              <thead><tr><th></th><th>Progress</th><th>System</th><th>Zone</th><th>Ore</th><th>Silicates</th><th>Alloys</th><th>Total</th><th>Ships</th><th>Fuel</th><th>Travel</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ debrisRows }}" as="r" hint-placeholder-count="4">
+                  <tr>
+                    <td style="padding:var(--nx-row);"><button class="{{ r.btn.cls }}" style="{{ r.btn.style }}">{{ r.btn.label }}</button></td>
+                    <td style="padding:var(--nx-row); min-width:140px;"><div style="{{ r.prog.trackStyle }}"><div style="{{ r.prog.fillStyle }}"></div></div><div style="{{ r.prog.capStyle }}"><span style="{{ r.prog.phaseStyle }}">{{ r.prog.phase }}</span><span style="{{ r.prog.etaStyle }}">{{ r.prog.eta }}</span></div></td>
+                    <td style="padding:var(--nx-row); white-space:nowrap;">{{ r.sys }}</td>
+                    <td style="padding:var(--nx-row);"><span class="tag tag-neutral" style="color:{{ r.zoneColor }};">{{ r.zone }}</span></td>
+                    <td style="padding:var(--nx-row); color:#e0894e; font-variant-numeric:tabular-nums;">{{ r.ore }}</td>
+                    <td style="padding:var(--nx-row); color:#6fce8f; font-variant-numeric:tabular-nums;">{{ r.sil }}</td>
+                    <td style="padding:var(--nx-row); color:#d8b055; font-variant-numeric:tabular-nums;">{{ r.alloys }}</td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums; font-weight:600;">{{ r.total }}</td>
+                    <td style="padding:var(--nx-row); font-size:12px; color:color-mix(in srgb,var(--color-text) 65%,transparent); white-space:nowrap;">{{ r.ships }}</td>
+                    <td style="padding:var(--nx-row); color:#7fb8f2; font-variant-numeric:tabular-nums;">{{ r.fuel }}</td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums;">{{ r.travel }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="background:var(--color-surface); border-radius:var(--radius-md); padding:18px 20px; box-shadow:var(--shadow-sm);">
+          <div style="font-family:var(--font-heading); font-size:15px; margin-bottom:8px;">Uncollected salvage <span style="color:color-mix(in srgb,var(--color-text) 45%,transparent); font-size:12px; font-weight:400;">— 2 awaiting collection</span></div>
+          <div style="overflow-x:auto;" class="nx-scroll">
+            <table class="table">
+              <thead><tr><th></th><th>Progress</th><th>System</th><th>Zone</th><th>Resources left</th><th>Total</th><th>Ships</th><th>Fuel</th><th>Travel</th><th>Expires in</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ salvageRows }}" as="r" hint-placeholder-count="2">
+                  <tr>
+                    <td style="padding:var(--nx-row);"><button class="{{ r.btn.cls }}" style="{{ r.btn.style }}">{{ r.btn.label }}</button></td>
+                    <td style="padding:var(--nx-row); min-width:140px;"><div style="{{ r.prog.trackStyle }}"><div style="{{ r.prog.fillStyle }}"></div></div><div style="{{ r.prog.capStyle }}"><span style="{{ r.prog.phaseStyle }}">{{ r.prog.phase }}</span><span style="{{ r.prog.etaStyle }}">{{ r.prog.eta }}</span></div></td>
+                    <td style="padding:var(--nx-row); white-space:nowrap;">{{ r.sys }}</td>
+                    <td style="padding:var(--nx-row);"><span class="tag tag-neutral" style="color:{{ r.zoneColor }};">{{ r.zone }}</span></td>
+                    <td style="padding:var(--nx-row); font-size:12.5px; color:color-mix(in srgb,var(--color-text) 75%,transparent);">{{ r.left }}</td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums; font-weight:600;">{{ r.total }}</td>
+                    <td style="padding:var(--nx-row); font-size:12px; color:color-mix(in srgb,var(--color-text) 65%,transparent); white-space:nowrap;">{{ r.ships }}</td>
+                    <td style="padding:var(--nx-row); color:#7fb8f2; font-variant-numeric:tabular-nums;">{{ r.fuel }}</td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums;">{{ r.travel }}</td>
+                    <td style="padding:var(--nx-row); font-variant-numeric:tabular-nums;">{{ r.expires }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ═══ COMBAT SIMULATOR ═══ -->
+      <sc-if value="{{ isCombat }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-direction:column; gap:24px;">
+
+        <!-- setup -->
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <sc-for list="{{ simPanels }}" as="p" hint-placeholder-count="2">
+              <div style="border-radius:var(--radius-lg); border:1px solid var(--color-divider); box-shadow:var(--shadow-sm); overflow:hidden; background:{{ p.grad }};">
+                <div style="display:flex; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid var(--color-divider);">
+                  <div style="width:30px; height:30px; border-radius:8px; border:1px solid {{ p.accent }}; display:flex; align-items:center; justify-content:center; color:{{ p.accent }};"><i class="{{ p.icon }}" style="font-size:15px;"></i></div>
+                  <div style="flex:1;">
+                    <div style="font-size:10.5px; letter-spacing:0.15em; text-transform:uppercase; color:{{ p.accent }};">{{ p.side }}</div>
+                    <input value="{{ p.name }}" style="width:100%; background:transparent; border:none; outline:none; color:var(--color-text); font-family:var(--font-heading); font-size:17px; font-weight:600; letter-spacing:-0.01em; padding:0; margin-top:1px;" />
+                  </div>
+                </div>
+                <div style="padding:14px 18px 16px; display:flex; flex-direction:column; gap:14px;">
+                  <div>
+                    <div style="font-size:10px; letter-spacing:0.13em; text-transform:uppercase; color:color-mix(in srgb,var(--color-text) 46%,transparent); margin-bottom:9px;">Combat Ships</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 14px;">
+                      <sc-for list="{{ p.ships }}" as="s" hint-placeholder-count="6">
+                        <label style="display:flex; align-items:center; gap:8px; font-size:12.5px;">
+                          <span style="flex:1; color:color-mix(in srgb,var(--color-text) 72%,transparent); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ s.name }}</span>
+                          <input type="number" value="{{ s.qty }}" style="width:64px; background:var(--color-bg); border:1px solid var(--color-divider); border-radius:6px; color:var(--color-text); font:inherit; font-size:12.5px; font-variant-numeric:tabular-nums; padding:5px 8px; text-align:right;" />
+                        </label>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size:10px; letter-spacing:0.13em; text-transform:uppercase; color:color-mix(in srgb,var(--color-text) 46%,transparent); margin-bottom:9px;">Research levels</div>
+                    <div style="display:flex; gap:10px;">
+                      <sc-for list="{{ p.tech }}" as="t" hint-placeholder-count="3">
+                        <label style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                          <span style="font-size:11px; color:color-mix(in srgb,var(--color-text) 58%,transparent);">{{ t.label }}</span>
+                          <input type="number" value="{{ t.val }}" style="width:100%; background:var(--color-bg); border:1px solid var(--color-divider); border-radius:6px; color:var(--color-text); font:inherit; font-size:12.5px; font-variant-numeric:tabular-nums; padding:6px 8px; text-align:center;" />
+                        </label>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex; align-items:center; gap:14px;">
+            <button class="btn btn-primary" style="padding:10px 20px; font-size:14px;"><i class="ph-bold ph-crosshair-simple"></i> Simulate Battle</button>
+            <button class="btn btn-ghost" style="padding:10px 16px; font-size:13px;"><i class="ph ph-arrow-counter-clockwise"></i> Reset</button>
+            <span style="font-size:12px; color:color-mix(in srgb,var(--color-text) 48%,transparent);">Resolves up to 6 rounds · Monte-Carlo over 100 runs</span>
+          </div>
+        </div>
+
+        <!-- result heading -->
+        <div style="display:flex; align-items:center; gap:12px; margin-top:2px;">
+          <div style="font-family:var(--font-heading); font-size:14px; letter-spacing:0.02em; color:color-mix(in srgb,var(--color-text) 55%,transparent); text-transform:uppercase;">Simulation Result</div>
+          <div style="flex:1; height:1px; background:linear-gradient(90deg, var(--color-divider), transparent);"></div>
+        </div>
+
+        <!-- fleets -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <sc-for list="{{ combatFleets }}" as="f" hint-placeholder-count="2">
+            <div style="border-radius:var(--radius-lg); border:1px solid var(--color-divider); box-shadow:var(--shadow-sm); overflow:hidden; background:{{ f.grad }};">
+              <div style="padding:16px 18px 14px;">
+                <div style="display:flex; align-items:center; gap:7px; font-size:10.5px; letter-spacing:0.15em; text-transform:uppercase; color:{{ f.accent }};"><i class="{{ f.icon }}"></i> {{ f.side }}</div>
+                <div style="font-family:var(--font-heading); font-size:19px; font-weight:600; letter-spacing:-0.01em; margin-top:3px;">{{ f.name }}</div>
+              </div>
+              <div style="padding:0 14px;">
+                <div style="font-size:10px; letter-spacing:0.13em; text-transform:uppercase; color:color-mix(in srgb,var(--color-text) 46%,transparent); background:color-mix(in srgb,var(--color-text) 5%,transparent); padding:7px 12px; border-radius:6px;">Combat Ships</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:12px; padding:12px 16px 16px;">
+                <div style="width:34px; height:34px; border-radius:8px; border:1px solid var(--color-divider); display:flex; align-items:center; justify-content:center; color:{{ f.accent }};"><i class="ph ph-rocket-launch" style="font-size:17px;"></i></div>
+                <span style="flex:1; font-size:14px; font-weight:500;">{{ f.ship }}</span>
+                <span style="font-variant-numeric:tabular-nums; font-size:14px; color:#e0736b;">{{ f.lost }}</span>
+                <span style="font-variant-numeric:tabular-nums; font-size:14px; min-width:40px; text-align:right; color:{{ f.remainColor }};">{{ f.remain }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- rounds -->
+        <div>
+          <div style="font-family:var(--font-heading); font-size:17px; margin-bottom:12px;">Combat Rounds <span style="color:color-mix(in srgb,var(--color-text) 45%,transparent); font-weight:400;">(5)</span></div>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <sc-for list="{{ combatRounds }}" as="r" hint-placeholder-count="5">
+              <div style="background:var(--color-surface); border:1px solid var(--color-divider); border-radius:var(--radius-md); padding:13px 18px;">
+                <div style="display:flex; align-items:flex-start; gap:12px;">
+                  <div style="flex:1; font-size:13.5px; font-variant-numeric:tabular-nums;">
+                    <span style="font-family:var(--font-heading); font-weight:600;">Round {{ r.n }}:</span>
+                    <span style="color:color-mix(in srgb,var(--color-text) 82%,transparent);"> <i class="ph ph-sword" style="color:#e0736b;"></i> {{ r.aDmg }} dmg → <i class="ph ph-shield" style="color:{{ defColor }};"></i> {{ r.dDmg }} dmg</span>
+                  </div>
+                  <span style="font-size:11.5px; font-variant-numeric:tabular-nums; color:color-mix(in srgb,var(--color-text) 48%,transparent); white-space:nowrap;">[ATK {{ r.atk }}% / DEF {{ r.def }}%]</span>
+                </div>
+                <div style="margin-top:7px; display:flex; flex-direction:column; gap:3px; font-size:12.5px; padding-left:2px;">
+                  <sc-if value="{{ r.showALost }}" hint-placeholder-val="{{ true }}">
+                    <div style="color:#e0736b;"><i class="ph ph-x-circle"></i> Lost: {{ r.aLost }}× Cruiser</div>
+                  </sc-if>
+                  <div style="color:color-mix(in srgb,#e0736b 78%,var(--color-text));"><i class="ph ph-shield"></i> Lost: {{ r.dLost }}× Cruiser</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- losses -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <sc-for list="{{ combatLosses }}" as="l" hint-placeholder-count="2">
+            <div>
+              <div style="font-family:var(--font-heading); font-size:17px; margin-bottom:12px;">{{ l.label }}</div>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="width:34px; height:34px; border-radius:8px; border:1px solid var(--color-divider); display:flex; align-items:center; justify-content:center; color:color-mix(in srgb,var(--color-text) 50%,transparent);"><i class="ph ph-rocket-launch" style="font-size:16px;"></i></div>
+                <span style="color:#e0736b; font-weight:500; font-size:14px;">{{ l.qty }}</span>
+                <span style="font-size:12.5px; color:color-mix(in srgb,var(--color-text) 50%,transparent);">{{ l.detail }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- debris -->
+        <div style="border:1px solid color-mix(in srgb,#d8b055 28%,var(--color-divider)); border-radius:var(--radius-md); padding:16px 20px; background:color-mix(in srgb,#d8b055 6%,var(--color-surface));">
+          <div style="font-family:var(--font-heading); font-size:16px; color:#d8b055; margin-bottom:11px; display:flex; align-items:center; gap:7px;"><i class="ph ph-shooting-star"></i> Debris Field</div>
+          <div style="display:flex; gap:30px; flex-wrap:wrap;">
+            <sc-for list="{{ combatDebris }}" as="d" hint-placeholder-count="3">
+              <div style="font-size:14px; font-variant-numeric:tabular-nums;"><span style="font-weight:600;">{{ d.value }}</span> <span style="color:color-mix(in srgb,var(--color-text) 55%,transparent);">{{ d.label }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+
+      </div>
+      </sc-if>
+
+      <!-- ═══ STUB (unbuilt tabs) ═══ -->
+      <sc-if value="{{ isStub }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:90px 20px; text-align:center; color:color-mix(in srgb,var(--color-text) 55%,transparent);">
+          <div style="width:56px; height:56px; border-radius:14px; border:1px solid var(--color-divider); display:flex; align-items:center; justify-content:center;"><i class="{{ stubIcon }}" style="font-size:26px; color:var(--color-accent);"></i></div>
+          <div style="font-family:var(--font-heading); font-size:20px; color:var(--color-text);">{{ screenTitle }}</div>
+          <div style="max-width:360px; font-size:13.5px;">This view carries the same redesigned shell, stat cards, tables and charts shown on the five focus screens. Pick Global, Surveys, Asteroid Fields, Tech Tree or Market to see the proposal in full.</div>
+        </div>
+      </sc-if>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: &quot;1180px&quot;, &quot;height&quot;: &quot;820px&quot; },
+  &quot;accent&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#9184d9&quot;, &quot;options&quot;: [&quot;#9184d9&quot;, &quot;#5fb0c9&quot;, &quot;#d8a24e&quot;, &quot;#6fce8f&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;density&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;Comfortable&quot;, &quot;options&quot;: [&quot;Comfortable&quot;, &quot;Compact&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Layout&quot; }
+}">
+class Component extends DCLogic {
+  state = { screen: 'global', view: 'All time' };
+  rootRef = React.createRef();
+  gPeriodRef = React.createRef();
+  gCompRef = React.createRef();
+  sPeriodRef = React.createRef();
+  sEventsRef = React.createRef();
+  charts = {};
+
+  RES = { ore:'#e0894e', silicates:'#6fce8f', hydrogen:'#7fb8f2', alloys:'#d8b055', quantum:'#b9a9ef', plasma:'#e08a86' };
+  ZONE = { sentinel:'#6fce8f', open:'#e0a24e', dead:'#e0736b', rift:'#b5abfc', unknown:'#9397ab' };
+
+  go(id, built) { this.setState({ screen: built ? id : ('__stub__' + id) }); }
+
+  renderVals() {
+    const A = this.props.accent || '#9184d9';
+    const scr = this.state.screen;
+    const cur = scr.startsWith('__stub__') ? scr.slice(8) : scr;
+
+    const NAV = [
+      ['Overview', [['global','Global','ph ph-gauge', true]]],
+      ['Operations', [
+        ['surveys','Surveys','ph ph-radar', true],
+        ['pirates','Pirates','ph ph-skull', false],
+        ['mining','Mining','ph ph-mountains', false],
+        ['battles','Battles','ph ph-crosshair-simple', false],
+        ['debris','Debris','ph ph-shooting-star', false],
+        ['expeditions','Expeditions','ph ph-compass', false],
+        ['wormhole','Wormhole','ph ph-circle-dashed', false],
+        ['xeno','Xeno','ph ph-alien', false],
+      ]],
+      ['Explore', [
+        ['finder','Galaxy Scout','ph ph-magnifying-glass', false],
+        ['asteroids','Asteroid Fields','ph ph-planet', true],
+        ['scouting','Scouting','ph ph-binoculars', true],
+      ]],
+      ['Market & R&D', [
+        ['market','Market','ph ph-scales', true],
+        ['fleets','Fleet Templates','ph ph-rocket', false],
+        ['techtree','Tech Tree','ph ph-tree-structure', true],
+        ['combatsim','Combat Simulator','ph ph-crosshair-simple', true],
+      ]],
+    ];
+    const navGroups = NAV.map(([title, items]) => ({
+      title,
+      items: items.map(([id,label,icon,built]) => {
+        const active = id === cur;
+        return {
+          id, label, icon, built,
+          iconColor: active ? A : 'color-mix(in srgb, var(--color-text) 55%, transparent)',
+          onClick: () => this.go(id, built),
+          rowStyle: 'display:flex; align-items:center; gap:11px; margin:1px 8px; padding:8px 10px; border-radius:8px; font-size:13.5px; cursor:pointer; '
+            + (active
+              ? 'color:' + A + '; background:color-mix(in srgb,' + A + ' 15%, transparent); box-shadow:inset 2px 0 0 ' + A + ';'
+              : 'color:color-mix(in srgb, var(--color-text) 80%, transparent); background:transparent;'),
+          dotStyle: built ? 'display:none;' : 'width:5px; height:5px; border-radius:50%; background:color-mix(in srgb, var(--color-text) 25%, transparent);',
+        };
+      }),
+    }));
+
+    const TITLES = {
+      global:['Global overview','Totals across every source · honouring view, zone and window'],
+      surveys:['Surveys','Anomaly survey yields, losses and net gain'],
+      asteroids:['Asteroid Fields','Scan, rank and dispatch mining fleets'],
+      techtree:['Tech Tree','Research dependency graph and queue planner'],
+      market:['Market','Public and alliance trade orders'],
+      scouting:['Scouting','Probe surveys, investigations, debris and salvage'],
+      combatsim:['Combat Simulator','Battle outcome projection · 5 rounds resolved'],
+    };
+    const STUBTITLE = { pirates:'Pirates', mining:'Mining', battles:'Battles', debris:'Debris', expeditions:'Expeditions', wormhole:'Wormhole', xeno:'Xeno', finder:'Galaxy Scout', scouting:'Scouting', fleets:'Fleet Templates' };
+    const STUBICON = { pirates:'ph ph-skull', mining:'ph ph-mountains', battles:'ph ph-crosshair-simple', debris:'ph ph-shooting-star', expeditions:'ph ph-compass', wormhole:'ph ph-circle-dashed', xeno:'ph ph-alien', finder:'ph ph-magnifying-glass', scouting:'ph ph-binoculars', fleets:'ph ph-rocket' };
+    const isStub = scr.startsWith('__stub__');
+    const [screenTitle, screenSub] = isStub ? [STUBTITLE[cur] || 'View', 'Part of the proposed redesign'] : (TITLES[cur] || ['','']);
+
+    const viewOpts = ['All time','7 days','Hourly'].map(label => ({
+      label,
+      onClick: () => this.setState({ view: label }),
+      style: 'padding:7px 13px; font-size:12.5px; cursor:pointer; border-left:1px solid var(--color-divider); '
+        + (this.state.view === label ? 'color:' + A + '; box-shadow:inset 0 0 0 1px ' + A + ';' : 'color:color-mix(in srgb, var(--color-text) 60%, transparent);'),
+    }));
+    viewOpts[0].style = viewOpts[0].style.replace('border-left:1px solid var(--color-divider); ', '');
+
+    // ── Global data ──
+    const kpis = [
+      { label:'Ore', value:'4,182,540', color:this.RES.ore, trend:'6.2%', trendColor:'#6fce8f', trendIcon:'ph-bold ph-trend-up' },
+      { label:'Silicates', value:'2,341,880', color:this.RES.silicates, trend:'4.1%', trendColor:'#6fce8f', trendIcon:'ph-bold ph-trend-up' },
+      { label:'Hydrogen', value:'1,205,320', color:this.RES.hydrogen, trend:'1.3%', trendColor:'#e0736b', trendIcon:'ph-bold ph-trend-down' },
+      { label:'Alloys', value:'88,410', color:this.RES.alloys, trend:'9.0%', trendColor:'#6fce8f', trendIcon:'ph-bold ph-trend-up' },
+      { label:'Operations', value:'3,247', color:A, trend:'2.8%', trendColor:'#6fce8f', trendIcon:'ph-bold ph-trend-up' },
+    ];
+    const SRC = [['Survey',38.2,A],['Mining',27.4,'#d8b055'],['Pirates',14.1,'#e0736b'],['Debris',9.8,'#6fce8f'],['Expeditions',6.3,'#b9a9ef'],['Wormhole',2.9,'#5fb0c9'],['Xeno',1.3,'#d8a24e']];
+    const sources = SRC.map(([label,pct,color]) => ({ label, pct: pct.toFixed(1)+'%', width: pct+'%', color }));
+
+    // ── Surveys data ──
+    const EVT = ['All events','ancient signal','resource cache','rogue drone','anomaly rift','booby trap','abandoned cargo'];
+    const eventChips = EVT.map((label,i) => ({
+      label,
+      style: 'padding:5px 12px; border-radius:20px; font-size:12px; border:1px solid ' + (i===0 ? A : 'var(--color-divider)') + '; '
+        + (i===0 ? 'color:'+A+'; background:color-mix(in srgb,'+A+' 12%,transparent);' : 'color:color-mix(in srgb,var(--color-text) 65%,transparent);'),
+    }));
+    const surveyCollected = [
+      { label:'Ore', value:'2,918,400', color:this.RES.ore },
+      { label:'Silicates', value:'1,642,110', color:this.RES.silicates },
+      { label:'Hydrogen', value:'804,220', color:this.RES.hydrogen },
+      { label:'Alloys', value:'41,300', color:this.RES.alloys },
+      { label:'Quantum Dust', value:'4,120', color:this.RES.quantum },
+      { label:'Missions', value:'1,842', color:A },
+      { label:'Ships lost', value:'214', color:'#e0736b' },
+      { label:'Fuel spent', value:'186,400', color:this.RES.hydrogen },
+    ];
+    const surveyLost = [
+      { label:'Ore', value:'188,300' },{ label:'Silicates', value:'96,400' },
+      { label:'Hydrogen', value:'42,100' },{ label:'Alloys', value:'28,900' },
+    ];
+    const surveyNet = [
+      { label:'Ore net', value:'+2,730,100', color:this.RES.ore },
+      { label:'Silicates net', value:'+1,545,710', color:this.RES.silicates },
+      { label:'Hydrogen net', value:'+575,720', color:this.RES.hydrogen },
+      { label:'Total net', value:'+8,241,300', color:'#6fce8f' },
+    ];
+    const surveyCols = ['Date','System','Zone','Event','Ore','Hydrogen','Silicates','Alloys','Ships lost'];
+    const evtTint = {
+      'anomaly rift':['color-mix(in srgb,#7fb8f2 16%,transparent)','#7fb8f2'],
+      'ancient signal':['color-mix(in srgb,#7fb8f2 16%,transparent)','#7fb8f2'],
+      'resource cache':['color-mix(in srgb,#6fce8f 16%,transparent)','#6fce8f'],
+      'abandoned cargo':['color-mix(in srgb,#6fce8f 16%,transparent)','#6fce8f'],
+      'debris fragment':['color-mix(in srgb,#6fce8f 16%,transparent)','#6fce8f'],
+      'rogue drone':['color-mix(in srgb,#e0736b 16%,transparent)','#e0736b'],
+      'booby trap':['color-mix(in srgb,#e0736b 16%,transparent)','#e0736b'],
+    };
+    const sraw = [
+      ['1:41 PM','Kepler-442','rift','anomaly rift','12,480','3,120','5,540','340',1],
+      ['1:26 PM','Trappist-1e','sentinel','resource cache','8,920','1,880','4,210','120',0],
+      ['1:11 PM','Gliese-581g','open','rogue drone','—','—','—','—',3],
+      ['12:56 PM','Wolf-1061c','dead','ancient signal','21,340','6,700','9,120','880',0],
+      ['12:41 PM','Proxima-b','sentinel','abandoned cargo','5,610','980','2,340','60',0],
+      ['12:26 PM','Ross-128b','open','booby trap','—','—','—','—',2],
+      ['12:11 PM','Teegarden-c','rift','anomaly rift','14,220','4,010','6,180','410',0],
+    ];
+    const surveyRows = sraw.map(r => {
+      const [eb,ec] = evtTint[r[3]] || ['var(--color-neutral-800)','var(--color-neutral-100)'];
+      return { date:r[0], system:r[1], zone:r[2], zoneColor:this.ZONE[r[2]]||this.ZONE.unknown,
+        event:r[3], evtBg:eb, evtColor:ec, ore:r[4], hydrogen:r[5], silicates:r[6], alloys:r[7],
+        lost: r[8] ? String(r[8]) : '—', lostColor: r[8] ? '#e0736b' : 'color-mix(in srgb,var(--color-text) 30%,transparent)' };
+    });
+
+    // ── Asteroids data ──
+    const typeChips = [['Ore',this.RES.ore],['Plasma',this.RES.plasma],['Cryo',this.RES.hydrogen],['Gas',this.RES.silicates]].map(([label,color],i)=>({
+      label,
+      style:'padding:5px 11px; border-radius:8px; font-size:12px; border:1px solid '+(i<2?color:'var(--color-divider)')+'; '
+        +(i<2 ? 'color:'+color+'; background:color-mix(in srgb,'+color+' 12%,transparent);' : 'color:color-mix(in srgb,var(--color-text) 60%,transparent);'),
+    }));
+    const TYPEMETA = { Ore:[this.RES.ore,'ph ph-mountains'], Plasma:[this.RES.plasma,'ph ph-fire'], Cryo:[this.RES.hydrogen,'ph ph-snowflake'], Gas:[this.RES.silicates,'ph ph-wind'] };
+    const araw = [
+      ['G21-52-AF1','Ore',3.4,88,'320k / 364k','sentinel','—','2.1 ly','1,840','8× Mining Vessel'],
+      ['G18-04-AF3','Plasma',4.1,72,'184k / 256k','rift','Vekari','6.8 ly','5,120','5× Mining Vessel'],
+      ['G22-77-AF2','Ore',2.8,54,'142k / 262k','open','—','3.4 ly','2,410','6× Mining Vessel'],
+      ['G20-11-AF1','Gas',3.9,91,'240k / 264k','sentinel','—','1.9 ly','1,610','6× Gas Collector'],
+      ['G19-63-AF4','Cryo',3.1,47,'98k / 208k','dead','Corell','9.2 ly','7,880','7× Ice Drill'],
+      ['G21-52-AF6','Ore',2.2,63,'156k / 248k','sentinel','You','0.8 ly','740','5× Mining Vessel'],
+      ['G24-09-AF2','Plasma',4.6,80,'210k / 262k','rift','—','7.4 ly','5,640','4× Mining Vessel'],
+    ];
+    const multColor = m => m>=4 ? '#6fce8f' : m>=3 ? this.RES.alloys : 'color-mix(in srgb,var(--color-text) 80%,transparent)';
+    const asteroidRows = araw.map(r => {
+      const [tc,ti] = TYPEMETA[r[1]];
+      return { system:r[0], type:r[1], typeColor:tc, typeIcon:ti, mult:'×'+r[2].toFixed(1), multColor:multColor(r[2]),
+        leftPct:r[3]+'%', leftWidth:r[3]+'%', content:r[4], zone:r[5], zoneColor:this.ZONE[r[5]]||this.ZONE.unknown,
+        outpost:r[6], distance:r[7], fuel:r[8], rec:r[9] };
+    });
+
+    // ── Tech tree data ──
+    const legend = [['Available',A],['Researched','#7f76c9'],['Researching',this.RES.alloys],['Maxed','#6fce8f'],['Locked','#3f424d']];
+    const ST = {
+      maxed:{ border:'#6fce8f', bg:'var(--color-surface)', op:'1' },
+      researched:{ border:A, bg:'var(--color-surface)', op:'1' },
+      researching:{ border:this.RES.alloys, bg:'color-mix(in srgb,'+this.RES.alloys+' 8%,var(--color-surface))', op:'1' },
+      available:{ border:'#b5abfc', bg:'color-mix(in srgb,'+A+' 12%,var(--color-surface))', op:'1', glow:true },
+      locked:{ border:'#3f424d', bg:'var(--color-surface)', op:'0.5' },
+    };
+    const NODEDEF = [
+      ['n0',0,0,'Energy Grid','Lv. 10 · max','maxed'],
+      ['n1',0,1,'Basic Mining','Lv. 10 · max','maxed'],
+      ['n2',1,0,'Impulse Drive','Lv. 6','researched'],
+      ['n3',1,1,'Ore Refining','Lv. 5','researched'],
+      ['n4',1,2,'Silicate Processing','Lv. 8 · max','maxed'],
+      ['n5',2,0,'Warp Drive','Lv. 3 → 4','researching'],
+      ['n6',2,1,'Fuel Efficiency','Lv. 1 · ready','available'],
+      ['n7',2,2,'Expanded Warehousing','Lv. 2 · ready','available'],
+      ['n8',3,0,'Quantum Synthesis','locked','locked'],
+      ['n9',3,1,'Antimatter Reactor','locked','locked'],
+      ['n10',3,2,'Deep Space Sensors','locked','locked'],
+    ];
+    const NW=196, NH=60, GX=24, GY=26, DX=232, DY=96;
+    const pos = {};
+    const nodes = NODEDEF.map(([id,tier,row,name,meta,st]) => {
+      const left = GX + tier*DX, top = GY + row*DY;
+      pos[id] = { left, top };
+      const s = ST[st];
+      return { id, name, meta,
+        metaColor: st==='available' ? '#b5abfc' : st==='researching' ? this.RES.alloys : 'color-mix(in srgb,var(--color-text) 50%,transparent)',
+        style:'position:absolute; box-sizing:border-box; left:'+left+'px; top:'+top+'px; width:'+NW+'px; height:'+NH+'px; padding:9px 12px; border-radius:8px; background:'+s.bg+'; border:1px solid var(--color-divider); border-left:3px solid '+s.border+'; opacity:'+s.op+';'
+          + (s.glow ? ' box-shadow:0 0 14px color-mix(in srgb,'+A+' 40%,transparent);' : ''),
+        addStyle: (st==='available'||st==='researching') ? 'position:absolute; top:6px; right:7px; width:17px; height:17px; border-radius:50%; background:'+A+'; color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; cursor:pointer;' : 'display:none;',
+      };
+    });
+    const EDG = [['n0','n2'],['n0','n6'],['n1','n3'],['n1','n4'],['n2','n5'],['n3','n7'],['n4','n7'],['n5','n8'],['n6','n9'],['n5','n10']];
+    const hot = new Set(['n0-n2','n2-n5','n5-n8','n5-n10']);
+    const edges = EDG.map(([a,b]) => {
+      const p = pos[a], q = pos[b];
+      const x1 = p.left+NW, y1 = p.top+NH/2, x2 = q.left, y2 = q.top+NH/2, mx=(x1+x2)/2;
+      const key = a+'-'+b, isHot = hot.has(key);
+      return { d:'M'+x1+','+y1+' C'+mx+','+y1+' '+mx+','+y2+' '+x2+','+y2, color: isHot ? A : 'var(--color-divider)', w: isHot ? '2' : '1.5' };
+    });
+    const graphW = (GX + 4*DX) + 'px';
+    const queue = [
+      { seq:'1', name:'Warp Drive → Lv. 4', eta:'researching · 2h 14m left', nameColor:this.RES.alloys, active:true },
+      { seq:'2', name:'Fuel Efficiency → Lv. 2', eta:'queued · 1h 50m', nameColor:'var(--color-text)' },
+      { seq:'3', name:'Expanded Warehousing → Lv. 3', eta:'queued · 2h 36m', nameColor:'var(--color-text)' },
+    ].map(q => ({ ...q, wrap:'display:flex; align-items:center; gap:9px; padding:9px 0; border-bottom:1px solid var(--color-divider); '+(q.active?'border-left:2px solid '+this.RES.alloys+'; padding-left:8px;':'') }));
+
+    // ── Market data ──
+    const RESN = { Ore:this.RES.ore, Silicates:this.RES.silicates, Hydrogen:this.RES.hydrogen, Alloys:this.RES.alloys, 'Plasma Core':this.RES.plasma, 'Quantum Dust':this.RES.quantum };
+    const buyChips = ['Ore','Silicates','Hydrogen','Alloys','Plasma'].map((label,i)=>({ label, style:this.mChip(label==='Plasma'?this.RES.plasma:RESN[label], i<2) }));
+    const sellChips = ['Ore','Silicates','Hydrogen','Alloys','Plasma'].map((label,i)=>({ label, style:this.mChip(label==='Plasma'?this.RES.plasma:RESN[label], i===2) }));
+    const mraw = [
+      ['Alloys','Ore',0.20,'12,400','Vekari Trade Co.','sentinel',0.20],
+      ['Plasma Core','Silicates',0.14,'860','Corell Holdings','rift',0.14],
+      ['Hydrogen','Ore',0.82,'48,200','Free Miners','open',0.82],
+      ['Silicates','Ore',1.94,'96,000','Vekari Trade Co.','sentinel',1.94],
+      ['Ore','Hydrogen',1.18,'120,400','Orion Cartel','dead',1.18],
+      ['Quantum Dust','Alloys',0.06,'320','Deep Reach','rift',0.06],
+      ['Alloys','Silicates',0.42,'8,900','Free Miners','open',0.42],
+      ['Hydrogen','Silicates',0.55,'64,000','Corell Holdings','sentinel',0.55],
+    ];
+    const marketRows = mraw.map(r => ({
+      offer:r[0], offerColor:RESN[r[0]]||'#9397ab', for:r[1], forColor:RESN[r[1]]||'#9397ab',
+      ratio:r[2].toFixed(2), ratioColor: r[6]>=1 ? '#6fce8f' : r[6]>=0.5 ? this.RES.alloys : 'color-mix(in srgb,var(--color-text) 70%,transparent)',
+      available:r[3], trader:r[4], zone:r[5], zoneColor:this.ZONE[r[5]]||this.ZONE.unknown,
+    }));
+
+    // ── Scouting data ──
+    const SZ = [['sentinel','#6fce8f'],['open','#e0a24e'],['dead','#e0736b'],['rift','#b5abfc']];
+    const zchip = (on,color) => 'padding:4px 11px; border-radius:8px; font-size:12px; cursor:pointer; text-transform:capitalize; border:1px solid '+color+'; '
+      + (on ? 'color:var(--color-bg); background:'+color+';' : 'color:'+color+'; background:transparent;');
+    const surveyZoneChips = SZ.map(([z,c],i) => ({ label:z, style:zchip(i===0||i===3, c) }));
+    const debrisZoneChips = SZ.map(([z,c],i) => ({ label:z, style:zchip(i===0, c) }));
+    const cargoChips = [['Bulk Carrier',true],['Ore Freighter',true],['Freighter',false],['Transport Shuttle',false]].map(([label,on]) => ({
+      label,
+      style:'padding:5px 11px; border-radius:8px; font-size:12px; cursor:pointer; border:2px solid '+(on?'#6fce8f':'var(--color-divider)')+'; '
+        + (on ? 'color:#6fce8f; background:color-mix(in srgb,#6fce8f 12%,transparent);' : 'color:color-mix(in srgb,var(--color-text) 45%,transparent); opacity:0.75;'),
+    }));
+    const scBtn = (label,primary) => ({ label, cls: primary?'btn btn-primary':'btn btn-secondary',
+      style: 'padding:5px 12px; font-size:12px; white-space:nowrap;' + (primary?'':' opacity:0.55;') });
+    const transit = [
+      { name:'Kepler-442 · Survey', prog:this.mkProg(true,'Returning',78,'#6fce8f','4m 12s') },
+      { name:'Wolf-1061c · Survey', prog:this.mkProg(true,'En route',34,A,'11m 40s') },
+    ];
+    const surveyRows2 = [
+      { sys:'Teegarden-c', anomaly:'Ancient Signal', zone:'rift', fuel:'1,240', travel:'6m 20s', expires:'42m', prog:this.mkProg(false), btn:scBtn('Investigate',true) },
+      { sys:'LHS-1140b', anomaly:'Rogue Drone', zone:'dead', fuel:'2,980', travel:'9m 00s', expires:'1h 12m', prog:this.mkProg(true,'Investigating',55,'#d8b055','5m 30s'), btn:scBtn('Investigating…',false) },
+      { sys:'Ross-128b', anomaly:'Resource Cache', zone:'sentinel', fuel:'640', travel:'3m 40s', expires:'28m', prog:this.mkProg(false), btn:scBtn('Investigate',true) },
+      { sys:'Gliese-581g', anomaly:'Anomaly Rift', zone:'open', fuel:'—', travel:'—', expires:'—', prog:this.mkProg(true,'Returning',88,'#6fce8f','2m 05s'), btn:scBtn('Returning…',false) },
+    ].map(r => ({ ...r, zoneColor:this.ZONE[r.zone]||this.ZONE.unknown }));
+    const debrisRows = [
+      { sys:'G21-52', zone:'sentinel', ore:'42,000', sil:'18,000', alloys:'6,400', total:'66,400', ships:'3× Bulk Carrier', fuel:'1,840', travel:'4m 10s', prog:this.mkProg(true,'Collecting',40,'#d8b055','6m 40s'), btn:scBtn('Collecting…',false) },
+      { sys:'G18-04', zone:'rift', ore:'28,500', sil:'9,200', alloys:'12,800', total:'50,500', ships:'2× Bulk Carrier', fuel:'5,120', travel:'12m', prog:this.mkProg(false), btn:scBtn('Collect',true) },
+      { sys:'G22-77', zone:'open', ore:'16,400', sil:'6,100', alloys:'2,300', total:'24,800', ships:'1× Bulk Carrier', fuel:'2,410', travel:'7m', prog:this.mkProg(false), btn:scBtn('Collect',true) },
+      { sys:'G20-11', zone:'sentinel', ore:'9,800', sil:'3,400', alloys:'900', total:'14,100', ships:'1× Freighter', fuel:'740', travel:'2m', prog:this.mkProg(false), btn:scBtn('Collect',true) },
+    ].map(r => ({ ...r, zoneColor:this.ZONE[r.zone]||this.ZONE.unknown }));
+    const salvageRows = [
+      { sys:'Wolf-1061c', zone:'dead', left:'Ore 8,200 · Sil 3,100 · Plasma 240', total:'11,540', ships:'2× Freighter', fuel:'3,420', travel:'6m', expires:'22m', prog:this.mkProg(false), btn:scBtn('Collect',true) },
+      { sys:'Proxima-b', zone:'sentinel', left:'Ore 4,600 · Alloys 900', total:'5,500', ships:'1× Freighter', fuel:'610', travel:'3m', expires:'48m', prog:this.mkProg(true,'Collecting',30,'#d8b055','4m 50s'), btn:scBtn('Collecting…',false) },
+    ].map(r => ({ ...r, zoneColor:this.ZONE[r.zone]||this.ZONE.unknown }));
+
+    // ── Combat simulator data ──
+    const RED = '#e0736b', GRN = '#6fce8f';
+    const combatFleets = [
+      { side:'ATTACKER', icon:'ph-bold ph-lightning', name:'Simulator Attacker', accent:RED,
+        grad:'linear-gradient(120deg, color-mix(in srgb,'+RED+' 20%, var(--color-surface)), var(--color-surface) 68%)',
+        ship:'Cruiser', lost:'-53', remain:'547', remainColor:GRN },
+      { side:'DEFENDER', icon:'ph-bold ph-shield', name:'Simulator Defender', accent:A,
+        grad:'linear-gradient(120deg, color-mix(in srgb,'+A+' 18%, var(--color-surface)), var(--color-surface) 68%)',
+        ship:'Cruiser', lost:'-250', remain:'0', remainColor:RED },
+    ];
+    const combatRounds = [
+      { n:1, aDmg:'42,000', dDmg:'14,750', atk:96, def:76, aLost:'15', dLost:'60' },
+      { n:2, aDmg:'37,232', dDmg:'13,532', atk:93, def:55, aLost:'14', dLost:'53' },
+      { n:3, aDmg:'39,909', dDmg:'7,891',  atk:91, def:32, aLost:'14', dLost:'57' },
+      { n:4, aDmg:'35,453', dDmg:'4,437',  atk:90, def:12, aLost:'10', dLost:'50' },
+      { n:5, aDmg:'20,405', dDmg:'1,679',  atk:90, def:0,  aLost:null, dLost:'30' },
+    ].map(r => ({ ...r, showALost: r.aLost !== null }));
+    const combatLosses = [
+      { label:'Attacker Losses', qty:'53× Cruiser',  detail:'(38 destroyed, 15 repairable)' },
+      { label:'Defender Losses', qty:'250× Cruiser', detail:'(175 destroyed, 75 repairable)' },
+    ];
+    const combatDebris = [
+      { label:'Ore', value:'213,000' },
+      { label:'Silicates', value:'106,500' },
+      { label:'Alloys', value:'26,625' },
+    ];
+    const simRoster = ['Frigate','Cruiser','Destroyer','Battlecruiser','Battleship','Carrier'];
+    const simPanels = [
+      { side:'ATTACKER', icon:'ph-bold ph-lightning', name:'Simulator Attacker', accent:RED,
+        grad:'linear-gradient(120deg, color-mix(in srgb,'+RED+' 14%, var(--color-surface)), var(--color-surface) 70%)',
+        ships: simRoster.map(s => ({ name:s, qty: s==='Cruiser' ? '600' : '0' })),
+        tech: [{ label:'Weapons', val:'12' },{ label:'Shielding', val:'11' },{ label:'Armor', val:'10' }] },
+      { side:'DEFENDER', icon:'ph-bold ph-shield', name:'Simulator Defender', accent:A,
+        grad:'linear-gradient(120deg, color-mix(in srgb,'+A+' 12%, var(--color-surface)), var(--color-surface) 70%)',
+        ships: simRoster.map(s => ({ name:s, qty: s==='Cruiser' ? '250' : '0' })),
+        tech: [{ label:'Weapons', val:'10' },{ label:'Shielding', val:'10' },{ label:'Armor', val:'9' }] },
+    ];
+
+    return {
+      rootRef:this.rootRef, navGroups, screenTitle, screenSub, viewOpts,
+      isGlobal: cur==='global' && !isStub, isSurveys: cur==='surveys' && !isStub,
+      isAsteroids: cur==='asteroids' && !isStub, isTech: cur==='techtree' && !isStub,
+      isMarket: cur==='market' && !isStub, isScouting: cur==='scouting' && !isStub, isStub, stubIcon: STUBICON[cur] || 'ph ph-squares-four',
+      gPeriodRef:this.gPeriodRef, gCompRef:this.gCompRef, sPeriodRef:this.sPeriodRef, sEventsRef:this.sEventsRef,
+      kpis, sources, eventChips, surveyCollected, surveyLost, surveyNet, surveyCols, surveyRows,
+      typeChips, asteroidRows, legend, nodes, edges, graphW, queue, buyChips, sellChips, marketRows,
+      surveyZoneChips, debrisZoneChips, cargoChips, transit, surveyRows2, debrisRows, salvageRows,
+      isCombat: cur==='combatsim' && !isStub, goCombat: () => this.go('combatsim', true),
+      defColor: A, combatFleets, combatRounds, combatLosses, combatDebris, simPanels,
+    };
+  }
+
+  mChip(color, on) {
+    return 'width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; '
+      + (on ? 'color:'+color+'; border:2px solid '+color+'; background:color-mix(in srgb,'+color+' 14%,transparent);'
+            : 'color:color-mix(in srgb,var(--color-text) 45%,transparent); border:2px solid var(--color-divider); opacity:0.7;');
+  }
+
+  mkProg(active, phase, pct, color, eta) {
+    if (!active) return { phase:'—', eta:'', trackStyle:'display:none;', fillStyle:'',
+      capStyle:'', phaseStyle:'font-size:11px; color:color-mix(in srgb,var(--color-text) 30%,transparent);', etaStyle:'' };
+    return {
+      phase, eta: eta || '',
+      trackStyle:'height:6px; border-radius:4px; background:color-mix(in srgb,var(--color-text) 8%,transparent); overflow:hidden; min-width:120px;',
+      fillStyle:'height:100%; border-radius:4px; width:'+pct+'%; background:'+color+';',
+      capStyle:'display:flex; justify-content:space-between; gap:6px; margin-top:3px;',
+      phaseStyle:'font-size:11px; color:'+color+';',
+      etaStyle:'font-size:11px; font-variant-numeric:tabular-nums; color:color-mix(in srgb,var(--color-text) 50%,transparent);',
+    };
+  }
+
+  applyTheme() {
+    const el = this.rootRef.current; if (!el) return;
+    el.style.setProperty('--color-accent', this.props.accent || '#9184d9');
+    if ((this.props.density || 'Comfortable') === 'Compact') {
+      el.style.setProperty('--nx-pad', '9px'); el.style.setProperty('--nx-row', '5px 12px');
+    } else {
+      el.style.setProperty('--nx-pad', '14px'); el.style.setProperty('--nx-row', '9px 12px');
+    }
+  }
+
+  componentDidMount() { this.applyTheme(); this.draw(); }
+  componentDidUpdate() { this.applyTheme(); this.draw(); }
+
+  draw() {
+    if (!window.Chart) { setTimeout(() => this.draw(), 120); return; }
+    const Chart = window.Chart;
+    Chart.defaults.color = '#9397ab';
+    Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+    Chart.defaults.font.size = 11;
+    for (const k of Object.keys(this.charts)) { try { this.charts[k].destroy(); } catch(e){} }
+    this.charts = {};
+    const A = this.props.accent || '#9184d9';
+    const R = this.RES;
+    const grid = { color:'#292b31' }, tick = { color:'#75798c' };
+    const scale = { x:{ ticks:tick, grid }, y:{ ticks:tick, grid } };
+    const days = ['Aug 13','Aug 14','Aug 15','Aug 16','Aug 17','Aug 18','Aug 19'];
+    const gen = (b,j) => days.map((_,i) => Math.round(b + Math.sin(i*0.9)*j + i*j*0.14));
+
+    const s = this.state.screen;
+    if (s === 'global') {
+      if (this.gPeriodRef.current) this.charts.gp = new Chart(this.gPeriodRef.current, {
+        type:'line',
+        data:{ labels:days, datasets:[
+          { label:'Ore', data:gen(280000,42000), borderColor:R.ore, backgroundColor:R.ore+'1f', fill:true, tension:0.35, pointRadius:0 },
+          { label:'Silicates', data:gen(160000,26000), borderColor:R.silicates, backgroundColor:R.silicates+'1f', fill:true, tension:0.35, pointRadius:0 },
+          { label:'Hydrogen', data:gen(88000,15000), borderColor:R.hydrogen, backgroundColor:R.hydrogen+'1f', fill:true, tension:0.35, pointRadius:0 },
+        ]},
+        options:{ responsive:true, plugins:{ legend:{ labels:{ color:'#c7cad6', usePointStyle:true, pointStyle:'line' } } }, scales:scale },
+      });
+      if (this.gCompRef.current) this.charts.gc = new Chart(this.gCompRef.current, {
+        type:'doughnut', data:{ labels:['Ore 55.6%','Silicates 31.1%','Hydrogen 16.0%','Alloys 1.2%'],
+          datasets:[{ data:[4182540,2341880,1205320,88410], backgroundColor:[R.ore,R.silicates,R.hydrogen,R.alloys], borderColor:'#232532', borderWidth:2 }] },
+        options:{ responsive:true, cutout:'62%', plugins:{ legend:{ position:'right', labels:{ color:'#c7cad6', usePointStyle:true, boxWidth:8 } } } },
+      });
+    } else if (s === 'surveys') {
+      if (this.sPeriodRef.current) this.charts.sp = new Chart(this.sPeriodRef.current, {
+        type:'line', data:{ labels:days, datasets:[
+          { label:'Ore', data:gen(190000,30000), borderColor:R.ore, backgroundColor:R.ore+'1f', fill:true, tension:0.35, pointRadius:0 },
+          { label:'Silicates', data:gen(110000,18000), borderColor:R.silicates, backgroundColor:R.silicates+'1f', fill:true, tension:0.35, pointRadius:0 },
+          { label:'Hydrogen', data:gen(56000,9000), borderColor:R.hydrogen, backgroundColor:R.hydrogen+'1f', fill:true, tension:0.35, pointRadius:0 },
+        ]},
+        options:{ responsive:true, plugins:{ legend:{ labels:{ color:'#c7cad6', usePointStyle:true, pointStyle:'line' } } }, scales:scale },
+      });
+      if (this.sEventsRef.current) this.charts.se = new Chart(this.sEventsRef.current, {
+        type:'doughnut', data:{ labels:['anomaly rift 34%','resource cache 28%','ancient signal 18%','rogue drone 12%','booby trap 8%'],
+          datasets:[{ data:[34,28,18,12,8], backgroundColor:[A,'#6fce8f','#7fb8f2',R.alloys,'#e0736b'], borderColor:'#232532', borderWidth:2 }] },
+        options:{ responsive:true, cutout:'62%', plugins:{ legend:{ position:'right', labels:{ color:'#c7cad6', usePointStyle:true, boxWidth:8 } } } },
+      });
+    }
+  }
+}
+</script>
+</body>
+</html>
