@@ -26,7 +26,7 @@ FILES = [
     'manifest.json',
     'package.json',
     'CHANGELOG.md',
-    'background-sw.js', 'background.js', 'sidebar-inject.js',
+    'background-sw.js', 'background.js', 'storage-keys.js', 'sidebar-inject.js',
     'galaxy-fetch-hook.js', 'galaxy-fields.js', 'empire-view.js', 'guide-view.js', 'logistics-view.js', 'upgrade-queue.js', 'building-upgrade.js', 'tech-upgrade.js', 'ship-upgrade.js',
     'dashboard.html', 'dashboard.css', 'dashboard.js', 'common.js',
     'tabs/global.js', 'tabs/surveys.js', 'tabs/pirates.js', 'tabs/mining.js',
