@@ -53,6 +53,26 @@ test('damaged ships add 50% repair cost to losses', async () => {
   assert.equal(store.resources_lost.repair.ore, 100, 'rebuild keeps repair');
 });
 
+test('records_cap: 0 means unlimited, positive values are enforced', async () => {
+  const bg = await loadBackground();
+
+  // Direct sentinel resolution.
+  assert.equal(bg.resolveRecordsCap(0), Infinity, '0 must resolve to unlimited');
+  assert.equal(bg.resolveRecordsCap(100), 100, 'positive value must be kept');
+  assert.equal(bg.resolveRecordsCap(undefined), 5000, 'missing falls back to default');
+  assert.equal(bg.resolveRecordsCap(null), 5000, 'null falls back to default');
+
+  // End-to-end: a stored 0 must keep more than the old 5000 hardcap.
+  const N = 5200;
+  const store = makeBrowserStub({ records_cap: 0 });
+  const bg2 = await loadBackground();
+  const reports = Array.from({ length: N }, (_, i) =>
+    surveyReport(i + 1, '2026-06-10'));
+  await bg2.processSurveyReports(reports, SHIPS);
+  assert.equal(store.recent_reports.length, N,
+    '0 must not truncate to the 5000 default cap');
+});
+
 test('security zone resolution', async () => {
   const bg = await loadBackground();
   assert.equal(bg.systemFromLocation('A12-27 / A12-27-AF1'), 'A12-27');

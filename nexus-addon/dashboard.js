@@ -37,8 +37,8 @@ export async function loadAll() {
     'research', 'research_speed_mult', 'active_research', 'fuel_log',
   ]));
 
-  const cap = store.records_cap ?? 5000;
-  document.getElementById('records-cap').value = cap === Infinity ? 0 : cap;
+  // A stored 0 means "unlimited"; missing falls back to the default cap.
+  document.getElementById('records-cap').value = store.records_cap ?? 5000;
   updateStatus(store.last_scrape, store.last_error);
   renderAll();
   updateStorageFooter();
@@ -264,7 +264,8 @@ document.getElementById('btn-reset').addEventListener('click', async function ()
   await browser.runtime.sendMessage({ type: 'BACKUP_NOW', reason: 'pre-reset' });
   const { records_cap } = await browser.storage.local.get('records_cap');
   await browser.storage.local.clear();
-  if (records_cap) await browser.storage.local.set({ records_cap });
+  // Preserve the cap across reset, including 0 ("unlimited").
+  if (records_cap != null) await browser.storage.local.set({ records_cap });
   await loadAll();
 });
 
@@ -281,9 +282,11 @@ document.getElementById('btn-save-cap').addEventListener('click', async function
   const input = document.getElementById('records-cap');
   const raw = parseInt(input.value.trim(), 10);
   if (isNaN(raw) || raw < 0) return;
-  const val = raw === 0 ? Infinity : raw;
-  await browser.storage.local.set({ records_cap: val });
-  input.value = val === Infinity ? 0 : val;
+  // Store 0 verbatim as the "unlimited" sentinel — JSON storage cannot persist
+  // Infinity (it round-trips to null), which is what caused 0 to fall back to
+  // the default cap. background.js treats a stored 0 as unlimited.
+  await browser.storage.local.set({ records_cap: raw });
+  input.value = raw;
   input.style.borderColor = '#30363d';
   input.style.color = '#e6edf3';
   document.getElementById('cap-warning').style.display = 'none';
@@ -326,8 +329,7 @@ document.getElementById('btn-rebuild').addEventListener('click', async function 
 
 document.getElementById('btn-export').addEventListener('click', async function () {
   const data = await browser.storage.local.get(null);
-  // JSON cannot represent Infinity (unlimited records cap) — store as 0.
-  if (data.records_cap === Infinity) data.records_cap = 0;
+  // records_cap is already stored as a plain number (0 = unlimited).
   const payload = {
     nexus_accounting_backup: 1,
     exported_at: new Date().toISOString(),
@@ -397,7 +399,7 @@ document.getElementById('import-file').addEventListener('change', async function
 
     await browser.runtime.sendMessage({ type: 'BACKUP_NOW', reason: 'pre-import' });
     const data = payload.data;
-    if (data.records_cap === 0) data.records_cap = Infinity;
+    // records_cap is stored verbatim (0 = unlimited); no Infinity conversion.
     await browser.storage.local.clear();
     await browser.storage.local.set(data);
     await loadAll();
