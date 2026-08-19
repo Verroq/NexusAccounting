@@ -61,7 +61,7 @@ const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes; add a MIGRATIONS entry for it.
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 const DEFAULT_RECORDS_CAP = 5000;
 // Resolve the stored records_cap into a slice length. A stored 0 means
@@ -2735,6 +2735,21 @@ const MIGRATIONS = {
     const archiveShardRe = new RegExp(`^(${ARCHIVE_TYPES.join('|')})_archive_\\d{4}-\\d{2}$`);
     for (const k of Object.keys(all)) {
       if (archiveShardRe.test(k)) patch[`s0__${k}`] = all[k];
+    }
+    if (Object.keys(patch).length) await browser.storage.local.set(patch);
+  },
+  // v12: SCOPED_KEYS grew after v11 shipped (zone/coords caches, spy_reports/
+  // camp_scout_reports, fuel_log/fuel_counted_ids) — installs that already
+  // crossed v11 never got those newly-scoped keys copied to their s0__ prefix,
+  // since ensureSchema() only runs a version's migration once. Backfill any
+  // SCOPED_KEYS key still missing its s0__ counterpart, same copy v11 did.
+  // Unlike v11, only fills gaps (skips keys that already have an s0__ value)
+  // so it doesn't clobber real per-universe data written since v11 ran.
+  12: async () => {
+    const all = await browser.storage.local.get(null);
+    const patch = {};
+    for (const k of SCOPED_KEYS) {
+      if (k in all && !(`s0__${k}` in all)) patch[`s0__${k}`] = all[k];
     }
     if (Object.keys(patch).length) await browser.storage.local.set(patch);
   },
