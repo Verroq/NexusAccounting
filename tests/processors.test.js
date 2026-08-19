@@ -502,6 +502,77 @@ test('migration v4 moves legacy archives into shards', async () => {
   assert.ok(store.schema_version >= 4);
 });
 
+test('nsGet/nsSet namespace storage.local keys by the active universe', async () => {
+  makeBrowserStub();
+  const bg = await loadBackground();
+
+  await bg.nsSet({ totals: { ore: 1 } });
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(raw, { s0__totals: { ore: 1 } }, 'nsSet prefixes with the default universe (s0)');
+
+  const got = await bg.nsGet(['totals']);
+  assert.deepEqual(got, { totals: { ore: 1 } }, 'nsGet reads back under the plain key name');
+
+  await bg.nsRemove(['totals']);
+  assert.deepEqual(await browser.storage.local.get(null), {}, 'nsRemove clears the prefixed key');
+});
+
+test('nsGet/nsSet isolate data between universes', async () => {
+  makeBrowserStub();
+  const bg = await loadBackground();
+
+  await bg.nsSet({ totals: { ore: 1 } });   // currentUniverse defaults to 's0'
+  bg.setCurrentUniverse('nf');
+  await bg.nsSet({ totals: { ore: 2 } });
+
+  assert.equal((await bg.nsGet(['totals'])).totals.ore, 2, 'nf write does not clobber s0');
+
+  bg.setCurrentUniverse('s0');
+  assert.equal((await bg.nsGet(['totals'])).totals.ore, 1, 's0 data is untouched by the nf write');
+
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(Object.keys(raw).sort(), ['nf__totals', 's0__totals'], 'both universes live under distinct prefixed keys');
+});
+
+test('migration v11 copies flat legacy keys to s0__-prefixed keys without deleting the originals', async () => {
+  makeBrowserStub();
+  // Seed pre-migration flat data exactly as it existed on disk before
+  // multi-universe support shipped — every pre-existing install's data
+  // belongs to s0. Seeded via the raw storage.local mock (not the
+  // makeBrowserStub() Proxy) so these land as genuinely flat, unprefixed keys.
+  await browser.storage.local.set({
+    schema_version: 10,
+    totals: { ore: 500, missions: 3 },
+    recent_reports: [{ id: 1, created_at: '2026-06-01T00:00:00Z' }],
+    seen_ids: [1],
+    archive_index: {
+      survey: { months: ['2026-06'], count: 1 },
+      pirate: { months: [], count: 0 }, mining: { months: [], count: 0 },
+      exp: { months: [], count: 0 }, xeno: { months: [], count: 0 },
+    },
+    'survey_archive_2026-06': [{ id: 1, created_at: '2026-06-01T00:00:00Z', ore: 500 }],
+    ships: { 1: { key: 'scout' } },   // out-of-scope key: must NOT get an s0__ copy
+  });
+  const bg = await loadBackground();
+
+  await bg.ensureSchema();
+
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(raw.s0__totals, { ore: 500, missions: 3 });
+  assert.deepEqual(raw.s0__recent_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
+  assert.deepEqual(raw.s0__seen_ids, [1]);
+  assert.deepEqual(raw['s0__survey_archive_2026-06'], [{ id: 1, created_at: '2026-06-01T00:00:00Z', ore: 500 }]);
+  // originals left in place — deliberate, see MIGRATIONS[11] in background.js
+  assert.deepEqual(raw.totals, { ore: 500, missions: 3 });
+  assert.deepEqual(raw.recent_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
+  // out-of-scope keys are never copied
+  assert.equal(raw.s0__ships, undefined);
+  assert.ok(raw.schema_version >= 11);
+
+  // functionally readable through the new namespaced path, not just present on disk
+  assert.equal((await bg.loadArchive('survey')).length, 1);
+});
+
 test('drift detection flags corruption; rebuild repairs and clears it', async () => {
   const store = makeBrowserStub({ ships: SHIPS });
   const bg = await loadBackground();
