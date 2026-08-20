@@ -602,12 +602,6 @@ input.tech-input {
   font-size: 0.78rem; color: var(--color-muted); margin-bottom: 12px; cursor: pointer;
 }
 
-.tip-box {
-  background: var(--color-surface); border: 1px solid var(--color-divider); border-left: 3px solid var(--color-warning);
-  border-radius: var(--radius-md); padding: 10px 14px; font-size: 0.8rem; color: var(--color-muted);
-  margin-bottom: 20px;
-}
-
 .survivors { margin-left: 8px; font-size: 0.75rem; white-space: nowrap; }
 
 .win-attacker { color: var(--color-danger); }
