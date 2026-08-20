@@ -16,7 +16,7 @@ export default [
   },
   {
     files: ['tests/**/*.js', 'eslint.config.js'],
-    languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: { ...globals.node } },
+    languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: { ...globals.node, browser: 'readonly' } },
   },
   { rules: { 'no-unused-vars': 'warn' } },
   { ignores: ['nexus-addon/chart.umd.js', 'nexus-addon/browser-polyfill.js'] },
