@@ -254,6 +254,13 @@ function renderFleetResultCards(result) {
   }
 }
 
+// "N× Cruiser, 1× Frigate" from a round's { key: count } loss breakdown.
+function lostDetail(byType) {
+  return Object.entries(byType || {})
+    .map(([key, n]) => `${n}× ${shipDefs[key]?.name || key}`)
+    .join(', ');
+}
+
 // "Combat Rounds" — one representative run, shown as a round-by-round card
 // list (like the in-game report). aDmg/dDmg and ATK/DEF% come straight from
 // engine.js's trace; the attacker-loss line is hidden on rounds it took none
@@ -295,13 +302,13 @@ function renderSampleBattle(attackerFleet, defenderFleet, opts) {
     if (r.attackerLost) {
       const a = document.createElement('div');
       a.className = 'sim-round-loss-a';
-      a.textContent = `✕ Lost: ${r.attackerLost} ship${r.attackerLost === 1 ? '' : 's'}`;
+      a.textContent = `✕ Lost: ${lostDetail(r.attackerLostByType)}`;
       losses.appendChild(a);
     }
     if (r.defenderLost) {
       const d = document.createElement('div');
       d.className = 'sim-round-loss-d';
-      d.textContent = `⛨ Lost: ${r.defenderLost} ship${r.defenderLost === 1 ? '' : 's'}`;
+      d.textContent = `⛨ Lost: ${lostDetail(r.defenderLostByType)}`;
       losses.appendChild(d);
     }
 

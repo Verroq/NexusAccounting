@@ -354,11 +354,21 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
 
   // Optional round-by-round trace (for the "sample battle" / Combat Rounds display).
   const curHp = arr => arr.reduce((m, s) => m + Math.max(0, s.hp) + Math.max(0, s.shield), 0);
+  const countByType = arr => arr.reduce((m, s) => { m[s.key] = (m[s.key] || 0) + 1; return m; }, {});
+  const lostByType = (before, after) => {
+    const out = {};
+    for (const [key, n] of Object.entries(before)) {
+      const d = n - (after[key] || 0);
+      if (d > 0) out[key] = d;
+    }
+    return out;
+  };
   const trace = opts.trace ? [] : null;
   const rawAtkHp0 = curHp(attackers), rawDefHp0 = curHp(defenders);
   const atk0 = rawAtkHp0 || 1, def0 = rawDefHp0 || 1;
   let prevAtk = attackers.length, prevDef = defenders.length;
   let prevAtkHp = rawAtkHp0, prevDefHp = rawDefHp0;
+  let prevAtkByType = countByType(attackers), prevDefByType = countByType(defenders);
 
   while (attackers.length && defenders.length && rounds < opts.maxRounds) {
     rounds++;
@@ -373,10 +383,13 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
     defenders = applyPending(defenders);
     if (trace) {
       const curAtkHp = curHp(attackers), curDefHp = curHp(defenders);
+      const curAtkByType = countByType(attackers), curDefByType = countByType(defenders);
       trace.push({
         round: rounds,
         attackerShips: attackers.length, defenderShips: defenders.length,
         attackerLost: prevAtk - attackers.length, defenderLost: prevDef - defenders.length,
+        attackerLostByType: lostByType(prevAtkByType, curAtkByType),
+        defenderLostByType: lostByType(prevDefByType, curDefByType),
         attackerHpPct: Math.round(100 * curAtkHp / atk0),
         defenderHpPct: Math.round(100 * curDefHp / def0),
         // Damage each side dealt this round, derived from the HP totals already
@@ -386,6 +399,7 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
       });
       prevAtk = attackers.length; prevDef = defenders.length;
       prevAtkHp = curAtkHp; prevDefHp = curDefHp;
+      prevAtkByType = curAtkByType; prevDefByType = curDefByType;
     }
   }
 
@@ -395,8 +409,7 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
   else if (!attackers.length) outcome = 'defender_won';
   else outcome = 'defender_held'; // round cap reached — defender holds the field
 
-  const count = arr => arr.reduce((m, s) => { m[s.key] = (m[s.key] || 0) + 1; return m; }, {});
-  return { outcome, rounds, attackersLeft: count(attackers), defendersLeft: count(defenders), trace };
+  return { outcome, rounds, attackersLeft: countByType(attackers), defendersLeft: countByType(defenders), trace };
 }
 
 function runSimulations(attackerFleet, defenderFleet, opts) {
