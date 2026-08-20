@@ -190,8 +190,8 @@ function renderFleetResultCards(result) {
   const el = document.getElementById('fleet-results');
   el.textContent = '';
   const sides = [
-    { side: 'attacker', label: 'Attacker', icon: '⚡', losses: result.attackerLosses, nameId: 'atk-fleet-name' },
-    { side: 'defender', label: 'Defender', icon: '⛨', losses: result.defenderLosses, nameId: 'def-fleet-name' },
+    { side: 'attacker', label: 'Attacker', icon: '⚡', losses: result.attackerLosses },
+    { side: 'defender', label: 'Defender', icon: '⛨', losses: result.defenderLosses },
   ];
   for (const s of sides) {
     const card = document.createElement('div');
@@ -204,7 +204,7 @@ function renderFleetResultCards(result) {
     sideEl.textContent = `${s.icon} ${s.label}`;
     const nameEl = document.createElement('div');
     nameEl.className = 'sim-fleet-card-name';
-    nameEl.textContent = document.getElementById(s.nameId)?.value || `${s.label} Fleet`;
+    nameEl.textContent = `${s.label} Fleet`;
     head.append(sideEl, nameEl);
 
     const chip = document.createElement('div');

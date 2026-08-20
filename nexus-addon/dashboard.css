@@ -637,11 +637,9 @@ input.tech-input {
 .sim-panel-side { font-size: 10.5px; letter-spacing: 0.15em; text-transform: uppercase; }
 .sim-panel-attacker .sim-panel-side { color: var(--color-danger); }
 .sim-panel-defender .sim-panel-side { color: var(--color-accent); }
-/* two classes' worth of specificity to beat the global input[type="text"] rule
-   (background/border/padding) further up the file */
-.sim-panel-headtext input.sim-panel-name {
-  width: 100%; background: transparent; border: none; outline: none; padding: 0; margin-top: 1px;
-  color: var(--color-text); font-family: var(--font-heading); font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
+.sim-panel-name {
+  margin-top: 1px; color: var(--color-text); font-family: var(--font-heading);
+  font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
 }
 
 .sim-panel-body { padding: 14px 18px 16px; }
