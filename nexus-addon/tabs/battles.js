@@ -362,18 +362,25 @@ export function renderBattlesTab() {
 
   const bar = document.createElement('div');
   bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:12px 0;flex-wrap:wrap';
-  const inputCss = 'background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:4px 8px;border-radius:6px';
   const gray = txt => { const s = document.createElement('span'); s.style.color = '#8b949e'; s.textContent = txt; return s; };
 
-  const sel = document.createElement('select');
-  sel.style.cssText = inputCss;
+  // Source filter as toggle buttons (single-select — one active at a time,
+  // 'all' included as its own button), same idea as Scouting's zone toggles.
+  const sourceBox = document.createElement('div');
+  sourceBox.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap;';
   for (const s of ['all', ...new Set(allRows.map(r => r.source))]) {
-    const o = document.createElement('option'); o.value = s; o.textContent = s === 'all' ? 'All' : s;
-    if (s === battleFilter) o.selected = true; sel.appendChild(o);
+    const on = s === battleFilter;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = s === 'all' ? 'All' : s;
+    b.style.cssText = `padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem;
+      border:1px solid var(--color-accent);
+      color:${on ? 'var(--color-bg)' : 'var(--color-accent)'}; background:${on ? 'var(--color-accent)' : 'transparent'};`;
+    b.addEventListener('click', () => { battleFilter = s; battlePage = 1; renderBattlesTab(); });
+    sourceBox.appendChild(b);
   }
-  sel.addEventListener('change', () => { battleFilter = sel.value; battlePage = 1; renderBattlesTab(); });
 
-  bar.append(gray('Source:'), sel);
+  bar.append(gray('Source:'), sourceBox);
   root.append(bar);
 
   // Resource economy across the current selection (source + window).
