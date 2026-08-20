@@ -470,6 +470,23 @@ function jwtRace(token) {
   }
 }
 
+// The player's race, needed to build ship image URLs (/api/images/ships/{race}/…).
+// Newer JWTs dropped the `race` claim, so fall back to /api/auth/me, then to
+// 'terran' as a last resort so images always resolve. A resolved race is cached;
+// the 'terran' default is not, so a later successful auth/me can still correct it.
+let _race = null;
+async function resolveRace(token) {
+  if (_race) return _race;
+  const fromJwt = jwtRace(token);
+  if (fromJwt) return (_race = fromJwt);
+  try {
+    const me = await apiFetch('/api/auth/me', token);
+    const r = me?.user?.race ?? me?.race ?? null;
+    if (r) return (_race = r);
+  } catch { /* fall through to default */ }
+  return 'terran';
+}
+
 // All open orders from a paginated orders endpoint (public market or alliance
 // trade), across every page.
 async function getOrders(path) {
@@ -851,7 +868,7 @@ async function getShipDefs() {
   try {
     const planetId = await getHomePlanetId(token);
     const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token);
-    const race = jwtRace(token);
+    const race = await resolveRace(token);
     const ships = (data.ships || []).map(s => ({
       shipDefId: s.id,
       key: s.key || '',

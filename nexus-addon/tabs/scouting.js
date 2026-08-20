@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, nsGet, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
+import { applySort, attachSortable, clearAvailStrip, confirmDialog, editFleetDialog, fmtCountdown, fuelEstimate, makeMissionBar, nsGet, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -500,16 +500,44 @@ async function investigate(report) {
   const status = document.getElementById('sc-progress');
   const planetId = Number(document.getElementById('sc-planet').value);
   const planet = scPlanets.find(p => p.id === planetId);
+  if (!planetId) { status.textContent = 'Pick a source planet first.'; return; }
 
-  const r = await templateShips(document.getElementById('sc-inv-template').value, planetId);
-  if (r.error) { status.textContent = r.error; return; }
-  if (!await confirmDialog(`Investigate ${report.systemName} (${report.eventTitle || report.eventType})?\n\n` +
-    `From: ${planet ? planet.name : planetId}\nTemplate: ${r.name}` +
-    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships)) return;
+  // Pick the fleet, then POST through the game session (SEND_INVESTIGATE →
+  // background → same-origin GAME_FETCH). Two pickers, same result shape:
+  //   • Embedded in the game page → the game-styled modal (ingame-tabs.js), which
+  //     renders in the game DOM using the game's own .spy-modal CSS so it looks
+  //     native.
+  //   • Standalone dashboard → our editFleetDialog (no game CSS out there).
+  // The selected Fleet Template just pre-seeds the picker.
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  if (av.error) { status.textContent = av.error; return; }
+  const tpl = scTemplates.find(t => String(t.id) === document.getElementById('sc-inv-template').value);
+  const seed = {};
+  for (const [id, q] of Object.entries((tpl && tpl.ships) || {})) seed[Number(id)] = q;
+  const subtitle = `Anomaly: ${report.eventTitle || report.eventType} · From ${planet ? planet.name : planetId}`;
+
+  let ships;
+  if (window.top !== window) {
+    const list = scAllShips
+      .filter(s => (av.available[s.shipDefId] || 0) > 0)
+      .map(s => ({
+        shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl,
+        available: av.available[s.shipDefId],
+        seed: Math.min(seed[s.shipDefId] || 0, av.available[s.shipDefId]),
+      }));
+    ships = await openGameFleetModal({ reportId: report.id, title: `Investigate ${report.systemName}`, subtitle, ships: list });
+  } else {
+    ships = await editFleetDialog({
+      title: `Investigate ${report.systemName}`,
+      subtitle: subtitle.replace(' · ', '\n'),
+      avail: av.available, seed,
+    });
+  }
+  if (!ships || !ships.length) return;   // cancelled or emptied
 
   status.textContent = `Investigating ${report.systemName}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships: r.ships,
+    type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships,
   });
   if (res.error) { status.textContent = `Investigate failed: ${res.error}`; return; }
   scJustInvestigated.add(report.systemId);
@@ -518,6 +546,23 @@ async function investigate(report) {
   loadActiveSurveys();
   setTimeout(loadActiveSurveys, 2000);   // retry for post-POST API lag → prompt bar
   updateAvail();
+}
+
+// Ask ingame-tabs.js (running in the game window) to show the game-styled fleet
+// picker. Cross-document postMessage; resolves to [{shipDefId, quantity}] on
+// confirm, or null on cancel / no reply (old build without the handler).
+function openGameFleetModal(opts) {
+  return new Promise(resolve => {
+    const onReply = e => {
+      const d = e.data;
+      if (!d || !d.__nxFleetResult || d.reportId !== opts.reportId) return;
+      window.removeEventListener('message', onReply);
+      resolve(d.ships || null);
+    };
+    window.addEventListener('message', onReply);
+    window.parent.postMessage({ __nxOpenFleetModal: true, ...opts }, '*');
+    setTimeout(() => { window.removeEventListener('message', onReply); resolve(null); }, 180000);
+  });
 }
 
 // ── Live debris fields ─────────────────────────────────────────────────────
