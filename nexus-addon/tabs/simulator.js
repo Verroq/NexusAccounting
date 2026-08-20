@@ -486,7 +486,7 @@ document.getElementById('btn-run').addEventListener('click', async function() {
 
   const opts = {
     sims: Math.min(10000, Math.max(1, parseInt(document.getElementById('opt-sims').value, 10) || 100)),
-    maxRounds: Math.min(20, Math.max(1, parseInt(document.getElementById('opt-rounds').value, 10) || 10)),
+    maxRounds: Math.min(20, Math.max(1, parseInt(document.getElementById('opt-rounds').value, 10) || 15)),
     variance: (parseInt(document.getElementById('opt-variance').value, 10) || 0) / 100,
     debrisRate: Math.min(1, Math.max(0, (parseInt(document.getElementById('opt-debris').value, 10) || 0) / 100)),
     shieldRegen: document.getElementById('opt-shield-regen').checked,

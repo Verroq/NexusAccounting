@@ -597,6 +597,13 @@ input.tech-input {
   text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-muted);
 }
 
+/* No spinner arrows on any number input in the simulator (ship qty, tech levels, options bar). */
+#simulator-content input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+#simulator-content input[type="number"]::-webkit-inner-spin-button,
+#simulator-content input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+
 .sim-marauder {
   display: flex; align-items: center; gap: 6px;
   font-size: 0.78rem; color: var(--color-muted); margin-bottom: 12px; cursor: pointer;
