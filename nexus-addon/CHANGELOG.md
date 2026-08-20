@@ -4,6 +4,82 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- **Multi-universe support**: the addon detects which universe (S0 or New
+  Frontier) the active game session belongs to and namespaces every scraped/
+  aggregated data key per universe, so a second universe's records never mix
+  into the first's. A Universe selector in the dashboard lets you view either
+  one's stored data independently of whichever universe the background
+  scraper is actively following.
+- **Nocturne dashboard redesign**: the flat 15-tab row is replaced by a
+  grouped sidebar (Overview / Operations / Explore / Market & R&D) and a
+  sticky top bar (scrape status, View/Zone/Days filters, Scrape Now). The 6
+  primary screens (Global, Surveys, Asteroid Fields, Tech Tree, Market,
+  Scouting) got a full visual pass to the new dark blue-grey palette; every
+  other tab inherits the same shared card/table/badge styling.
+- **Combat Simulator is now a dashboard tab** (under Market & R&D) instead of
+  a standalone page, restyled to match the rest of Nocturne — fleet builder,
+  research levels, and results all live in the same shell as everything
+  else. Fleet result cards and the Attacker/Defender Losses rows now show
+  each ship's real image; each Combat Rounds entry shows which ship types
+  were lost, not just a total count.
+- **User-configurable Total-net resource weights**: every "Total net" figure
+  across the dashboard used hardcoded weights (ore×1, silicates×2, …) —
+  these are now editable from the top bar's ⚙ menu and persist across
+  sessions.
+- Fleet templates can be tagged as escort for specific security zones
+  (sentinel/open/dead/rift); the fleet editor shows per-template
+  colour-coded buttons for escort selection, and template ship quantities
+  now support half-step (0.5) values.
+
+### Changed
+- Battles tab: its own local View/Days controls (duplicating the top bar's)
+  are gone — the top bar's global View and Days now drive Battles' stats and
+  table, and the Source filter switched from a dropdown to toggle buttons
+  (matching Scouting's zone-toggle style).
+- Combat Simulator: Max rounds default bumped 10 → 15; number-input spinner
+  arrows removed; Attacker/Defender Fleet panel titles are static instead of
+  editable (nothing used a custom name); the weapon-vs-armor estimate
+  disclaimer and the Validate-against-recorded-raids feature were removed.
+- Top bar: the ⚙ overflow-menu glyph swapped from ⋯ to a settings gear, and
+  the Days date-range picker moved out of that menu into the top bar
+  (between View and Zone).
+- The Excavator +20% toggle moved from a separate dashboard button into the
+  shared fleet-selection dialog used by Mining/Asteroids.
+- Galaxy Scout live search: background scans use a more conservative
+  rate-limit buffer and cache per-system asteroid-field results, reducing
+  429s during long scans.
+
+### Fixed
+- Firefox refused to load the extension at all ("background.service_worker
+  is currently disabled. Add background.scripts.") on builds where
+  Firefox's MV3 service-worker support is pref-gated — added a
+  `background.scripts` fallback alongside `service_worker`.
+- Records cap of `0` ("unlimited") silently fell back to the 5000 default —
+  `0` round-trips to `null` through JSON storage, which every read site's
+  `?? 5000` fallback then re-imposed.
+- `getToken()` could pick a stale duplicate `nexus_token` cookie over a
+  fresh one after re-login (401 `SESSION_REVOKED` despite being logged in);
+  separately, once the server moved the per-universe game session to a
+  `__Host-nexus-game` cookie, `nexus_token` alone could carry an
+  account/lobby session the game API rejects — `getToken()` now checks both
+  cookie names and filters out lobby-kind tokens that would otherwise shadow
+  a usable game token.
+- Storage keys added to `SCOPED_KEYS` (zone/coords caches, spy/camp-scout
+  reports, fuel log) after the multi-universe migration had already shipped
+  never got backfilled for installs that had already migrated — a new
+  schema version re-runs the backfill for any key still missing its
+  per-universe copy.
+- Several content scripts (guide-view, logistics-view, upgrade-queue,
+  building-upgrade, tech-upgrade, ship-upgrade) were missing the
+  `browser-polyfill.js` include every other content script already had.
+- `renderAsteroids()` called an `applyMissionMarkers()` function that was
+  never implemented anywhere in the codebase.
+- The Global tab's weighted-value caption (under the Total net hero figure)
+  was a static string that never reflected the weights actually in use.
+
 ## [1.7.6] - 2026-07-22
 
 ### Fixed
