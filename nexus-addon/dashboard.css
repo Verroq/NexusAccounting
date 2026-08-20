@@ -407,6 +407,19 @@ th.sortable .arrow { margin-left: 4px; color: var(--color-accent); }
 
 @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
 
+/* Asteroid Fields / Scouting: fuel + travel-time + ships-recommended cells
+   (classes assigned in tabs/asteroids.js and tabs/scouting.js; an inline
+   style still wins when a cell needs to flag e.g. an out-of-range fuel est.) */
+.af-fuel, .sc-fuel, .sc-debris-fuel, .sc-salvage-fuel { color: var(--res-hydrogen); font-variant-numeric: tabular-nums; }
+.sc-time, .sc-debris-time, .sc-salvage-time { font-variant-numeric: tabular-nums; }
+.sc-timer, .sc-salvage-timer { font-variant-numeric: tabular-nums; color: var(--color-warning); }
+.sc-debris-shipn, .sc-salvage-shipn { font-size: 12px; color: var(--color-muted); white-space: nowrap; }
+
+/* Surveys / Asteroids stat-card grids — same .stats flow, just an even
+   column count so the KPI rows line up the way the mockup lays them out. */
+#stats-collected { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+#stats-lost, #stats-net { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+
 /* ══════════════════════════════════════════════════════════════════════
    Tech tree (dependency graph)
    ══════════════════════════════════════════════════════════════════════ */
