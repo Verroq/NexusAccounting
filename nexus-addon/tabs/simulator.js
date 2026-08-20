@@ -8,7 +8,6 @@ import {
 import {
   updateDistanceFromCoords, loadIntelReports, populatePlanetPicker, _resolvedDistanceAU,
 } from './simulator-intel.js';
-import './simulator-validate.js';   // side effect: wires the Validate button
 
 export function fmt(n) {
   return Math.round(n).toLocaleString(undefined, { maximumFractionDigits: 0 });

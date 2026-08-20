@@ -156,8 +156,7 @@ async function loadIntelReports() {
   // The simulator tab reads the same universe-namespaced keys the dashboard
   // writes, scoped by the same `selected_universe` preference the dashboard's
   // universe dropdown persists (default 's0') — see storage-keys.js for why
-  // spy_reports/camp_scout_reports are namespaced. Same pattern as
-  // simulator-validate.js's pirate_recent_reports read.
+  // spy_reports/camp_scout_reports are namespaced.
   const { selected_universe } = await browser.storage.local.get('selected_universe');
   const universe = selected_universe || 's0';
   const spyKey = `${universe}__spy_reports`;
