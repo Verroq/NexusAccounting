@@ -1,6 +1,15 @@
 // Shared state and helpers used by every dashboard tab.
 // Loaded first — all other dashboard scripts depend on it.
 
+// Chart.js global visual defaults — Nocturne theme (design_overhaul/README.md).
+// Global Chart.defaults only; every chart's own dataset/scale colors are still
+// set at the call site in tabs/*.js and below, untouched.
+if (typeof Chart !== 'undefined') {
+  Chart.defaults.color = '#9397ab';
+  Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+  Chart.defaults.font.size = 11;
+}
+
 export let store = {};   // full storage snapshot
 export function setStore(s) { store = s; }   // setter: other modules can't reassign an import
 
