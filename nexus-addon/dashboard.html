@@ -74,6 +74,11 @@
         <option value="last30">Last month</option>
         <option value="hourly">Hourly</option>
       </select>
+      <span class="nx-window-bar">
+        <input type="date" id="window-from" title="Show data from this day (empty = earliest)." />
+        <span class="nx-window-dash">–</span>
+        <input type="date" id="window-to" title="Show data up to this day (empty = latest)." />
+      </span>
       <select id="zone-select" title="Filter by the security zone where data was gathered. Zone-filtered totals are computed from the stored (capped) records.">
         <option value="all">All zones</option>
         <option value="sentinel">Sentinel</option>
@@ -86,12 +91,6 @@
       <details class="nx-menu">
         <summary title="More data controls">⚙</summary>
         <div class="nx-menu-panel">
-          <div class="nx-menu-row">
-            <label for="window-from">Days:</label>
-            <input type="date" id="window-from" title="Show data from this day (empty = earliest)." />
-            <span>–</span>
-            <input type="date" id="window-to" title="Show data up to this day (empty = latest)." />
-          </div>
           <div class="nx-menu-row">
             <span>Records cap</span>
             <span title="Maximum number of individual survey reports stored locally. Older records are dropped when the limit is reached. Set to 0 for unlimited storage."
