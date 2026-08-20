@@ -4,7 +4,19 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.0.0] - 2026-08-20
+
+### A little word
+- After a long overdue holiday, here is the version 2.0 with a strong design overhaul
+  (the 90's design was funny but it was an eye sore, let's be honest).
+  For what is to come for the next few weeks :
+    - Spy report sharing (via a discord bot)
+    - Long overdue combat simulator overhaul, so we will have something more precise
+    - To respect the ToS i'll have to make you use the InGame window to launch fleet,
+      I'm currently checking different options to make it as easy and seamless as possible.
+    - Station synchronisation to check what resources are available and who take what 
+      within the alliance
+    
 
 ### Added
 - **Multi-universe support**: the addon detects which universe (S0 or New
@@ -13,14 +25,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   into the first's. A Universe selector in the dashboard lets you view either
   one's stored data independently of whichever universe the background
   scraper is actively following.
-- **Nocturne dashboard redesign**: the flat 15-tab row is replaced by a
+- **Dashboard redesign**: the flat 15-tab row is replaced by a
   grouped sidebar (Overview / Operations / Explore / Market & R&D) and a
   sticky top bar (scrape status, View/Zone/Days filters, Scrape Now). The 6
   primary screens (Global, Surveys, Asteroid Fields, Tech Tree, Market,
   Scouting) got a full visual pass to the new dark blue-grey palette; every
   other tab inherits the same shared card/table/badge styling.
 - **Combat Simulator is now a dashboard tab** (under Market & R&D) instead of
-  a standalone page, restyled to match the rest of Nocturne — fleet builder,
+  a standalone page, restyled to match the rest of the redesign — fleet builder,
   research levels, and results all live in the same shell as everything
   else. Fleet result cards and the Attacker/Defender Losses rows now show
   each ship's real image; each Combat Rounds entry shows which ship types
@@ -31,8 +43,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   sessions.
 - Fleet templates can be tagged as escort for specific security zones
   (sentinel/open/dead/rift); the fleet editor shows per-template
-  colour-coded buttons for escort selection, and template ship quantities
-  now support half-step (0.5) values.
+  colour-coded buttons for escort selection.
 
 ### Changed
 - Battles tab: its own local View/Days controls (duplicating the top bar's)
