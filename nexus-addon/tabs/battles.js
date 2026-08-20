@@ -4,7 +4,7 @@
 // there is no extra background aggregation or storage. Span = recent records.
 
 import {
-  PER_PAGE, fmt, escapeHtml, makeStatCard, store, zoneCell, dayKey,
+  PER_PAGE, fmt, escapeHtml, makeStatCard, store, zoneCell, dayKey, getWindowRange,
   computeResourcesLost, combinedLost, emptyResources,
   RESOURCE_WEIGHTS, RARE_WEIGHT, EXTRA_RES_KEYS_UI,
 } from '../common.js';
@@ -58,9 +58,8 @@ function meanFuelByType(inRange) {
 
 const battleSort = { key: 'created_at', dir: -1 };
 let battleFilter = 'all';
-let battleView = 'all';                // View preset driving the Days window
-let battleFrom = '', battleTo = '';   // Days window (local day, '' = open)
 let battlePage = 1;
+export function setBattlePage(n) { battlePage = n; }
 const expanded = new Set();
 
 // Ship name → image URL, lazy-loaded once from the shipyard defs so expanded
@@ -350,55 +349,38 @@ export function renderBattlesTab() {
 
   const allRows = collectBattles();
 
-  // Controls — Source filter + Days period window (like Survey/Global).
+  // Controls — Source filter only; period/window comes from the top bar's
+  // global View + Days controls, same as every other tab.
+  const { from: wFrom, to: wTo } = getWindowRange();
   const inRange = ts => {
     const d = dayKey(ts);
-    return (!battleFrom || d >= battleFrom) && (!battleTo || d <= battleTo);
+    return (!wFrom || d >= wFrom) && (!wTo || d <= wTo);
   };
   const view = allRows.filter(r =>
     (battleFilter === 'all' || r.source === battleFilter) && inRange(r.created_at));
-  const windowed = !!(battleFrom || battleTo);
+  const windowed = !!(wFrom || wTo);
 
   const bar = document.createElement('div');
   bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:12px 0;flex-wrap:wrap';
-  const inputCss = 'background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:4px 8px;border-radius:6px';
   const gray = txt => { const s = document.createElement('span'); s.style.color = '#8b949e'; s.textContent = txt; return s; };
 
-  // View preset — fills the Days window (like Global). A manual Days edit
-  // overrides it: the typed dates drive filtering, View is left untouched.
-  const viewSel = document.createElement('select');
-  viewSel.style.cssText = inputCss;
-  for (const [v, lbl] of [['all', 'All time'], ['daily', 'Daily'], ['last3', 'Last 3 days'], ['last7', 'Last 7 days'], ['last30', 'Last 30 days']]) {
-    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
-    if (v === battleView) o.selected = true; viewSel.appendChild(o);
-  }
-  viewSel.addEventListener('change', () => {
-    battleView = viewSel.value;
-    const span = { last3: 3, last7: 7, last30: 30 }[battleView];
-    const now = Date.now();
-    if (battleView === 'all') { battleFrom = ''; battleTo = ''; }
-    else if (battleView === 'daily') { battleFrom = battleTo = dayKey(now); }
-    else if (span) { battleTo = dayKey(now); battleFrom = dayKey(now - (span - 1) * 86400000); }
-    battlePage = 1; renderBattlesTab();
-  });
-
-  const sel = document.createElement('select');
-  sel.style.cssText = inputCss;
+  // Source filter as toggle buttons (single-select — one active at a time,
+  // 'all' included as its own button), same idea as Scouting's zone toggles.
+  const sourceBox = document.createElement('div');
+  sourceBox.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap;';
   for (const s of ['all', ...new Set(allRows.map(r => r.source))]) {
-    const o = document.createElement('option'); o.value = s; o.textContent = s === 'all' ? 'All' : s;
-    if (s === battleFilter) o.selected = true; sel.appendChild(o);
+    const on = s === battleFilter;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = s === 'all' ? 'All' : s;
+    b.style.cssText = `padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem;
+      border:1px solid var(--color-accent);
+      color:${on ? 'var(--color-bg)' : 'var(--color-accent)'}; background:${on ? 'var(--color-accent)' : 'transparent'};`;
+    b.addEventListener('click', () => { battleFilter = s; battlePage = 1; renderBattlesTab(); });
+    sourceBox.appendChild(b);
   }
-  sel.addEventListener('change', () => { battleFilter = sel.value; battlePage = 1; renderBattlesTab(); });
 
-  const from = document.createElement('input'); from.type = 'date'; from.value = battleFrom; from.style.cssText = inputCss;
-  const to = document.createElement('input'); to.type = 'date'; to.value = battleTo; to.style.cssText = inputCss;
-  from.addEventListener('change', () => { battleFrom = from.value; battlePage = 1; renderBattlesTab(); });
-  to.addEventListener('change', () => { battleTo = to.value; battlePage = 1; renderBattlesTab(); });
-  const clr = document.createElement('button'); clr.textContent = 'Clear'; clr.style.cssText = inputCss + ';cursor:pointer';
-  clr.disabled = !windowed;
-  clr.addEventListener('click', () => { battleFrom = ''; battleTo = ''; battleView = 'all'; battlePage = 1; renderBattlesTab(); });
-
-  bar.append(gray('View:'), viewSel, gray('Source:'), sel, gray('Days:'), from, gray('→'), to, clr);
+  bar.append(gray('Source:'), sourceBox);
   root.append(bar);
 
   // Resource economy across the current selection (source + window).
@@ -450,7 +432,7 @@ export function renderBattlesTab() {
   );
   const label = document.createElement('div');
   label.className = 'section-label';
-  label.textContent = 'Combat' + (windowed ? ` — ${battleFrom || 'start'} → ${battleTo || 'now'}` : ' (recent records)');
+  label.textContent = 'Combat' + (windowed ? ` — ${wFrom || 'start'} → ${wTo || 'now'}` : ' (recent records)');
   root.append(label, cards);
 
   // Debris salvaged, per resource.
@@ -471,7 +453,8 @@ export function renderBattlesTab() {
   const totalNet = weighted(net);
   const netTotalCard = makeStatCard('Total net', (totalNet >= 0 ? '+' : '') + fmt(totalNet), '',
     totalNet >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  netTotalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5, exotics×10.'
+  netTotalCard.title = `Weighted: ore×${RESOURCE_WEIGHTS.ore}, silicates×${RESOURCE_WEIGHTS.silicates}, `
+    + `hydrogen×${RESOURCE_WEIGHTS.hydrogen}, alloys×${RESOURCE_WEIGHTS.alloys}, exotics×${RARE_WEIGHT}.`
     + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
   const netLabel = document.createElement('div');
   netLabel.className = 'section-label'; netLabel.textContent = 'Net (won − ship-loss cost)';

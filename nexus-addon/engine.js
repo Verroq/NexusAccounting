@@ -352,11 +352,23 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
     for (const s of defenders) s.drMult *= ewMult;
   }
 
-  // Optional round-by-round trace (for the "sample battle" display).
+  // Optional round-by-round trace (for the "sample battle" / Combat Rounds display).
   const curHp = arr => arr.reduce((m, s) => m + Math.max(0, s.hp) + Math.max(0, s.shield), 0);
+  const countByType = arr => arr.reduce((m, s) => { m[s.key] = (m[s.key] || 0) + 1; return m; }, {});
+  const lostByType = (before, after) => {
+    const out = {};
+    for (const [key, n] of Object.entries(before)) {
+      const d = n - (after[key] || 0);
+      if (d > 0) out[key] = d;
+    }
+    return out;
+  };
   const trace = opts.trace ? [] : null;
-  const atk0 = curHp(attackers) || 1, def0 = curHp(defenders) || 1;
+  const rawAtkHp0 = curHp(attackers), rawDefHp0 = curHp(defenders);
+  const atk0 = rawAtkHp0 || 1, def0 = rawDefHp0 || 1;
   let prevAtk = attackers.length, prevDef = defenders.length;
+  let prevAtkHp = rawAtkHp0, prevDefHp = rawDefHp0;
+  let prevAtkByType = countByType(attackers), prevDefByType = countByType(defenders);
 
   while (attackers.length && defenders.length && rounds < opts.maxRounds) {
     rounds++;
@@ -370,14 +382,24 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
     attackers = applyPending(attackers);
     defenders = applyPending(defenders);
     if (trace) {
+      const curAtkHp = curHp(attackers), curDefHp = curHp(defenders);
+      const curAtkByType = countByType(attackers), curDefByType = countByType(defenders);
       trace.push({
         round: rounds,
         attackerShips: attackers.length, defenderShips: defenders.length,
         attackerLost: prevAtk - attackers.length, defenderLost: prevDef - defenders.length,
-        attackerHpPct: Math.round(100 * curHp(attackers) / atk0),
-        defenderHpPct: Math.round(100 * curHp(defenders) / def0),
+        attackerLostByType: lostByType(prevAtkByType, curAtkByType),
+        defenderLostByType: lostByType(prevDefByType, curDefByType),
+        attackerHpPct: Math.round(100 * curAtkHp / atk0),
+        defenderHpPct: Math.round(100 * curDefHp / def0),
+        // Damage each side dealt this round, derived from the HP totals already
+        // computed above for *Pct — presentational only, no combat math here.
+        attackerDmg: Math.max(0, Math.round(prevDefHp - curDefHp)),
+        defenderDmg: Math.max(0, Math.round(prevAtkHp - curAtkHp)),
       });
       prevAtk = attackers.length; prevDef = defenders.length;
+      prevAtkHp = curAtkHp; prevDefHp = curDefHp;
+      prevAtkByType = curAtkByType; prevDefByType = curDefByType;
     }
   }
 
@@ -387,8 +409,7 @@ function simulateOnce(attackerFleet, defenderFleet, opts) {
   else if (!attackers.length) outcome = 'defender_won';
   else outcome = 'defender_held'; // round cap reached — defender holds the field
 
-  const count = arr => arr.reduce((m, s) => { m[s.key] = (m[s.key] || 0) + 1; return m; }, {});
-  return { outcome, rounds, attackersLeft: count(attackers), defendersLeft: count(defenders), trace };
+  return { outcome, rounds, attackersLeft: countByType(attackers), defendersLeft: countByType(defenders), trace };
 }
 
 function runSimulations(attackerFleet, defenderFleet, opts) {
@@ -438,7 +459,7 @@ function lossesToResources(losses) {
 }
 
 
-// Engine ship stats are injected at runtime: by simulator.js in the browser,
+// Engine ship stats are injected at runtime: by tabs/simulator.js in the browser,
 // by the test harness under node. shipDefs is a live binding (see export above).
 function setShipDefs(defs) {
   shipDefs = defs;

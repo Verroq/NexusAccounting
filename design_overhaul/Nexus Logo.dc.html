@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/nocturne-131fa1f1-3d5f-4f72-88a1-c21650f409b4/styles.css">
+<style>
+  body { margin:0; background:var(--color-bg); }
+  .lg-wrap { font-family:var(--font-body); color:var(--color-text); padding:40px; display:flex; flex-direction:column; gap:14px; }
+  .lg-row { display:flex; gap:22px; flex-wrap:wrap; align-items:stretch; }
+  .lg-card { width:360px; background:var(--color-surface); border:1px solid var(--color-divider); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); display:flex; flex-direction:column; overflow:hidden; }
+  .lg-stage { height:200px; display:flex; align-items:center; justify-content:center; background:radial-gradient(120% 120% at 50% 40%, color-mix(in srgb, var(--color-accent) 12%, var(--color-bg)), var(--color-bg) 70%); border-bottom:1px solid var(--color-divider); }
+  .lg-lockup { display:flex; align-items:center; gap:12px; padding:22px 22px 6px; }
+  .lg-word { font-family:var(--font-heading); font-weight:600; font-size:26px; letter-spacing:-0.02em; line-height:1; }
+  .lg-kick { font-size:10.5px; letter-spacing:0.16em; text-transform:uppercase; color:color-mix(in srgb, var(--color-text) 50%, transparent); margin-top:4px; }
+  .lg-scale { display:flex; align-items:center; gap:16px; padding:14px 22px 22px; }
+  .lg-favi { width:34px; height:34px; border-radius:9px; border:1px solid var(--color-accent); display:flex; align-items:center; justify-content:center; box-shadow:0 0 14px color-mix(in srgb, var(--color-accent) 40%, transparent); }
+  .lg-light { flex:1; height:56px; border-radius:10px; background:var(--color-neutral-100); display:flex; align-items:center; justify-content:center; gap:9px; }
+  .lg-cap { padding:0 22px 20px; font-size:12.5px; line-height:1.5; color:color-mix(in srgb, var(--color-text) 62%, transparent); }
+  .lg-badge { display:inline-flex; align-items:center; gap:7px; align-self:flex-start; padding:5px 11px; border-radius:20px; border:1px solid var(--color-divider); font-size:12px; color:color-mix(in srgb, var(--color-text) 70%, transparent); margin:0 22px 14px; }
+</style>
+</helmet>
+
+<section style="display:flex; flex-direction:column; gap:6px;">
+  <div class="lg-wrap" style="padding-bottom:8px;">
+    <div style="font-family:var(--font-heading); font-size:22px; letter-spacing:-0.02em;">Nexus — logo directions</div>
+    <div style="font-size:13px; color:color-mix(in srgb, var(--color-text) 58%, transparent); max-width:640px;">Three SVG marks in the Nocturne style: accent used as a line and a glow, on the desaturated ground. Each shown as a full lockup, a 34px favicon, and inverted on a light chip. Reference an id (1a / 1b / 1c) to pick or refine.</div>
+  </div>
+
+  <div class="lg-wrap" style="padding-top:6px;">
+    <div class="lg-row">
+
+      <!-- 1a — Orbit -->
+      <div id="1a" class="lg-card">
+        <div class="lg-badge">1a · Orbit</div>
+        <div class="lg-stage">
+          <svg viewBox="0 0 64 64" width="96" height="96" fill="none">
+            <defs><filter id="g1a" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+            <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(-30 32 32)" stroke="var(--color-accent)" stroke-width="2.4" opacity="0.9"/>
+            <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(30 32 32)" stroke="color-mix(in srgb, var(--color-accent) 40%, transparent)" stroke-width="1.6"/>
+            <circle cx="32" cy="32" r="7.5" fill="var(--color-accent)" filter="url(#g1a)"/>
+            <circle cx="50.5" cy="19.5" r="3.4" fill="var(--color-text)"/>
+          </svg>
+        </div>
+        <div class="lg-lockup">
+          <svg viewBox="0 0 64 64" width="32" height="32" fill="none">
+            <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(-30 32 32)" stroke="var(--color-accent)" stroke-width="2.6"/>
+            <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(30 32 32)" stroke="color-mix(in srgb, var(--color-accent) 40%, transparent)" stroke-width="2"/>
+            <circle cx="32" cy="32" r="7.5" fill="var(--color-accent)"/>
+            <circle cx="50.5" cy="19.5" r="3.6" fill="var(--color-text)"/>
+          </svg>
+          <div><div class="lg-word">Nexus</div><div class="lg-kick">Accounting</div></div>
+        </div>
+        <div class="lg-scale">
+          <div class="lg-favi">
+            <svg viewBox="0 0 64 64" width="22" height="22" fill="none">
+              <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(-30 32 32)" stroke="var(--color-accent)" stroke-width="3.4"/>
+              <circle cx="32" cy="32" r="8.5" fill="var(--color-accent)"/>
+            </svg>
+          </div>
+          <div class="lg-light">
+            <svg viewBox="0 0 64 64" width="26" height="26" fill="none">
+              <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(-30 32 32)" stroke="var(--color-accent-600)" stroke-width="2.6"/>
+              <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(30 32 32)" stroke="color-mix(in srgb, var(--color-accent-600) 45%, transparent)" stroke-width="2"/>
+              <circle cx="32" cy="32" r="7.5" fill="var(--color-accent-600)"/>
+              <circle cx="50.5" cy="19.5" r="3.6" fill="var(--color-neutral-900)"/>
+            </svg>
+            <span style="font-family:var(--font-heading); font-weight:600; font-size:19px; letter-spacing:-0.02em; color:var(--color-neutral-900);">Nexus</span>
+          </div>
+        </div>
+        <div class="lg-cap">Two crossed orbital paths around a lit core, with a single satellite. Reads as collection across many systems — a refinement of the current orbit glyph.</div>
+      </div>
+
+      <!-- 1b — Nexus / network -->
+      <div id="1b" class="lg-card">
+        <div class="lg-badge">1b · Nexus</div>
+        <div class="lg-stage">
+          <svg viewBox="0 0 64 64" width="96" height="96" fill="none">
+            <defs><filter id="g1b" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+            <path d="M32 32 L14 15 M32 32 L52 17 M32 32 L13 46 M32 32 L50 49" stroke="color-mix(in srgb, var(--color-accent) 55%, transparent)" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="14" cy="15" r="3.4" fill="var(--color-text)"/>
+            <circle cx="52" cy="17" r="3.4" fill="var(--color-text)"/>
+            <circle cx="13" cy="46" r="3.4" fill="var(--color-text)"/>
+            <circle cx="50" cy="49" r="3.4" fill="var(--color-text)"/>
+            <circle cx="32" cy="32" r="8" fill="var(--color-accent)" filter="url(#g1b)"/>
+            <circle cx="32" cy="32" r="3" fill="var(--color-bg)"/>
+          </svg>
+        </div>
+        <div class="lg-lockup">
+          <svg viewBox="0 0 64 64" width="32" height="32" fill="none">
+            <path d="M32 32 L14 15 M32 32 L52 17 M32 32 L13 46 M32 32 L50 49" stroke="color-mix(in srgb, var(--color-accent) 60%, transparent)" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="14" cy="15" r="3.8" fill="var(--color-text)"/>
+            <circle cx="52" cy="17" r="3.8" fill="var(--color-text)"/>
+            <circle cx="13" cy="46" r="3.8" fill="var(--color-text)"/>
+            <circle cx="50" cy="49" r="3.8" fill="var(--color-text)"/>
+            <circle cx="32" cy="32" r="8.5" fill="var(--color-accent)"/>
+          </svg>
+          <div><div class="lg-word">Nexus</div><div class="lg-kick">Accounting</div></div>
+        </div>
+        <div class="lg-scale">
+          <div class="lg-favi">
+            <svg viewBox="0 0 64 64" width="22" height="22" fill="none">
+              <path d="M32 32 L14 15 M32 32 L52 17 M32 32 L13 46 M32 32 L50 49" stroke="var(--color-accent)" stroke-width="3" stroke-linecap="round"/>
+              <circle cx="14" cy="15" r="4.4" fill="var(--color-text)"/>
+              <circle cx="52" cy="17" r="4.4" fill="var(--color-text)"/>
+              <circle cx="13" cy="46" r="4.4" fill="var(--color-text)"/>
+              <circle cx="50" cy="49" r="4.4" fill="var(--color-text)"/>
+              <circle cx="32" cy="32" r="9.5" fill="var(--color-accent)"/>
+            </svg>
+          </div>
+          <div class="lg-light">
+            <svg viewBox="0 0 64 64" width="26" height="26" fill="none">
+              <path d="M32 32 L14 15 M32 32 L52 17 M32 32 L13 46 M32 32 L50 49" stroke="color-mix(in srgb, var(--color-accent-600) 60%, transparent)" stroke-width="2.4" stroke-linecap="round"/>
+              <circle cx="14" cy="15" r="3.8" fill="var(--color-neutral-900)"/>
+              <circle cx="52" cy="17" r="3.8" fill="var(--color-neutral-900)"/>
+              <circle cx="13" cy="46" r="3.8" fill="var(--color-neutral-900)"/>
+              <circle cx="50" cy="49" r="3.8" fill="var(--color-neutral-900)"/>
+              <circle cx="32" cy="32" r="8.5" fill="var(--color-accent-600)"/>
+            </svg>
+            <span style="font-family:var(--font-heading); font-weight:600; font-size:19px; letter-spacing:-0.02em; color:var(--color-neutral-900);">Nexus</span>
+          </div>
+        </div>
+        <div class="lg-cap">The literal meaning: a hub linking four outer nodes. Speaks to a dashboard that ties surveys, mining, market and combat into one point.</div>
+      </div>
+
+      <!-- 1c — Monogram N -->
+      <div id="1c" class="lg-card">
+        <div class="lg-badge">1c · Monogram</div>
+        <div class="lg-stage">
+          <svg viewBox="0 0 64 64" width="96" height="96" fill="none">
+            <defs><filter id="g1c" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="1.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+            <ellipse cx="32" cy="32" rx="28" ry="28" stroke="color-mix(in srgb, var(--color-accent) 26%, transparent)" stroke-width="1.4"/>
+            <path d="M18 46 L18 18 L46 46 L46 18" stroke="var(--color-accent)" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#g1c)"/>
+            <circle cx="46" cy="18" r="3.2" fill="var(--color-text)"/>
+          </svg>
+        </div>
+        <div class="lg-lockup">
+          <svg viewBox="0 0 64 64" width="32" height="32" fill="none">
+            <ellipse cx="32" cy="32" rx="28" ry="28" stroke="color-mix(in srgb, var(--color-accent) 30%, transparent)" stroke-width="1.8"/>
+            <path d="M18 46 L18 18 L46 46 L46 18" stroke="var(--color-accent)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="46" cy="18" r="3.4" fill="var(--color-text)"/>
+          </svg>
+          <div><div class="lg-word">Nexus</div><div class="lg-kick">Accounting</div></div>
+        </div>
+        <div class="lg-scale">
+          <div class="lg-favi">
+            <svg viewBox="0 0 64 64" width="22" height="22" fill="none">
+              <path d="M18 46 L18 18 L46 46 L46 18" stroke="var(--color-accent)" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="46" cy="18" r="4" fill="var(--color-text)"/>
+            </svg>
+          </div>
+          <div class="lg-light">
+            <svg viewBox="0 0 64 64" width="26" height="26" fill="none">
+              <ellipse cx="32" cy="32" rx="28" ry="28" stroke="color-mix(in srgb, var(--color-accent-600) 32%, transparent)" stroke-width="1.8"/>
+              <path d="M18 46 L18 18 L46 46 L46 18" stroke="var(--color-accent-600)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="46" cy="18" r="3.4" fill="var(--color-neutral-900)"/>
+            </svg>
+            <span style="font-family:var(--font-heading); font-weight:600; font-size:19px; letter-spacing:-0.02em; color:var(--color-neutral-900);">Nexus</span>
+          </div>
+        </div>
+        <div class="lg-cap">A geometric N inside a faint orbit, with one vertex lifted to a satellite point. The most letter-forward, most ownable as a standalone app icon.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

@@ -6,87 +6,145 @@
   <link rel="stylesheet" href="dashboard.css" />
 </head>
 <body>
-  <h1>Nexus Accounting</h1>
+  <aside class="nx-sidebar">
+    <div class="nx-brand">
+      <div class="nx-brand-mark">
+        <svg viewBox="0 0 64 64" width="20" height="20" fill="none">
+          <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(-30 32 32)" stroke="var(--color-accent)" stroke-width="2.8"/>
+          <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(30 32 32)" stroke="color-mix(in srgb, var(--color-accent) 40%, transparent)" stroke-width="2"/>
+          <circle cx="32" cy="32" r="7.5" fill="var(--color-accent)"/>
+          <circle cx="50.5" cy="19.5" r="3.6" fill="var(--color-text)"/>
+        </svg>
+      </div>
+      <div class="nx-brand-text">
+        <div class="nx-brand-name">Nexus</div>
+        <div class="nx-brand-sub">Accounting</div>
+      </div>
+    </div>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="global">Global</button>
-    <button class="tab" data-tab="surveys">Surveys</button>
-    <button class="tab" data-tab="pirates">Pirates</button>
-    <button class="tab" data-tab="mining">Mining</button>
-    <button class="tab" data-tab="battles">Battles</button>
-    <button class="tab" data-tab="debris">Debris</button>
-    <button class="tab" data-tab="expeditions">Expeditions</button>
-    <button class="tab" data-tab="wormholes">Wormhole</button>
-    <button class="tab" data-tab="finder">Galaxy Scout</button>
-    <button class="tab" data-tab="asteroids">Asteroids Fields</button>
-    <button class="tab" data-tab="fleets">Fleet Templates</button>
-    <button class="tab" data-tab="scouting">Scouting</button>
-    <button class="tab" data-tab="xeno">Xeno</button>
-    <button class="tab" data-tab="market">Market</button>
-    <button class="tab" data-tab="techtree">Tech Tree</button>
-  </nav>
+    <nav>
+      <div class="nx-nav-group">
+        <div class="nx-nav-group-title">Overview</div>
+        <button class="tab nx-nav-item active" data-tab="global"><span class="nx-nav-icon">◆</span><span>Global</span></button>
+      </div>
+      <div class="nx-nav-group">
+        <div class="nx-nav-group-title">Operations</div>
+        <button class="tab nx-nav-item" data-tab="surveys"><span class="nx-nav-icon">◇</span><span>Surveys</span></button>
+        <button class="tab nx-nav-item" data-tab="pirates"><span class="nx-nav-icon">☠</span><span>Pirates</span></button>
+        <button class="tab nx-nav-item" data-tab="mining"><span class="nx-nav-icon">▲</span><span>Mining</span></button>
+        <button class="tab nx-nav-item" data-tab="battles"><span class="nx-nav-icon">✦</span><span>Battles</span></button>
+        <button class="tab nx-nav-item" data-tab="debris"><span class="nx-nav-icon">✧</span><span>Debris</span></button>
+        <button class="tab nx-nav-item" data-tab="expeditions"><span class="nx-nav-icon">➤</span><span>Expeditions</span></button>
+        <button class="tab nx-nav-item" data-tab="wormholes"><span class="nx-nav-icon">◎</span><span>Wormhole</span></button>
+        <button class="tab nx-nav-item" data-tab="xeno"><span class="nx-nav-icon">✷</span><span>Xeno</span></button>
+      </div>
+      <div class="nx-nav-group">
+        <div class="nx-nav-group-title">Explore</div>
+        <button class="tab nx-nav-item" data-tab="finder"><span class="nx-nav-icon">⌕</span><span>Galaxy Scout</span></button>
+        <button class="tab nx-nav-item" data-tab="asteroids"><span class="nx-nav-icon">●</span><span>Asteroid Fields</span></button>
+        <button class="tab nx-nav-item" data-tab="scouting"><span class="nx-nav-icon">◐</span><span>Scouting</span></button>
+      </div>
+      <div class="nx-nav-group">
+        <div class="nx-nav-group-title">Market &amp; R&amp;D</div>
+        <button class="tab nx-nav-item" data-tab="market"><span class="nx-nav-icon">⚖</span><span>Market</span></button>
+        <button class="tab nx-nav-item" data-tab="fleets"><span class="nx-nav-icon">▶</span><span>Fleet Templates</span></button>
+        <button class="tab nx-nav-item" data-tab="techtree"><span class="nx-nav-icon">⌥</span><span>Tech Tree</span></button>
+        <button class="tab nx-nav-item" data-tab="simulator"><span class="nx-nav-icon">⌖</span><span>Combat Simulator</span></button>
+      </div>
+    </nav>
 
-  <div class="status-bar">
-    <span id="status-text">Loading…</span>
-    <label for="universe-select" style="margin-left:8px;">Universe:</label>
-    <select id="universe-select" title="Which universe's stored data to view. Independent of which universe the background scraper is actively scraping — that follows your live game session.">
-      <option value="s0">S0</option>
-      <option value="nf">New Frontier</option>
-    </select>
-    <button id="btn-scrape">Scrape Now</button>
-    <button id="btn-reset" style="color:#ff7b72; border-color:#ff7b7244;">Reset all data</button>
-    <button id="btn-rebuild" title="Recompute all aggregated stats from the stored report records — repairs drift after partial failures.">Rebuild stats</button>
-    <button id="btn-export">Export JSON</button>
-    <button id="btn-import">Import JSON</button>
-    <input id="import-file" type="file" accept=".json,application/json" style="display:none;" />
-    <a href="simulator.html" style="color:#58a6ff; margin-left:auto;">Combat Simulator →</a>
-  </div>
+    <div class="nx-sidebar-footer">
+      <div id="storage-footer"></div>
+    </div>
+  </aside>
 
-  <div class="controls" id="global-controls">
-    <label for="mode-select">View:</label>
-    <select id="mode-select">
-      <option value="all">All time</option>
-      <option value="daily">Daily</option>
-      <option value="last3">Last 3 days</option>
-      <option value="last7">Last 7 days</option>
-      <option value="last30">Last month</option>
-      <option value="hourly">Hourly</option>
-    </select>
-    <label for="window-from" style="margin-left:12px;">Days:</label>
-    <input type="date" id="window-from" title="Show data from this day (empty = earliest)."
-      style="background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:3px 6px; border-radius:6px; font-size:0.85rem; color-scheme:dark;" />
-    <span style="color:#8b949e;">–</span>
-    <input type="date" id="window-to" title="Show data up to this day (empty = latest)."
-      style="background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:3px 6px; border-radius:6px; font-size:0.85rem; color-scheme:dark;" />
-    <label for="zone-select" style="margin-left:12px;">Zone:</label>
-    <select id="zone-select" title="Filter by the security zone where data was gathered. Zone-filtered totals are computed from the stored (capped) records.">
-      <option value="all">All zones</option>
-      <option value="sentinel">Sentinel</option>
-      <option value="open">Open</option>
-      <option value="dead">Dead</option>
-      <option value="rift">Rift</option>
-      <option value="unknown">Unknown</option>
-    </select>
-    <span style="margin-left:auto; display:flex; align-items:center; gap:8px; font-size:0.8rem; color:#8b949e;">
-      Records cap
-      <span title="Maximum number of individual survey reports stored locally. Older records are dropped when the limit is reached. Set to 0 for unlimited storage."
-        style="display:inline-flex; align-items:center; justify-content:center;
-               width:14px; height:14px; border-radius:50%; border:1px solid #8b949e;
-               color:#8b949e; font-size:0.65rem; cursor:help; flex-shrink:0;">i</span>
-      :
-      <input id="records-cap" type="text" value="5000"
-        style="width:70px; background:#21262d; border:1px solid #30363d; color:#e6edf3;
-               padding:4px 8px; border-radius:6px; font-size:0.8rem;" />
-      <span id="cap-warning" style="display:none; color:#ff7b72; font-size:0.75rem;">Must be a whole number ≥ 0</span>
-      <button id="btn-save-cap">Save</button>
-    </span>
-  </div>
+  <main class="nx-main">
+    <div class="status-bar">
+      <span class="nx-status-pill"><span class="nx-status-dot"></span><span id="status-text">Loading…</span></span>
+      <span class="nx-spacer"></span>
+      <select id="universe-select" title="Which universe's stored data to view. Independent of which universe the background scraper is actively scraping — that follows your live game session.">
+        <option value="s0">S0</option>
+        <option value="nf">New Frontier</option>
+      </select>
+      <select id="mode-select" title="View">
+        <option value="all">All time</option>
+        <option value="daily">Daily</option>
+        <option value="last3">Last 3 days</option>
+        <option value="last7">Last 7 days</option>
+        <option value="last30">Last month</option>
+        <option value="hourly">Hourly</option>
+      </select>
+      <span class="nx-window-bar">
+        <input type="date" id="window-from" title="Show data from this day (empty = earliest)." />
+        <span class="nx-window-dash">–</span>
+        <input type="date" id="window-to" title="Show data up to this day (empty = latest)." />
+      </span>
+      <select id="zone-select" title="Filter by the security zone where data was gathered. Zone-filtered totals are computed from the stored (capped) records.">
+        <option value="all">All zones</option>
+        <option value="sentinel">Sentinel</option>
+        <option value="open">Open</option>
+        <option value="dead">Dead</option>
+        <option value="rift">Rift</option>
+        <option value="unknown">Unknown</option>
+      </select>
+      <button id="btn-scrape">↻ Scrape Now</button>
+      <details class="nx-menu">
+        <summary title="More data controls">⚙</summary>
+        <div class="nx-menu-panel">
+          <div class="nx-menu-row">
+            <span>Records cap</span>
+            <span title="Maximum number of individual survey reports stored locally. Older records are dropped when the limit is reached. Set to 0 for unlimited storage."
+              style="display:inline-flex; align-items:center; justify-content:center;
+                     width:14px; height:14px; border-radius:50%; border:1px solid var(--color-muted);
+                     color:var(--color-muted); font-size:0.65rem; cursor:help; flex-shrink:0;">i</span>
+            <input id="records-cap" type="text" value="5000" style="width:70px;" />
+            <button id="btn-save-cap">Save</button>
+          </div>
+          <span id="cap-warning" style="display:none; color:var(--color-danger); font-size:0.75rem;">Must be a whole number ≥ 0</span>
+          <div class="nx-menu-row" style="flex-direction:column; align-items:stretch;">
+            <span title="How each resource counts toward every 'Total net' figure across the dashboard.">Total-net weights</span>
+            <div class="nx-weight-grid">
+              <label>Ore <input type="number" id="w-ore" min="0" step="0.1" /></label>
+              <label>Silicates <input type="number" id="w-silicates" min="0" step="0.1" /></label>
+              <label>Hydrogen <input type="number" id="w-hydrogen" min="0" step="0.1" /></label>
+              <label>Alloys <input type="number" id="w-alloys" min="0" step="0.1" /></label>
+              <label>Precursor Fragments <input type="number" id="w-precursor_fragments" min="0" step="1" /></label>
+              <label>Artifacts <input type="number" id="w-artifact" min="0" step="1" /></label>
+              <label>Other exotics <input type="number" id="w-rare" min="0" step="0.1" /></label>
+            </div>
+            <button id="btn-save-weights" style="align-self:flex-start;">Save</button>
+          </div>
+          <div class="nx-menu-row">
+            <button id="btn-rebuild" title="Recompute all aggregated stats from the stored report records — repairs drift after partial failures.">Rebuild stats</button>
+            <button id="btn-export">Export JSON</button>
+            <button id="btn-import">Import JSON</button>
+            <input id="import-file" type="file" accept=".json,application/json" style="display:none;" />
+          </div>
+          <div class="nx-menu-row">
+            <button id="btn-reset" style="color:var(--color-danger); border-color:color-mix(in srgb, var(--color-danger) 45%, transparent);">Reset all data</button>
+          </div>
+        </div>
+      </details>
+    </div>
 
-  <div id="global-content">
-    <p style="color:#8b949e; font-size:0.85rem; margin-bottom:12px;">
-      Combined across surveys, pirate raids, mining, debris (precise) and expeditions.
-    </p>
-    <div class="section-label">Resources collected (all sources)</div>
+    <!-- Legacy controls bar: dashboard.js's positionControls() still relocates this node
+         above each tab's .charts block on every render. Its former contents (View/Zone/
+         Days/Records cap) now live permanently in the sticky topbar above, so this is an
+         empty placeholder kept solely so the id + display-toggle logic in dashboard.js
+         keeps working untouched. -->
+    <div id="global-controls" class="controls" style="display:none;"></div>
+
+    <div class="nx-content">
+
+    <div id="global-content">
+      <div class="nx-screen-head">
+        <h1>Global overview</h1>
+        <p>Totals across every source · honouring view, zone and window</p>
+      </div>
+      <p style="color:var(--color-muted); font-size:0.85rem; margin-bottom:12px;">
+        Combined across surveys, pirate raids, mining, debris (precise) and expeditions.
+      </p>
+      <div class="section-label">Resources collected (all sources)</div>
     <div class="stats" id="g-stats-collected"></div>
 
     <div class="section-label">Net gain (collected − ship costs − fuel)</div>
@@ -101,20 +159,26 @@
         <h2>Collected composition</h2>
         <canvas id="chart-global"></canvas>
       </div>
+    </div>
+    <div class="charts" style="grid-template-columns: 1fr;">
       <div class="chart-box">
         <h2>Share by source (weighted)</h2>
         <canvas id="chart-global-source"></canvas>
       </div>
     </div>
-  </div>
-
-  <div id="main-content" style="display:none;">
-    <div class="controls" style="margin-top:0;">
-      <label for="event-select">Event:</label>
-      <select id="event-select" title="Filter survey stats and table by anomaly event type.">
-        <option value="all">All events</option>
-      </select>
     </div>
+
+    <div id="main-content" style="display:none;">
+      <div class="nx-screen-head">
+        <h1>Surveys</h1>
+        <p>Anomaly survey yields, losses and net gain</p>
+      </div>
+      <div class="controls" style="margin-top:0;">
+        <label for="event-select">Event:</label>
+        <select id="event-select" title="Filter survey stats and table by anomaly event type.">
+          <option value="all">All events</option>
+        </select>
+      </div>
 
     <div class="section-label">Resources collected</div>
     <div class="stats" id="stats-collected"></div>
@@ -181,6 +245,7 @@
   </div>
 
   <div id="pirates-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Pirates</h1><p>Camp raid loot, losses and net gain</p></div>
     <div class="section-label">Loot collected</div>
     <div class="stats" id="p-stats-collected"></div>
 
@@ -243,6 +308,7 @@
   </div>
 
   <div id="mining-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Mining</h1><p>Delivery yields, losses and net gain</p></div>
     <div class="section-label">Resources delivered</div>
     <div class="stats" id="m-stats-delivered"></div>
 
@@ -307,6 +373,7 @@
   <div id="battles-content" style="display:none;"></div>
 
   <div id="debris-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Debris</h1><p>Fields collected and generated by your fleets</p></div>
     <div class="section-label">Collected by your fleets (precise — from returning collect-debris missions)</div>
     <div class="stats" id="d-stats-mine"></div>
 
@@ -366,6 +433,7 @@
   </div>
 
   <div id="expeditions-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Expeditions</h1><p>Deep/rift launches, loot and losses</p></div>
     <div class="finder-controls">
       <label>Launch From
         <select id="e-launch-planet"></select>
@@ -393,15 +461,15 @@
         <input id="e-launch-depth" type="number" min="1" max="5" value="1" style="width:56px;">
       </label>
       <button id="e-launch-btn">Launch Expedition</button>
-      <span id="e-launch-status" style="color:#8b949e; font-size:0.8rem;"></span>
-      <span id="e-launch-active" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="Max 2 expeditions in flight at once"></span>
+      <span id="e-launch-status" style="color:var(--color-muted); font-size:0.8rem;"></span>
+      <span id="e-launch-active" style="margin-left:auto; color:var(--color-muted); font-size:0.8rem;" title="Max 2 expeditions in flight at once"></span>
     </div>
-    <div id="e-launch-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
+    <div id="e-launch-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:var(--color-muted); font-size:0.85rem; margin-bottom:8px;"></div>
 
     <div class="reports-section">
       <div class="reports-header">
         <h2>Expedition fleets in transit</h2>
-        <span id="e-transit-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span id="e-transit-count" style="color:var(--color-muted); font-size:0.8rem;"></span>
       </div>
       <div id="e-transit-list" style="display:flex; flex-direction:column; gap:10px;"></div>
     </div>
@@ -457,6 +525,7 @@
   </div>
 
   <div id="wormholes-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Wormhole</h1><p>Run loot and losses by class</p></div>
     <div class="controls" style="margin-top:0;">
       <label for="wclass-select">Wormhole class:</label>
       <select id="wclass-select" title="Filter wormhole runs by wormhole class.">
@@ -516,6 +585,7 @@
   </div>
 
   <div id="finder-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Galaxy Scout</h1><p>Search scanned planets across the galaxy</p></div>
     <div class="finder-controls">
       <label>Origin
         <select id="f-origin"></select>
@@ -525,7 +595,7 @@
       </label>
       <label>Sector
         <input id="f-sector" type="text" placeholder="35 or 33-35" style="width:90px;
-               background:#21262d; border:1px solid #30363d; color:#e6edf3;
+               background:var(--color-surface); border:1px solid var(--color-divider); color:var(--color-text);
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
       <label>Type
@@ -575,13 +645,13 @@
       <button id="f-export" title="Save your scanned planet data to a file to share" style="display:none;">Export galaxy</button>
       <button id="f-import" title="Merge scanned planet data from a shared file" style="display:none;">Import galaxy</button>
       <input id="f-import-file" type="file" accept="application/json,.json" style="display:none" />
-      <span id="f-progress" style="color:#8b949e; font-size:0.8rem;"></span>
+      <span id="f-progress" style="color:var(--color-muted); font-size:0.8rem;"></span>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
         <h2>Matches</h2>
-        <span id="f-match-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span id="f-match-count" style="color:var(--color-muted); font-size:0.8rem;"></span>
       </div>
       <table>
         <thead id="f-results-head">
@@ -608,12 +678,13 @@
 
     <div class="chart-box" style="position:relative; margin-top:20px;">
       <canvas id="f-map" width="1100" height="640" style="width:100%; max-height:none; cursor:crosshair;"></canvas>
-      <div id="f-tooltip" style="display:none; position:absolute; background:#161b22; border:1px solid #30363d;
+      <div id="f-tooltip" style="display:none; position:absolute; background:var(--color-surface); border:1px solid var(--color-divider);
            border-radius:6px; padding:6px 10px; font-size:0.75rem; pointer-events:none; z-index:10;"></div>
     </div>
   </div>
 
   <div id="asteroids-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Asteroid Fields</h1><p>Scan, rank and dispatch mining fleets</p></div>
     <div class="finder-controls">
       <label>Mining From :
         <select id="af-planet"></select>
@@ -629,12 +700,12 @@
       </label>
       <label>Nearest systems
         <input id="af-near" type="number" min="1" max="500" value="25" style="width:70px;
-               background:#21262d; border:1px solid #30363d; color:#e6edf3;
+               background:var(--color-surface); border:1px solid var(--color-divider); color:var(--color-text);
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
       <label>Cache TTL (min)
         <input id="af-cache-ttl" type="number" min="0" max="1440" value="30" step="5" style="width:70px;
-               background:#21262d; border:1px solid #30363d; color:#e6edf3;
+               background:var(--color-surface); border:1px solid var(--color-divider); color:var(--color-text);
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" 
                title="How long to cache asteroid field data (0 = no cache, 1440 = 24h)" />
       </label>
@@ -645,11 +716,11 @@
         <span id="af-zone" style="display:flex; gap:4px;"></span>
       </label>
       <button id="af-scan">Scan</button>
-      <span id="af-progress" style="color:#8b949e; font-size:0.8rem;"></span>
-      <span id="af-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="Fleet slots in use"></span>
+      <span id="af-progress" style="color:var(--color-muted); font-size:0.8rem;"></span>
+      <span id="af-slots" style="margin-left:auto; color:var(--color-muted); font-size:0.8rem;" title="Fleet slots in use"></span>
     </div>
 
-    <div class="finder-controls" id="af-livesearch" style="margin-top:0; border-top:1px solid #30363d; padding-top:10px;">
+    <div class="finder-controls" id="af-livesearch" style="margin-top:0; border-top:1px solid var(--color-divider); padding-top:10px;">
       <label title="Background scan every 5 min; notifies on a new match even when this tab or the browser isn't focused.">Live Search :
         <select id="ls-planet"></select>
       </label>
@@ -664,7 +735,7 @@
       </label>
       <label>Nearest systems
         <input id="ls-near" type="number" min="1" max="500" value="25" style="width:70px;
-               background:#21262d; border:1px solid #30363d; color:#e6edf3;
+               background:var(--color-surface); border:1px solid var(--color-divider); color:var(--color-text);
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
       <label>Type
@@ -674,27 +745,27 @@
         <span id="ls-zone" style="display:flex; gap:4px;"></span>
       </label>
       <button id="ls-search">Live Search</button>
-      <span id="ls-status" style="color:#8b949e; font-size:0.8rem;"></span>
+      <span id="ls-status" style="color:var(--color-muted); font-size:0.8rem;"></span>
     </div>
 
     <div class="finder-controls" id="af-template" style="margin-top:0;">
       <label>Fleet template
         <select id="af-template-select"></select>
       </label>
-      <span style="color:#8b949e; font-size:0.8rem;">🚀 on a row opens the fleet editor seeded from the ship recommendation. Edit templates in the Fleets tab.</span>
+      <span style="color:var(--color-muted); font-size:0.8rem;">🚀 on a row opens the fleet editor seeded from the ship recommendation. Edit templates in the Fleets tab.</span>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
         <h2>Asteroid fields</h2>
-        <span id="af-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span id="af-count" style="color:var(--color-muted); font-size:0.8rem;"></span>
         <div class="pagination">
           <button id="af-btn-prev">← Prev</button>
           <span id="af-page-info">Page 1</span>
           <button id="af-btn-next">Next →</button>
         </div>
       </div>
-      <div id="af-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
+      <div id="af-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:var(--color-muted); font-size:0.85rem; margin-bottom:8px;"></div>
       <table>
         <thead id="af-results-head">
           <tr>
@@ -717,6 +788,7 @@
   </div>
 
   <div id="scouting-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Scouting</h1><p>Probe surveys, investigations, debris and salvage</p></div>
     <div class="finder-controls">
       <label>Survey From
         <select id="sc-planet"></select>
@@ -728,14 +800,14 @@
         <select id="sc-scan-template"></select>
       </label>
       <button id="sc-scan">Launch Scan</button>
-      <span id="sc-progress" style="color:#8b949e; font-size:0.8rem;"></span>
-      <span id="sc-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="Fleet slots in use"></span>
+      <span id="sc-progress" style="color:var(--color-muted); font-size:0.8rem;"></span>
+      <span id="sc-slots" style="margin-left:auto; color:var(--color-muted); font-size:0.8rem;" title="Fleet slots in use"></span>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
         <h2>Scanning fleets in transit</h2>
-        <span id="sc-transit-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span id="sc-transit-count" style="color:var(--color-muted); font-size:0.8rem;"></span>
       </div>
       <div id="sc-transit-list" style="display:flex; flex-direction:column; gap:10px;"></div>
     </div>
@@ -743,13 +815,13 @@
     <div class="reports-section">
       <div class="reports-header">
         <h2>Active surveys (awaiting investigation)</h2>
-        <span id="sc-count" style="color:#8b949e; font-size:0.8rem;"></span>
-        <label style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Investigate template
+        <span id="sc-count" style="color:var(--color-muted); font-size:0.8rem;"></span>
+        <label style="margin-left:auto; color:var(--color-muted); font-size:0.85rem;">Investigate template
           <select id="sc-inv-template"></select>
         </label>
         <button id="sc-refresh">Refresh</button>
       </div>
-      <div id="sc-inv-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
+      <div id="sc-inv-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:var(--color-muted); font-size:0.85rem; margin-bottom:8px;"></div>
       <table>
         <thead>
           <tr>
@@ -770,22 +842,22 @@
     <div class="reports-section">
       <div class="reports-header">
         <h2>Live debris fields</h2>
-        <span id="sc-debris-last" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span id="sc-debris-last" style="color:var(--color-muted); font-size:0.8rem;"></span>
         <span id="sc-debris-zone" style="display:flex; gap:4px; margin-left:12px;"></span>
-        <label style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:#8b949e; margin-left:12px;">
+        <label style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:var(--color-muted); margin-left:12px;">
           <input type="checkbox" id="sc-debris-invonly" class="m-switch" title="Show only debris in systems you've investigated before.">
           Investigated only
         </label>
-        <label style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:#8b949e; margin-left:12px;">
+        <label style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:var(--color-muted); margin-left:12px;">
           <input type="checkbox" id="sc-debris-nearest" class="m-switch" title="Collect from your nearest owned planet per field instead of the selected planet.">
           Nearest planet
         </label>
-        <span style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Collect with:</span>
+        <span style="margin-left:auto; color:var(--color-muted); font-size:0.85rem;">Collect with:</span>
         <span id="sc-debris-ships" style="display:flex; gap:6px; align-items:center;"></span>
         <button id="sc-debris-hidden" style="display:none;"></button>
         <button id="sc-debris-refresh">Refresh</button>
       </div>
-      <div id="sc-debris-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
+      <div id="sc-debris-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:var(--color-muted); font-size:0.85rem; margin-bottom:8px;"></div>
       <table>
         <thead id="sc-debris-head">
           <tr>
@@ -810,8 +882,8 @@
     <div class="reports-section">
       <div class="reports-header">
         <h2>Uncollected salvage</h2>
-        <span id="sc-salvage-count" style="color:#8b949e; font-size:0.8rem;"></span>
-        <span style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Uses the cargo ships selected above.</span>
+        <span id="sc-salvage-count" style="color:var(--color-muted); font-size:0.8rem;"></span>
+        <span style="margin-left:auto; color:var(--color-muted); font-size:0.85rem;">Uses the cargo ships selected above.</span>
       </div>
       <table>
         <thead id="sc-salvage-head">
@@ -834,6 +906,7 @@
   </div>
 
   <div id="xeno-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Xeno</h1><p>Ancient-ruins surveys, loot and losses</p></div>
     <div class="finder-controls">
       <label>Survey From
         <select id="xn-planet"></select>
@@ -842,11 +915,11 @@
         <select id="xn-template"></select>
       </label>
       <button id="xn-scan">Launch Ruins Survey</button>
-      <span id="xn-progress" style="color:#8b949e; font-size:0.8rem;"></span>
-      <span id="xn-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="Fleet slots in use"></span>
+      <span id="xn-progress" style="color:var(--color-muted); font-size:0.8rem;"></span>
+      <span id="xn-slots" style="margin-left:auto; color:var(--color-muted); font-size:0.8rem;" title="Fleet slots in use"></span>
     </div>
-    <div id="xn-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
-    <div style="color:#8b949e; font-size:0.8rem; margin-bottom:8px;">
+    <div id="xn-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:var(--color-muted); font-size:0.85rem; margin-bottom:8px;"></div>
+    <div style="color:var(--color-muted); font-size:0.8rem; margin-bottom:8px;">
       Finds the nearest system with an unowned Ancient moon not already targeted by an in-flight ruins survey,
       then launches one there with the selected fleet template.
     </div>
@@ -854,7 +927,7 @@
     <div class="reports-section">
       <div class="reports-header">
         <h2>Ruins survey fleets in transit</h2>
-        <span id="xn-transit-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span id="xn-transit-count" style="color:var(--color-muted); font-size:0.8rem;"></span>
       </div>
       <div id="xn-transit-list" style="display:flex; flex-direction:column; gap:10px;"></div>
     </div>
@@ -862,7 +935,7 @@
     <div class="reports-section">
       <div class="reports-header">
         <h2>Moons on cooldown</h2>
-        <span id="xn-cooldown-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <span id="xn-cooldown-count" style="color:var(--color-muted); font-size:0.8rem;"></span>
       </div>
       <table>
         <thead>
@@ -916,6 +989,7 @@
   </div>
 
   <div id="fleets-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Fleet Templates</h1><p>Reusable fleet compositions for launches</p></div>
     <div class="finder-controls">
       <label>Template
         <select id="ft-select"></select>
@@ -923,28 +997,29 @@
       <button id="ft-new">New</button>
       <button id="ft-delete">Delete</button>
       <label>Name
-        <input id="ft-name" type="text" style="width:160px; background:#21262d; border:1px solid #30363d;
-               color:#e6edf3; padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
+        <input id="ft-name" type="text" style="width:160px; background:var(--color-surface); border:1px solid var(--color-divider);
+               color:var(--color-text); padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
     </div>
 
     <div class="fleet-box">
       <h2 class="fleet-title attacker" id="ft-box-title">Fleet</h2>
-      <span id="ft-status" style="color:#8b949e; font-size:0.8rem;"></span>
+      <span id="ft-status" style="color:var(--color-muted); font-size:0.8rem;"></span>
       <div id="ft-legend" style="display:flex; flex-wrap:wrap; gap:10px 16px; margin:6px 0 10px; font-size:0.78rem;"></div>
       <table class="fleet-table"><tbody id="ft-ships"></tbody></table>
-      <div style="margin-top:10px; padding-top:8px; border-top:1px solid #30363d;">
-        <div style="font-size:0.78rem; color:#8b949e; margin-bottom:6px;">Escort for zone:</div>
+      <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--color-divider);">
+        <div style="font-size:0.78rem; color:var(--color-muted); margin-bottom:6px;">Escort for zone:</div>
         <div id="ft-escort-zones" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
       </div>
     </div>
   </div>
 
   <div id="market-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Market</h1><p>Public and alliance trade orders</p></div>
     <div class="controls" style="margin-top:0; align-items:flex-start;">
       <div class="m-filter">
         <label>Market:</label>
-        <span style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:#8b949e;">
+        <span style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:var(--color-muted);">
           <span>Public</span>
           <input type="checkbox" id="m-source" class="m-switch" title="Switch between public market and alliance trade">
           <span>Alliance</span>
@@ -961,21 +1036,21 @@
       <div class="m-filter" style="margin-left:12px;">
         <label for="m-ratio-wanted">Ratio wanted ≥</label>
         <input id="m-ratio-wanted" type="number" min="0" step="0.001" placeholder="any"
-               style="width:80px; background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
+               style="width:80px; background:var(--color-surface); border:1px solid var(--color-divider); color:var(--color-text); padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </div>
       <button id="m-clear" style="margin-left:12px;">Clear filters</button>
       <button id="m-refresh" style="margin-left:12px;">Refresh</button>
-      <span id="m-progress" style="margin-left:12px; color:#8b949e; font-size:0.8rem;"></span>
+      <span id="m-progress" style="margin-left:12px; color:var(--color-muted); font-size:0.8rem;"></span>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
         <h2>Open offers</h2>
-        <span id="m-count" style="color:#8b949e; font-size:0.8rem;"></span>
-        <span style="color:#8b949e; font-size:0.75rem; display:flex; align-items:center; gap:6px;">
+        <span id="m-count" style="color:var(--color-muted); font-size:0.8rem;"></span>
+        <span style="color:var(--color-muted); font-size:0.75rem; display:flex; align-items:center; gap:6px;">
           Deal vs market average:
-          <span style="background:rgba(88,130,96,0.55); padding:1px 7px; border-radius:4px; color:#e6edf3;">above</span>
-          <span style="background:rgba(150,96,94,0.55); padding:1px 7px; border-radius:4px; color:#e6edf3;">below</span>
+          <span style="background:color-mix(in srgb, var(--color-success) 55%, transparent); padding:1px 7px; border-radius:4px; color:var(--color-text);">above</span>
+          <span style="background:color-mix(in srgb, var(--color-danger) 55%, transparent); padding:1px 7px; border-radius:4px; color:var(--color-text);">below</span>
           <span style="opacity:0.7;">deeper shade = further from the pair average (worst 5% ignored)</span>
         </span>
       </div>
@@ -996,6 +1071,7 @@
   </div>
 
   <div id="techtree-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Tech Tree</h1><p>Research dependency graph and queue planner</p></div>
     <div class="controls" style="margin-top:0;">
       <label for="tt-branch">Branch:</label>
       <select id="tt-branch">
@@ -1003,7 +1079,7 @@
       </select>
       <button id="tt-fit">Fit width</button>
       <input id="tt-search" type="search" placeholder="Search tech…" style="margin-left:8px;">
-      <span id="tt-summary" style="margin-left:12px; color:#8b949e; font-size:0.8rem;"></span>
+      <span id="tt-summary" style="margin-left:12px; color:var(--color-muted); font-size:0.8rem;"></span>
     </div>
     <div id="tt-legend"></div>
     <div class="tt-main">
@@ -1021,8 +1097,169 @@
     </div>
   </div>
 
-  <div id="storage-footer" style="margin-top:24px; padding-top:10px; border-top:1px solid #21262d;
-       color:#484f58; font-size:0.75rem;"></div>
+  <div id="simulator-content" style="display:none;">
+    <div class="nx-screen-head">
+      <h1>Combat Simulator</h1>
+      <p>Battle outcome projection · Monte-Carlo over recorded ship stats</p>
+    </div>
+
+    <div class="finder-controls">
+      <label>Simulations
+        <input id="opt-sims" type="number" value="100" min="1" max="10000" />
+      </label>
+      <label>Max rounds
+        <input id="opt-rounds" type="number" value="15" min="1" max="20" />
+      </label>
+      <label>Damage variance ±%
+        <input id="opt-variance" type="number" value="10" min="0" max="50" />
+      </label>
+      <label>Debris rate %
+        <input id="opt-debris" type="number" value="30" min="0" max="100" />
+      </label>
+      <label style="flex-direction:row; gap:5px;">
+        <input id="opt-shield-regen" type="checkbox" />Shields regenerate each round
+      </label>
+      <label style="flex-direction:row; gap:5px;">
+        <input id="opt-roundtrip" type="checkbox" checked />Round trip (×2 fuel)
+      </label>
+      <button id="btn-run">⌖ Simulate Battle</button>
+      <button id="btn-clear">↺ Reset</button>
+      <span id="sim-status" style="margin-left:auto; color:var(--color-muted); font-size:0.8rem;"></span>
+    </div>
+
+    <div class="sim-layout">
+      <div class="sim-panel sim-panel-attacker">
+        <div class="sim-panel-head">
+          <div class="sim-panel-icon">⚡</div>
+          <div class="sim-panel-headtext">
+            <div class="sim-panel-side">Attacker</div>
+            <div id="atk-fleet-name" class="sim-panel-name">Attacker Fleet</div>
+          </div>
+        </div>
+        <div class="sim-panel-body">
+          <div class="load-fleet-bar">
+            <select id="fleet-planet" title="Planet to import ships from">
+              <option value="home">Home planet</option>
+            </select>
+            <select id="fleet-class" title="Filter by ship type">
+              <option value="">All types</option>
+              <option value="combat">Combat</option>
+              <option value="special">Special</option>
+              <option value="recon">Recon</option>
+              <option value="utility">Utility</option>
+            </select>
+            <button id="btn-load-fleet">Load my fleet</button>
+          </div>
+          <div class="coord-bar">
+            <span class="coord-label">Origin system</span>
+            <input id="atk-system" type="text" placeholder="e.g. A12-27" style="width:100px;" />
+          </div>
+          <details class="tech-panel">
+            <summary>Research levels</summary>
+            <div class="load-fleet-bar" style="margin-top:8px;">
+              <button id="btn-fill-tech-attacker">Fill my levels</button>
+            </div>
+            <div class="tech-grid" id="attacker-techs"></div>
+          </details>
+          <div class="sim-ships-label">Combat Ships</div>
+          <table class="fleet-table"><tbody id="attacker-ships"></tbody></table>
+        </div>
+      </div>
+      <div class="sim-panel sim-panel-defender">
+        <div class="sim-panel-head">
+          <div class="sim-panel-icon">⛨</div>
+          <div class="sim-panel-headtext">
+            <div class="sim-panel-side">Defender</div>
+            <div id="def-fleet-name" class="sim-panel-name">Defender Fleet</div>
+          </div>
+        </div>
+        <div class="sim-panel-body">
+          <div class="load-fleet-bar">
+            <select id="report-select" style="flex:1;">
+              <option value="">Fill from intel report…</option>
+            </select>
+          </div>
+          <div class="coord-bar">
+            <span class="coord-label">Target system</span>
+            <input id="def-system" type="text" placeholder="e.g. G35-41" style="width:100px;" />
+            <span id="distance-display" class="coord-distance"></span>
+          </div>
+          <details class="tech-panel">
+            <summary>Research levels</summary>
+            <div class="load-fleet-bar" style="margin-top:8px;">
+              <button id="btn-fill-tech-defender">Fill my levels</button>
+            </div>
+            <div class="tech-grid" id="defender-techs"></div>
+          </details>
+          <label class="sim-marauder" title="Marauder-tier pirates have a hidden ×1.15 HP and shield multiplier (calibrated on battle #481281).">
+            <input type="checkbox" id="def-marauder" />
+            Marauder-tier pirates (×1.15 HP)
+          </label>
+          <div class="tech-panel">
+            <span class="tech-label" title="Missile Defense level (1–15). Missile weapon, heavy armor. RF: probe ×5, spy probe ×5, scout ×4, fighter ×3, interceptor ×2, assault shuttle ×2.">Missile Def</span>
+            <input type="number" id="def-missile" class="tech-input" min="0" max="15" value="0" />
+            <span class="tech-label" title="Laser Defense level (1–15). Laser weapon, heavy armor. No rapid fire.">Laser Def</span>
+            <input type="number" id="def-laser" class="tech-input" min="0" max="15" value="0" />
+            <span class="tech-label" title="Railgun Defense level (1–15). Kinetic weapon, heavy armor. RF: cruiser ×4, missile cruiser ×2, bomber ×2.">Railgun Def</span>
+            <input type="number" id="def-railgun" class="tech-input" min="0" max="15" value="0" />
+            <span class="tech-label" title="Plasma Defense level (1–15). Plasma weapon, heavy armor. RF: battleship ×2, carrier ×2, dreadnought ×2, titan ×2.">Plasma Def</span>
+            <input type="number" id="def-plasma" class="tech-input" min="0" max="15" value="0" />
+            <span class="tech-label" title="Ion Defense level (1–15). Ion weapon, heavy armor. Strong vs shielded ships (×2.0). No rapid fire.">Ion Def</span>
+            <input type="number" id="def-ion" class="tech-input" min="0" max="15" value="0" />
+            <span class="tech-label" title="Electronic Warfare level (1–10). No attack. Reduces attacker damage by 3% per level (max 30%). Bombers get ×3 RF against it.">EW</span>
+            <input type="number" id="def-ew" class="tech-input" min="0" max="10" value="0" />
+            <span class="tech-label" title="Shield Generator level (1–15). Generates a protective energy shield around the planet. Never fully disabled — always provides minimum protection. Effect not yet modeled.">Shield Gen</span>
+            <input type="number" id="def-shield" class="tech-input" min="0" max="15" value="0" />
+          </div>
+          <div id="target-intel" style="display:none;" class="tech-panel"></div>
+          <div class="sim-ships-label">Combat Ships</div>
+          <table class="fleet-table"><tbody id="defender-ships"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div id="results" style="display:none;">
+      <div class="sim-result-heading">
+        <div class="sim-result-title">Simulation Result</div>
+        <div class="sim-result-rule"></div>
+      </div>
+
+      <div class="section-label">Outcome (across all simulations)</div>
+      <div class="stats" id="outcome-stats"></div>
+
+      <div class="sim-fleet-results" id="fleet-results"></div>
+
+      <div class="sim-rounds">
+        <h3 class="sim-rounds-heading">Combat Rounds <span class="n" id="rounds-count"></span></h3>
+        <div class="sim-rounds-list" id="rounds-log"></div>
+      </div>
+
+      <div class="sim-losses">
+        <div>
+          <h3 class="sim-losses-heading">Attacker Losses</h3>
+          <div class="sim-loss-rows" id="attacker-losses"></div>
+          <div class="stats" id="attacker-cost" style="margin-top:10px;"></div>
+        </div>
+        <div>
+          <h3 class="sim-losses-heading">Defender Losses</h3>
+          <div class="sim-loss-rows" id="defender-losses"></div>
+          <div class="stats" id="defender-cost" style="margin-top:10px;"></div>
+        </div>
+      </div>
+
+      <div class="sim-debris">
+        <div class="sim-debris-title">☄ Debris Field</div>
+        <div class="sim-debris-row" id="debris-stats"></div>
+      </div>
+
+      <div class="section-label">Fuel for the attacking fleet</div>
+      <div class="stats" id="fuel-stats"></div>
+    </div>
+
+  </div>
+
+    </div><!-- /.nx-content -->
+  </main>
 
   <!-- Load order: polyfill + common.js first, tabs next, orchestrator last. -->
   <script src="browser-polyfill.js"></script>

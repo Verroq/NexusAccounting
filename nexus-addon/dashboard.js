@@ -4,9 +4,9 @@
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-import { activeTab, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, nsGet, periodLabelFor, renderMarkdown, renderNetCards, selectedUniverse, setActiveTab, setSelectedUniverse, setStore, store } from './common.js';
+import { RARE_WEIGHT, RESOURCE_WEIGHTS, activeTab, applyResourceWeights, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, nsGet, periodLabelFor, renderMarkdown, renderNetCards, selectedUniverse, setActiveTab, setSelectedUniverse, setStore, store } from './common.js';
 import { SCOPED_KEYS } from './storage-keys.js';
-import { renderBattlesTab } from './tabs/battles.js';
+import { renderBattlesTab, setBattlePage } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
 import { renderWormholesTab, setWhPage } from './tabs/wormholes.js';
@@ -19,6 +19,7 @@ import { initMarketTab } from './tabs/market.js';
 import { renderGlobalTab } from './tabs/global.js';
 import { renderMiningTab, setMiningPage } from './tabs/mining.js';
 import { renderPiratesTab, setPirateCurrentPage } from './tabs/pirates.js';
+import { initSimulatorTab } from './tabs/simulator.js';
 import { getEventBreakdownForMode, getResourcesLostForMode, getSeriesForMode, getTotalsForMode, populateEventOptions, renderByEventChart, renderCollected, renderEventsChart, renderLost, renderResourceChart, renderTable, setCurrentPage } from './tabs/surveys.js';
 import { renderTechTreeTab } from './tabs/techtree.js';
 
@@ -33,12 +34,14 @@ export async function loadAll() {
   // setting/cache that isn't scoped to a universe.
   const [scoped, globalKeys] = await Promise.all([
     nsGet(SCOPED_KEYS),
-    browser.storage.local.get(['ships', 'records_cap', 'research', 'research_speed_mult', 'active_research']),
+    browser.storage.local.get(['ships', 'records_cap', 'research', 'research_speed_mult', 'active_research', 'resource_weights']),
   ]);
   setStore({ ...scoped, ...globalKeys });
 
   // A stored 0 means "unlimited"; missing falls back to the default cap.
   document.getElementById('records-cap').value = store.records_cap ?? 5000;
+  applyResourceWeights(store.resource_weights);
+  populateWeightInputs();
   updateStatus(store.last_scrape, store.last_error);
   renderAll();
   updateStorageFooter();
@@ -146,6 +149,10 @@ export function renderAll() {
     renderTechTreeTab();
     return;
   }
+  if (activeTab === 'simulator') {
+    initSimulatorTab();
+    return;
+  }
   populateEventOptions();
   const mode = getMode();
   const t = getTotalsForMode();
@@ -182,6 +189,7 @@ export const TAB_CONTENT = {
   xeno: 'xeno-content',
   market: 'market-content',
   techtree: 'techtree-content',
+  simulator: 'simulator-content',
 };
 
 document.querySelectorAll('.tab').forEach(btn => {
@@ -193,7 +201,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     }
     // View mode and records cap are meaningless on the finder and debris tabs.
     document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'battles') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'simulator') ? 'none' : '';
     positionControls();
     renderAll();
   });
@@ -245,6 +253,7 @@ export function onViewChange() {
   setExpPage(1);
   setWhPage(1);
   setXnReportPage(1);
+  setBattlePage(1);
   renderAll();
 }
 
@@ -300,6 +309,33 @@ document.getElementById('btn-save-cap').addEventListener('click', async function
   input.style.borderColor = '#30363d';
   input.style.color = '#e6edf3';
   document.getElementById('cap-warning').style.display = 'none';
+  this.textContent = 'Saved ✓';
+  setTimeout(() => { this.textContent = 'Save'; }, 1500);
+});
+
+// ── Total-net weights ────────────────────────────────────────────────────
+
+function populateWeightInputs() {
+  for (const key of Object.keys(RESOURCE_WEIGHTS)) {
+    const el = document.getElementById(`w-${key}`);
+    if (el) el.value = RESOURCE_WEIGHTS[key];
+  }
+  document.getElementById('w-rare').value = RARE_WEIGHT;
+}
+
+document.getElementById('btn-save-weights').addEventListener('click', async function () {
+  const weights = {};
+  for (const key of [...Object.keys(RESOURCE_WEIGHTS), 'rare']) {
+    weights[key] = parseFloat(document.getElementById(`w-${key}`).value);
+  }
+  applyResourceWeights(weights);
+  populateWeightInputs();   // reflect back any values applyResourceWeights rejected (NaN/negative)
+  // Persist the corrected live values, not the raw (possibly-rejected) input —
+  // an invalid field must fall back to its old weight on reload, not silently
+  // become 0 (parseFloat('') → NaN → JSON null → Number(null) is 0, which
+  // applyResourceWeights would accept as a real weight).
+  await browser.storage.local.set({ resource_weights: { ...RESOURCE_WEIGHTS, rare: RARE_WEIGHT } });
+  renderAll();
   this.textContent = 'Saved ✓';
   setTimeout(() => { this.textContent = 'Save'; }, 1500);
 });

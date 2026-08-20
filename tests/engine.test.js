@@ -136,6 +136,16 @@ test('planetary defenses: bombers crack laser defense lv 12, fighters do not', (
     `bombers should win most runs, won ${bombers.outcomes.attacker_won}`);
 });
 
+test('trace rounds carry non-negative attackerDmg/defenderDmg (Combat Rounds display)', () => {
+  const r = engine.simulateOnce({ interceptor: 10 }, { scout: 8, fighter: 4 },
+    { ...BASE_OPTS, trace: true });
+  assert.ok(r.trace.length > 0, 'expected at least one traced round');
+  for (const row of r.trace) {
+    assert.ok(Number.isFinite(row.attackerDmg) && row.attackerDmg >= 0, `attackerDmg invalid: ${row.attackerDmg}`);
+    assert.ok(Number.isFinite(row.defenderDmg) && row.defenderDmg >= 0, `defenderDmg invalid: ${row.defenderDmg}`);
+  }
+});
+
 test('losses valued at build cost', () => {
   // scout: costOre 194, costSilicates 97, costAlloys 20 (Stats.txt 2026-06-22)
   const v = engine.lossesToResources({ scout: { sent: 10, lost: 4 } });
