@@ -228,7 +228,13 @@ function renderFleetResultCards(result) {
         row.className = 'sim-fleet-card-row';
         const icon = document.createElement('div');
         icon.className = 'sim-fleet-card-icon';
-        icon.textContent = '▶';
+        if (def?.imageUrl) {
+          const img = document.createElement('img');
+          img.src = def.imageUrl;
+          icon.appendChild(img);
+        } else {
+          icon.textContent = '▶';
+        }
         const nm = document.createElement('span');
         nm.className = 'sim-fleet-card-name-cell';
         nm.textContent = def ? def.name : key;

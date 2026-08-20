@@ -1282,12 +1282,13 @@ async function backfillZones(zones, campZones = {}, wormholeZones = {}) {
 }
 
 // Ship catalog keyed by shipDefId
-function buildShipCatalog(shipyardData) {
+function buildShipCatalog(shipyardData, race, universe) {
   const ships = {};
   for (const s of (shipyardData.ships || [])) {
     ships[s.id] = {
       key: s.key,
       name: s.name,
+      imageUrl: (race && s.key) ? `${gameUrlFor(universe)}/api/images/ships/${race}/${s.key}.webp` : null,
       costOre: s.costOre || 0,
       costSilicates: s.costSilicates || 0,
       costHydrogen: s.costHydrogen || 0,
@@ -2829,7 +2830,7 @@ async function scrape() {
       // the rest of the scrape still runs. Ship defs rarely change.
       let ships;
       if (shipyardData) {
-        ships = buildShipCatalog(shipyardData);
+        ships = buildShipCatalog(shipyardData, jwtRace(token), currentUniverse);
         await browser.storage.local.set({ ships });
       } else {
         ships = (await browser.storage.local.get('ships')).ships || {};
@@ -2919,13 +2920,13 @@ async function refetchEndpoint(path) {
   } catch {
     return;
   }
-  routeIntercepted(gameUrlFor(currentUniverse) + path, json);
+  routeIntercepted(gameUrlFor(currentUniverse) + path, json, token);
 }
 
-function routeIntercepted(url, json) {
+function routeIntercepted(url, json, token) {
   enqueue(async () => {
     if (url.includes('/shipyard')) {
-      await browser.storage.local.set({ ships: buildShipCatalog(json) });
+      await browser.storage.local.set({ ships: buildShipCatalog(json, jwtRace(token), currentUniverse) });
       return;
     }
     if (url.includes('/spy-reports')) {

@@ -683,8 +683,9 @@ input.tech-input {
 .sim-fleet-card-row + .sim-fleet-card-row { border-top: 1px solid var(--color-divider); }
 .sim-fleet-card-icon {
   width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--color-divider); flex-shrink: 0; font-size: 16px;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
+.sim-fleet-card-icon img { width: 100%; height: 100%; object-fit: contain; }
 .sim-fleet-card.attacker .sim-fleet-card-icon { color: var(--color-danger); }
 .sim-fleet-card.defender .sim-fleet-card-icon { color: var(--color-accent); }
 .sim-fleet-card-name-cell { flex: 1; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
