@@ -559,10 +559,16 @@ th.sortable .arrow { margin-left: 4px; color: var(--color-accent); }
 
 /* ══════════════════════════════════════════════════════════════════════
    Combat Simulator (fleet-box/fleet-title/fleet-table/ship-group above are
-   shared with Fleet Templates; this block covers what's specific here)
+   shared with Fleet Templates; this block covers what's specific here).
+   Markup/colors follow design_overhaul/combat-simulator.md — attacker accent
+   is var(--color-danger) (#e0736b), defender is var(--color-accent), survivor
+   green is var(--color-success) (#6fce8f) and the debris gold is
+   var(--color-warning) (#d8b055). Those three tokens already hold the exact
+   hex the spec calls out as hard-coded semantic constants (not part of the
+   accent ramp), so reusing them keeps one source of truth instead of adding
+   duplicate magic hex codes.
    ══════════════════════════════════════════════════════════════════════ */
 .sim-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
-.fleet-title.defender { color: var(--res-hydrogen); }
 
 .load-fleet-bar, .coord-bar {
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
@@ -591,17 +597,147 @@ input.tech-input {
   text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-muted);
 }
 
+.sim-marauder {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.78rem; color: var(--color-muted); margin-bottom: 12px; cursor: pointer;
+}
+
 .tip-box {
   background: var(--color-surface); border: 1px solid var(--color-divider); border-left: 3px solid var(--color-warning);
   border-radius: var(--radius-md); padding: 10px 14px; font-size: 0.8rem; color: var(--color-muted);
   margin-bottom: 20px;
 }
 
-.rounds-table { margin-bottom: 20px; }
 .survivors { margin-left: 8px; font-size: 0.75rem; white-space: nowrap; }
 
 .win-attacker { color: var(--color-danger); }
 .win-defender { color: var(--res-hydrogen); }
 .win-draw { color: var(--color-warning); }
 
-@media (max-width: 900px) { .sim-layout { grid-template-columns: 1fr; } }
+/* ── Setup panels: side-tinted gradient card, icon-box header, name-as-heading ── */
+.sim-panel {
+  border-radius: var(--radius-lg); border: 1px solid var(--color-divider);
+  box-shadow: var(--shadow-sm); overflow: hidden;
+}
+.sim-panel-attacker { background: linear-gradient(120deg, color-mix(in srgb, var(--color-danger) 14%, var(--color-surface)), var(--color-surface) 70%); }
+.sim-panel-defender { background: linear-gradient(120deg, color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)), var(--color-surface) 70%); }
+
+.sim-panel-head {
+  display: flex; align-items: center; gap: 10px; padding: 14px 18px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.sim-panel-icon {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+}
+.sim-panel-attacker .sim-panel-icon { border: 1px solid var(--color-danger); color: var(--color-danger); }
+.sim-panel-defender .sim-panel-icon { border: 1px solid var(--color-accent); color: var(--color-accent); }
+.sim-panel-headtext { flex: 1; min-width: 0; }
+.sim-panel-side { font-size: 10.5px; letter-spacing: 0.15em; text-transform: uppercase; }
+.sim-panel-attacker .sim-panel-side { color: var(--color-danger); }
+.sim-panel-defender .sim-panel-side { color: var(--color-accent); }
+/* two classes' worth of specificity to beat the global input[type="text"] rule
+   (background/border/padding) further up the file */
+.sim-panel-headtext input.sim-panel-name {
+  width: 100%; background: transparent; border: none; outline: none; padding: 0; margin-top: 1px;
+  color: var(--color-text); font-family: var(--font-heading); font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
+}
+
+.sim-panel-body { padding: 14px 18px 16px; }
+.sim-ships-label {
+  font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 46%, transparent); margin: 4px 0 6px;
+}
+/* research-level / ship-count inputs sit on the darker --color-bg fill, per spec */
+.sim-panel .fleet-table input, .sim-panel input.tech-input {
+  background: var(--color-bg); font-variant-numeric: tabular-nums;
+}
+.sim-panel .fleet-table input { width: 64px; text-align: right; }
+
+/* ── Simulation Result section label + fading rule ── */
+.sim-result-heading { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }
+.sim-result-title {
+  font-family: var(--font-heading); font-size: 14px; letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent); text-transform: uppercase;
+}
+.sim-result-rule { flex: 1; height: 1px; background: linear-gradient(90deg, var(--color-divider), transparent); }
+
+/* ── Fleet result cards ── */
+.sim-fleet-results { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 22px 0 20px; }
+.sim-fleet-card { border-radius: var(--radius-lg); border: 1px solid var(--color-divider); box-shadow: var(--shadow-sm); overflow: hidden; }
+.sim-fleet-card.attacker { background: linear-gradient(120deg, color-mix(in srgb, var(--color-danger) 20%, var(--color-surface)), var(--color-surface) 68%); }
+.sim-fleet-card.defender { background: linear-gradient(120deg, color-mix(in srgb, var(--color-accent) 18%, var(--color-surface)), var(--color-surface) 68%); }
+.sim-fleet-card-head { padding: 16px 18px 14px; }
+.sim-fleet-card-side { display: flex; align-items: center; gap: 7px; font-size: 10.5px; letter-spacing: 0.15em; text-transform: uppercase; }
+.sim-fleet-card.attacker .sim-fleet-card-side { color: var(--color-danger); }
+.sim-fleet-card.defender .sim-fleet-card-side { color: var(--color-accent); }
+.sim-fleet-card-name { font-family: var(--font-heading); font-size: 19px; font-weight: 600; letter-spacing: -0.01em; margin-top: 3px; }
+.sim-fleet-card-chip {
+  margin: 0 14px; font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 46%, transparent);
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
+  padding: 7px 12px; border-radius: 6px;
+}
+.sim-fleet-card-rows { padding: 4px 14px 14px; display: flex; flex-direction: column; max-height: 260px; overflow-y: auto; }
+.sim-fleet-card-row { display: flex; align-items: center; gap: 12px; padding: 10px 2px; }
+.sim-fleet-card-row + .sim-fleet-card-row { border-top: 1px solid var(--color-divider); }
+.sim-fleet-card-icon {
+  width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--color-divider); flex-shrink: 0; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+}
+.sim-fleet-card.attacker .sim-fleet-card-icon { color: var(--color-danger); }
+.sim-fleet-card.defender .sim-fleet-card-icon { color: var(--color-accent); }
+.sim-fleet-card-name-cell { flex: 1; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sim-fleet-card-lost { font-variant-numeric: tabular-nums; font-size: 14px; color: var(--color-danger); }
+.sim-fleet-card-remain { font-variant-numeric: tabular-nums; font-size: 14px; min-width: 44px; text-align: right; }
+.sim-fleet-card-remain.alive { color: var(--color-success); }
+.sim-fleet-card-remain.wiped { color: var(--color-danger); }
+.sim-fleet-card-empty { padding: 14px; color: var(--color-muted); font-size: 0.8rem; }
+
+/* ── Combat Rounds ── */
+.sim-rounds { margin-bottom: 20px; }
+.sim-rounds-heading { font-family: var(--font-heading); font-size: 17px; font-weight: 500; margin-bottom: 12px; }
+.sim-rounds-heading .n { color: color-mix(in srgb, var(--color-text) 45%, transparent); font-weight: 400; font-size: 14px; }
+.sim-rounds-list { display: flex; flex-direction: column; gap: 10px; }
+.sim-round-card { background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: var(--radius-md); padding: 13px 18px; }
+.sim-round-top { display: flex; align-items: flex-start; gap: 12px; }
+.sim-round-summary { flex: 1; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.sim-round-n { font-family: var(--font-heading); font-weight: 600; }
+.sim-round-dmg { color: color-mix(in srgb, var(--color-text) 82%, transparent); }
+.sim-round-dmg .sword { color: var(--color-danger); }
+.sim-round-dmg .shield { color: var(--color-accent); }
+.sim-round-pct { font-size: 11.5px; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--color-text) 48%, transparent); white-space: nowrap; }
+.sim-round-losses { margin-top: 7px; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; padding-left: 2px; }
+.sim-round-loss-a { color: var(--color-danger); }
+.sim-round-loss-d { color: color-mix(in srgb, var(--color-danger) 78%, var(--color-text)); }
+.sim-round-note { color: var(--color-muted); font-size: 0.75rem; padding: 2px 2px 0; }
+
+/* ── Losses ── */
+.sim-losses { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.sim-losses-heading { font-family: var(--font-heading); font-size: 17px; font-weight: 500; margin-bottom: 12px; }
+.sim-loss-rows { display: flex; flex-direction: column; gap: 10px; }
+.sim-loss-row { display: flex; align-items: center; gap: 12px; }
+.sim-loss-icon {
+  width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--color-divider); flex-shrink: 0; font-size: 16px;
+  display: flex; align-items: center; justify-content: center; color: color-mix(in srgb, var(--color-text) 50%, transparent);
+}
+.sim-loss-qty { color: var(--color-danger); font-weight: 500; font-size: 14px; white-space: nowrap; }
+.sim-loss-detail { font-size: 12.5px; color: color-mix(in srgb, var(--color-text) 50%, transparent); }
+.sim-loss-empty { color: var(--color-muted); font-size: 0.8rem; }
+
+/* ── Debris Field ── */
+.sim-debris {
+  border: 1px solid color-mix(in srgb, var(--color-warning) 28%, var(--color-divider));
+  border-radius: var(--radius-md); padding: 16px 20px;
+  background: color-mix(in srgb, var(--color-warning) 6%, var(--color-surface));
+  margin-bottom: 20px;
+}
+.sim-debris-title { font-family: var(--font-heading); font-size: 16px; color: var(--color-warning); margin-bottom: 11px; display: flex; align-items: center; gap: 7px; }
+.sim-debris-row { display: flex; gap: 30px; flex-wrap: wrap; }
+.sim-debris-item { font-size: 14px; font-variant-numeric: tabular-nums; }
+.sim-debris-value { font-weight: 600; }
+.sim-debris-label { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+@media (max-width: 900px) {
+  .sim-layout, .sim-fleet-results, .sim-losses { grid-template-columns: 1fr; }
+}

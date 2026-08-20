@@ -173,6 +173,8 @@ function renderResults(result, opts) {
     makeStatCard('Avg rounds', result.avgRounds.toFixed(1), 'missions'),
   );
 
+  renderFleetResultCards(result);
+
   renderLossTable('attacker-losses', result.attackerLosses);
   renderLossTable('defender-losses', result.defenderLosses);
   updateSurvivors('attacker', result.attackerLosses);
@@ -180,47 +182,160 @@ function renderResults(result, opts) {
   renderCostCards('attacker-cost', result.attackerLosses);
   renderCostCards('defender-cost', result.defenderLosses);
 
-  // Debris from both sides' destroyed ships
-  const a = lossesToResources(result.attackerLosses);
-  const d = lossesToResources(result.defenderLosses);
-  const debrisEl = document.getElementById('debris-stats');
-  debrisEl.textContent = '';
-  debrisEl.append(
-    makeStatCard('Debris ore',       fmt((a.ore + d.ore) * opts.debrisRate),             'ore'),
-    makeStatCard('Debris silicates', fmt((a.silicates + d.silicates) * opts.debrisRate), 'silicates'),
-    makeStatCard('Debris alloys',    fmt((a.alloys + d.alloys) * opts.debrisRate),       'alloys'),
-  );
-
+  renderDebris(result.attackerLosses, result.defenderLosses, opts);
   renderFuel(result.attackerLosses, opts);
 }
 
-// One representative run, shown round by round (like the in-game report).
-function renderSampleBattle(attackerFleet, defenderFleet, opts) {
-  const tbody = document.getElementById('rounds-log');
-  tbody.textContent = '';
-  const sample = simulateOnce(attackerFleet, defenderFleet, { ...opts, trace: true });
-  for (const r of (sample.trace || [])) {
-    const tr = document.createElement('tr');
-    const lost = [
-      r.attackerLost ? `${r.attackerLost} atk` : '',
-      r.defenderLost ? `${r.defenderLost} def` : '',
-    ].filter(Boolean).join(', ') || '—';
-    const cells = [
-      `${r.round}`,
-      `${r.attackerShips}`, `${r.attackerHpPct}%`,
-      `${r.defenderShips}`, `${r.defenderHpPct}%`,
-      lost,
-    ];
-    cells.forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); });
-    tbody.appendChild(tr);
+// "Fleets" — Simulation Result anatomy section 3: side-tinted cards, one ship
+// row per side per ship type sent (the spec's mockup shows a single Cruiser
+// row; real fleets can mix ship types, so every sent ship type gets a row).
+function renderFleetResultCards(result) {
+  const el = document.getElementById('fleet-results');
+  el.textContent = '';
+  const sides = [
+    { side: 'attacker', label: 'Attacker', icon: '⚡', losses: result.attackerLosses, nameId: 'atk-fleet-name' },
+    { side: 'defender', label: 'Defender', icon: '⛨', losses: result.defenderLosses, nameId: 'def-fleet-name' },
+  ];
+  for (const s of sides) {
+    const card = document.createElement('div');
+    card.className = `sim-fleet-card ${s.side}`;
+
+    const head = document.createElement('div');
+    head.className = 'sim-fleet-card-head';
+    const sideEl = document.createElement('div');
+    sideEl.className = 'sim-fleet-card-side';
+    sideEl.textContent = `${s.icon} ${s.label}`;
+    const nameEl = document.createElement('div');
+    nameEl.className = 'sim-fleet-card-name';
+    nameEl.textContent = document.getElementById(s.nameId)?.value || `${s.label} Fleet`;
+    head.append(sideEl, nameEl);
+
+    const chip = document.createElement('div');
+    chip.className = 'sim-fleet-card-chip';
+    chip.textContent = 'Combat Ships';
+
+    const rows = document.createElement('div');
+    rows.className = 'sim-fleet-card-rows';
+    const entries = Object.entries(s.losses).filter(([, l]) => l.sent > 0);
+    if (!entries.length) {
+      const empty = document.createElement('div');
+      empty.className = 'sim-fleet-card-empty';
+      empty.textContent = 'No ships';
+      rows.appendChild(empty);
+    } else {
+      for (const [key, l] of entries) {
+        const def = shipDefs[key];
+        const remain = Math.max(0, l.sent - l.lost);
+        const row = document.createElement('div');
+        row.className = 'sim-fleet-card-row';
+        const icon = document.createElement('div');
+        icon.className = 'sim-fleet-card-icon';
+        icon.textContent = '▶';
+        const nm = document.createElement('span');
+        nm.className = 'sim-fleet-card-name-cell';
+        nm.textContent = def ? def.name : key;
+        const lost = document.createElement('span');
+        lost.className = 'sim-fleet-card-lost';
+        lost.textContent = `-${l.lost.toFixed(1)}`;
+        const rem = document.createElement('span');
+        rem.className = `sim-fleet-card-remain ${remain > 0.05 ? 'alive' : 'wiped'}`;
+        rem.textContent = remain.toFixed(1);
+        row.append(icon, nm, lost, rem);
+        rows.appendChild(row);
+      }
+    }
+
+    card.append(head, chip, rows);
+    el.appendChild(card);
   }
-  const note = document.createElement('tr');
-  const td = document.createElement('td');
-  td.colSpan = 6;
-  td.style.cssText = 'color:var(--color-muted);font-size:0.75rem;';
-  td.textContent = `Sample outcome: ${sample.outcome.replace(/_/g, ' ')} in ${sample.rounds} rounds (one run — varies; see stats above for averages).`;
-  note.appendChild(td);
-  tbody.appendChild(note);
+}
+
+// "Combat Rounds" — one representative run, shown as a round-by-round card
+// list (like the in-game report). aDmg/dDmg and ATK/DEF% come straight from
+// engine.js's trace; the attacker-loss line is hidden on rounds it took none
+// (mirrors the spec's showALost).
+function renderSampleBattle(attackerFleet, defenderFleet, opts) {
+  const list = document.getElementById('rounds-log');
+  list.textContent = '';
+  const sample = simulateOnce(attackerFleet, defenderFleet, { ...opts, trace: true });
+  const trace = sample.trace || [];
+
+  const countEl = document.getElementById('rounds-count');
+  if (countEl) countEl.textContent = trace.length ? `(${trace.length})` : '';
+
+  for (const r of trace) {
+    const card = document.createElement('div');
+    card.className = 'sim-round-card';
+
+    const top = document.createElement('div');
+    top.className = 'sim-round-top';
+    const summary = document.createElement('div');
+    summary.className = 'sim-round-summary';
+    const n = document.createElement('span');
+    n.className = 'sim-round-n';
+    n.textContent = `Round ${r.round}:`;
+    const dmg = document.createElement('span');
+    dmg.className = 'sim-round-dmg';
+    dmg.append(
+      ' ', spanWith('sword', '⚔'), ` ${fmt(r.attackerDmg)} dmg → `,
+      spanWith('shield', '⛨'), ` ${fmt(r.defenderDmg)} dmg`,
+    );
+    summary.append(n, dmg);
+    const pctEl = document.createElement('span');
+    pctEl.className = 'sim-round-pct';
+    pctEl.textContent = `[ATK ${r.attackerHpPct}% / DEF ${r.defenderHpPct}%]`;
+    top.append(summary, pctEl);
+
+    const losses = document.createElement('div');
+    losses.className = 'sim-round-losses';
+    if (r.attackerLost) {
+      const a = document.createElement('div');
+      a.className = 'sim-round-loss-a';
+      a.textContent = `✕ Lost: ${r.attackerLost} ship${r.attackerLost === 1 ? '' : 's'}`;
+      losses.appendChild(a);
+    }
+    if (r.defenderLost) {
+      const d = document.createElement('div');
+      d.className = 'sim-round-loss-d';
+      d.textContent = `⛨ Lost: ${r.defenderLost} ship${r.defenderLost === 1 ? '' : 's'}`;
+      losses.appendChild(d);
+    }
+
+    card.append(top, losses);
+    list.appendChild(card);
+  }
+
+  const note = document.createElement('div');
+  note.className = 'sim-round-note';
+  note.textContent = `Sample outcome: ${sample.outcome.replace(/_/g, ' ')} in ${sample.rounds} rounds ` +
+    '(one representative run — see the stats above for Monte-Carlo averages).';
+  list.appendChild(note);
+}
+
+function spanWith(className, text) {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  return span;
+}
+
+// "Debris Field" — gold salvage band, from both sides' destroyed ships.
+function renderDebris(attackerLosses, defenderLosses, opts) {
+  const el = document.getElementById('debris-stats');
+  el.textContent = '';
+  const a = lossesToResources(attackerLosses);
+  const d = lossesToResources(defenderLosses);
+  const items = [
+    ['Ore', (a.ore + d.ore) * opts.debrisRate],
+    ['Silicates', (a.silicates + d.silicates) * opts.debrisRate],
+    ['Alloys', (a.alloys + d.alloys) * opts.debrisRate],
+  ];
+  for (const [label, value] of items) {
+    const item = document.createElement('div');
+    item.className = 'sim-debris-item';
+    item.append(spanWith('sim-debris-value', fmt(value)), spanWith('sim-debris-label', ` ${label}`));
+    el.appendChild(item);
+  }
 }
 
 function renderFuel(attackerLosses, opts) {
@@ -262,28 +377,38 @@ function updateSurvivors(side, losses) {
   });
 }
 
-function renderLossTable(tbodyId, losses) {
-  const tbody = document.getElementById(tbodyId);
-  tbody.textContent = '';
-  for (const [key, l] of Object.entries(losses)) {
-    const def = shipDefs[key];
-    const tr = document.createElement('tr');
-    const survival = l.sent ? ((l.sent - l.lost) / l.sent * 100).toFixed(0) : 0;
-    [def ? def.name : key, fmt(l.sent), l.lost.toFixed(1), `${survival}%`].forEach(v => {
-      const td = document.createElement('td');
-      td.textContent = v;
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
+// "Losses" — rocket-ish icon + red qty + muted breakdown, per the spec. The
+// mockup shows one aggregate line per side (single ship type); real fleets
+// can mix ship types, so this renders one row per ship type actually sent.
+// (No destroyed/repairable split exists in the engine's Monte-Carlo output —
+// "sent / survival%" is the real breakdown available, so that's shown instead.)
+function renderLossTable(containerId, losses) {
+  const container = document.getElementById(containerId);
+  container.textContent = '';
+  const entries = Object.entries(losses);
+  if (!entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'sim-loss-empty';
+    empty.textContent = 'No ships';
+    container.appendChild(empty);
+    return;
   }
-  if (!Object.keys(losses).length) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 4;
-    td.className = 'zero';
-    td.textContent = 'No ships';
-    tr.appendChild(td);
-    tbody.appendChild(tr);
+  for (const [key, l] of entries) {
+    const def = shipDefs[key];
+    const survival = l.sent ? ((l.sent - l.lost) / l.sent * 100).toFixed(0) : 0;
+    const row = document.createElement('div');
+    row.className = 'sim-loss-row';
+    const icon = document.createElement('div');
+    icon.className = 'sim-loss-icon';
+    icon.textContent = '▶';
+    const qty = document.createElement('span');
+    qty.className = 'sim-loss-qty';
+    qty.textContent = `${l.lost.toFixed(1)}× ${def ? def.name : key}`;
+    const detail = document.createElement('span');
+    detail.className = 'sim-loss-detail';
+    detail.textContent = `(${fmt(l.sent)} sent, ${survival}% survived)`;
+    row.append(icon, qty, detail);
+    container.appendChild(row);
   }
 }
 
