@@ -20,6 +20,7 @@
   ],
   "background": {
     "service_worker": "background-sw.js",
+    "scripts": ["background-sw.js"],
     "type": "module"
   },
   "action": {
@@ -30,53 +31,53 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["browser-polyfill.js", "sidebar-inject.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["galaxy-fetch-hook.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["galaxy-fields.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["empire-view.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["browser-polyfill.js", "guide-view.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["browser-polyfill.js", "logistics-view.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["browser-polyfill.js", "upgrade-queue.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["browser-polyfill.js", "building-upgrade.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["browser-polyfill.js", "tech-upgrade.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["browser-polyfill.js", "ship-upgrade.js"],
       "run_at": "document_idle"
     }
@@ -91,7 +92,7 @@
         "simulator.html"
       ],
       "matches": [
-        "https://s0.nexuslegacy.space/*",
+        "https://*.nexuslegacy.space/*",
         "https://nexuslegacy.space/*"
       ]
     }

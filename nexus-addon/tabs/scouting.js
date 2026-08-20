@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
+import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, nsGet, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -719,7 +719,7 @@ function planFleet(total, ships) {
 }
 
 async function loadDebris() {
-  const { debris_fields, debris_last_check } = await browser.storage.local.get(['debris_fields', 'debris_last_check']);
+  const { debris_fields, debris_last_check } = await nsGet(['debris_fields', 'debris_last_check']);
   scDebris = (debris_fields || []).map(f => ({ ...f, total: (f.ore || 0) + (f.silicates || 0) + (f.alloys || 0) }));
   document.getElementById('sc-debris-last').textContent = debris_last_check
     ? `Last check: ${new Date(debris_last_check).toLocaleString()}`

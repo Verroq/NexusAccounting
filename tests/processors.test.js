@@ -502,6 +502,167 @@ test('migration v4 moves legacy archives into shards', async () => {
   assert.ok(store.schema_version >= 4);
 });
 
+test('nsGet/nsSet namespace storage.local keys by the active universe', async () => {
+  makeBrowserStub();
+  const bg = await loadBackground();
+
+  await bg.nsSet({ totals: { ore: 1 } });
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(raw, { s0__totals: { ore: 1 } }, 'nsSet prefixes with the default universe (s0)');
+
+  const got = await bg.nsGet(['totals']);
+  assert.deepEqual(got, { totals: { ore: 1 } }, 'nsGet reads back under the plain key name');
+
+  await bg.nsRemove(['totals']);
+  assert.deepEqual(await browser.storage.local.get(null), {}, 'nsRemove clears the prefixed key');
+});
+
+test('nsGet/nsSet isolate data between universes', async () => {
+  makeBrowserStub();
+  const bg = await loadBackground();
+
+  await bg.nsSet({ totals: { ore: 1 } });   // currentUniverse defaults to 's0'
+  bg.setCurrentUniverse('nf');
+  await bg.nsSet({ totals: { ore: 2 } });
+
+  assert.equal((await bg.nsGet(['totals'])).totals.ore, 2, 'nf write does not clobber s0');
+
+  bg.setCurrentUniverse('s0');
+  assert.equal((await bg.nsGet(['totals'])).totals.ore, 1, 's0 data is untouched by the nf write');
+
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(Object.keys(raw).sort(), ['nf__totals', 's0__totals'], 'both universes live under distinct prefixed keys');
+});
+
+test('migration v11 copies flat legacy keys to s0__-prefixed keys without deleting the originals', async () => {
+  makeBrowserStub();
+  // Seed pre-migration flat data exactly as it existed on disk before
+  // multi-universe support shipped — every pre-existing install's data
+  // belongs to s0. Seeded via the raw storage.local mock (not the
+  // makeBrowserStub() Proxy) so these land as genuinely flat, unprefixed keys.
+  await browser.storage.local.set({
+    schema_version: 10,
+    totals: { ore: 500, missions: 3 },
+    recent_reports: [{ id: 1, created_at: '2026-06-01T00:00:00Z' }],
+    seen_ids: [1],
+    archive_index: {
+      survey: { months: ['2026-06'], count: 1 },
+      pirate: { months: [], count: 0 }, mining: { months: [], count: 0 },
+      exp: { months: [], count: 0 }, xeno: { months: [], count: 0 },
+    },
+    'survey_archive_2026-06': [{ id: 1, created_at: '2026-06-01T00:00:00Z', ore: 500 }],
+    ships: { 1: { key: 'scout' } },   // out-of-scope key: must NOT get an s0__ copy
+    // Zone/coords caches and simulator intel — added to SCOPED_KEYS alongside
+    // the rest; must migrate the same way as any other in-scope key.
+    system_zones: { A1: 'safe' },
+    system_zone_by_id: { 1: 'safe' },
+    camp_zones: { 5: 'safe' },
+    wormhole_zones: { 9: 'safe' },
+    wormhole_classes: { 9: 'II' },
+    spy_reports: [{ id: 1, created_at: '2026-06-01T00:00:00Z' }],
+    camp_scout_reports: [{ id: 2, created_at: '2026-06-01T00:00:00Z' }],
+    fuel_log: [{ created_at: '2026-06-01T00:00:00Z', type: 'survey', zone: 'safe', fuel: 12 }],
+    fuel_counted_ids: [501],
+  });
+  const bg = await loadBackground();
+
+  await bg.ensureSchema();
+
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(raw.s0__totals, { ore: 500, missions: 3 });
+  assert.deepEqual(raw.s0__recent_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
+  assert.deepEqual(raw.s0__seen_ids, [1]);
+  assert.deepEqual(raw['s0__survey_archive_2026-06'], [{ id: 1, created_at: '2026-06-01T00:00:00Z', ore: 500 }]);
+  assert.deepEqual(raw.s0__system_zones, { A1: 'safe' });
+  assert.deepEqual(raw.s0__camp_zones, { 5: 'safe' });
+  assert.deepEqual(raw.s0__wormhole_zones, { 9: 'safe' });
+  assert.deepEqual(raw.s0__wormhole_classes, { 9: 'II' });
+  assert.deepEqual(raw.s0__spy_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
+  assert.deepEqual(raw.s0__camp_scout_reports, [{ id: 2, created_at: '2026-06-01T00:00:00Z' }]);
+  assert.deepEqual(raw.s0__fuel_log, [{ created_at: '2026-06-01T00:00:00Z', type: 'survey', zone: 'safe', fuel: 12 }]);
+  assert.deepEqual(raw.s0__fuel_counted_ids, [501]);
+  // originals left in place — deliberate, see MIGRATIONS[11] in background.js
+  assert.deepEqual(raw.totals, { ore: 500, missions: 3 });
+  assert.deepEqual(raw.recent_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
+  assert.deepEqual(raw.system_zones, { A1: 'safe' });
+  assert.deepEqual(raw.spy_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
+  assert.deepEqual(raw.fuel_log, [{ created_at: '2026-06-01T00:00:00Z', type: 'survey', zone: 'safe', fuel: 12 }]);
+  // out-of-scope keys are never copied
+  assert.equal(raw.s0__ships, undefined);
+  assert.ok(raw.schema_version >= 11);
+
+  // functionally readable through the new namespaced path, not just present on disk
+  assert.equal((await bg.loadArchive('survey')).length, 1);
+});
+
+test('nsGet/nsSet namespace the zone/coords caches and simulator intel keys the same as other SCOPED_KEYS', async () => {
+  makeBrowserStub();
+  const bg = await loadBackground();
+
+  await bg.nsSet({
+    system_zones: { A1: 'safe' }, camp_zones: { 5: 'safe' }, wormhole_zones: { 9: 'safe' },
+    spy_reports: [{ id: 1 }], camp_scout_reports: [{ id: 2 }],
+  });
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(Object.keys(raw).sort(), [
+    's0__camp_scout_reports', 's0__camp_zones', 's0__spy_reports', 's0__system_zones', 's0__wormhole_zones',
+  ]);
+
+  bg.setCurrentUniverse('nf');
+  assert.equal((await bg.nsGet(['system_zones'])).system_zones, undefined, 'nf sees no s0 zone data');
+  assert.equal((await bg.nsGet(['spy_reports'])).spy_reports, undefined, 'nf sees no s0 intel');
+});
+
+test('processSpyReports/processCampScoutReports read and write the active universe\'s namespaced key', async () => {
+  const store = makeBrowserStub();
+  const bg = await loadBackground();
+
+  await bg.processSpyReports([{
+    id: 1, createdAt: '2026-06-10T10:00:00Z', outcome: 'success', targetPlanetName: 'P1',
+  }]);
+  await bg.processCampScoutReports([{
+    id: 2, createdAt: '2026-06-10T10:00:00Z', campId: 5, fleet: [{ key: 'scout', quantity: 1 }],
+  }]);
+
+  assert.equal(store.spy_reports.length, 1, 'stored under the s0-prefixed slot (via the store Proxy)');
+  assert.equal(store.camp_scout_reports.length, 1);
+
+  bg.setCurrentUniverse('nf');
+  assert.equal((await bg.nsGet(['spy_reports'])).spy_reports, undefined, 'nf has its own empty intel, unaffected by the s0 writes');
+});
+
+test('nsGet/nsSet namespace fuel_log/fuel_counted_ids the same as other SCOPED_KEYS', async () => {
+  makeBrowserStub();
+  const bg = await loadBackground();
+
+  await bg.nsSet({ fuel_log: [{ fuel: 12 }], fuel_counted_ids: [501] });
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(Object.keys(raw).sort(), ['s0__fuel_counted_ids', 's0__fuel_log']);
+
+  bg.setCurrentUniverse('nf');
+  assert.equal((await bg.nsGet(['fuel_log'])).fuel_log, undefined, 'nf sees no s0 fuel log');
+  assert.equal((await bg.nsGet(['fuel_counted_ids'])).fuel_counted_ids, undefined, 'nf sees no s0 counted ids');
+});
+
+test('processMissions fuel counting writes fuel_log/fuel_counted_ids to the active universe\'s namespaced key', async () => {
+  const store = makeBrowserStub();
+  const bg = await loadBackground();
+  const ships = { scout: { key: 'scout', fuelRate: 1 } };
+
+  await bg.processMissions([{
+    id: 501, missionType: 'survey', status: 'outbound', targetSystemId: 5, distance: 10,
+    departsAt: '2026-06-10T10:00:00Z', fleetComposition: [{ shipKey: 'scout', quantity: 2 }],
+  }], { 5: 'safe' }, ships);
+
+  assert.equal(store.fuel_log.length, 1, 'stored under the s0-prefixed slot (via the store Proxy)');
+  assert.equal(store.fuel_log[0].zone, 'safe');
+  assert.ok(store.fuel_log[0].fuel > 0);
+  assert.deepEqual(store.fuel_counted_ids, [501]);
+
+  bg.setCurrentUniverse('nf');
+  assert.equal((await bg.nsGet(['fuel_log'])).fuel_log, undefined, 'nf has its own empty fuel log, unaffected by the s0 write');
+});
+
 test('drift detection flags corruption; rebuild repairs and clears it', async () => {
   const store = makeBrowserStub({ ships: SHIPS });
   const bg = await loadBackground();

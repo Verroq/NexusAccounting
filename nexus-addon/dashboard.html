@@ -28,6 +28,11 @@
 
   <div class="status-bar">
     <span id="status-text">Loading…</span>
+    <label for="universe-select" style="margin-left:8px;">Universe:</label>
+    <select id="universe-select" title="Which universe's stored data to view. Independent of which universe the background scraper is actively scraping — that follows your live game session.">
+      <option value="s0">S0</option>
+      <option value="nf">New Frontier</option>
+    </select>
     <button id="btn-scrape">Scrape Now</button>
     <button id="btn-reset" style="color:#ff7b72; border-color:#ff7b7244;">Reset all data</button>
     <button id="btn-rebuild" title="Recompute all aggregated stats from the stored report records — repairs drift after partial failures.">Rebuild stats</button>

@@ -1,6 +1,16 @@
 // Shared test fixtures and the browser-API stub used to run background.js
 // under node.
 
+import { SCOPED_KEYS } from '../nexus-addon/storage-keys.js';
+
+// Same pattern background.js's nsGet/nsSet/MIGRATIONS[11] use to recognize the
+// dynamic per-month archive shard keys (e.g. `survey_archive_2026-06`), which
+// aren't literal entries in SCOPED_KEYS.
+const ARCHIVE_SHARD_RE = /^(survey|pirate|mining|exp|xeno)_archive_\d{4}-\d{2}$/;
+function isScopedKey(k) {
+  return SCOPED_KEYS.includes(k) || ARCHIVE_SHARD_RE.test(k);
+}
+
 // Real ship stats from the in-game ship screens (Stats.txt, 2026-06-22).
 const SHIP_DEFS = {
   scout:           { key: 'scout',           name: 'Scout',           hp: 100,    shieldHp: 25,    attack: 15,   weaponType: 'kinetic', armorType: 'light',    shipSize: 'small',  costOre: 194,    costSilicates: 97,     costHydrogen: 0,      costAlloys: 20    },
@@ -18,23 +28,33 @@ const SHIP_DEFS = {
   electronic_warfare_ship:  { key: 'electronic_warfare_ship',  name: 'Electronic Warfare Ship',  hp: 400,  shieldHp: 80,  attack: 10,  weaponType: 'ion', armorType: 'medium', shipSize: 'medium', costOre: 1455,  costSilicates: 1940,  costHydrogen: 776,  costAlloys: 291 },
 };
 
-// Stubbed browser.storage.local backed by a plain object. Returns the store
-// so tests can inspect and seed it.
-function makeBrowserStub(store = {}) {
+// Stubbed browser.storage.local backed by a plain object, keyed exactly as
+// background.js's nsGet/nsSet write it (scoped keys prefixed `s0__` — tests
+// always run under the default universe). Returns a Proxy over that raw
+// object so existing tests can keep reading/writing UNPREFIXED names
+// (`store.totals`, `store['survey_archive_2026-06'] = ...`) — the Proxy
+// transparently maps any SCOPED_KEYS (or dynamic archive-shard) name to its
+// `s0__`-prefixed slot, so tests didn't need a rewrite when background.js's
+// processors moved to namespaced storage for multi-universe support.
+function makeBrowserStub(seed = {}) {
+  const raw = {};
+  for (const [k, v] of Object.entries(seed)) {
+    raw[isScopedKey(k) ? `s0__${k}` : k] = v;
+  }
   global.browser = {
     storage: {
       local: {
         get: async keys => {
-          if (keys === null) return { ...store };
+          if (keys === null) return { ...raw };
           const list = typeof keys === 'string' ? [keys] : keys;
           const out = {};
-          for (const k of list) if (k in store) out[k] = store[k];
+          for (const k of list) if (k in raw) out[k] = raw[k];
           return out;
         },
-        set: async obj => { Object.assign(store, obj); },
-        clear: async () => { for (const k of Object.keys(store)) delete store[k]; },
+        set: async obj => { Object.assign(raw, obj); },
+        clear: async () => { for (const k of Object.keys(raw)) delete raw[k]; },
         remove: async keys => {
-          for (const k of (Array.isArray(keys) ? keys : [keys])) delete store[k];
+          for (const k of (Array.isArray(keys) ? keys : [keys])) delete raw[k];
         },
       },
     },
@@ -49,7 +69,17 @@ function makeBrowserStub(store = {}) {
   };
   global.Blob = class { constructor() {} };
   global.URL = { createObjectURL: () => 'blob:test', revokeObjectURL() {} };
-  return store;
+  return new Proxy(raw, {
+    get(target, prop) {
+      if (typeof prop === 'string' && isScopedKey(prop)) return target[`s0__${prop}`];
+      return target[prop];
+    },
+    set(target, prop, value) {
+      if (typeof prop === 'string' && isScopedKey(prop)) target[`s0__${prop}`] = value;
+      else target[prop] = value;
+      return true;
+    },
+  });
 }
 
 // Imports background.js (ESM service worker) and returns its exported
