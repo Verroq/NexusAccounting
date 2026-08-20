@@ -6,7 +6,7 @@
 
 import { RARE_WEIGHT, RESOURCE_WEIGHTS, activeTab, applyResourceWeights, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, nsGet, periodLabelFor, renderMarkdown, renderNetCards, selectedUniverse, setActiveTab, setSelectedUniverse, setStore, store } from './common.js';
 import { SCOPED_KEYS } from './storage-keys.js';
-import { renderBattlesTab } from './tabs/battles.js';
+import { renderBattlesTab, setBattlePage } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
 import { renderWormholesTab, setWhPage } from './tabs/wormholes.js';
@@ -201,7 +201,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     }
     // View mode and records cap are meaningless on the finder and debris tabs.
     document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'battles' || activeTab === 'simulator') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'simulator') ? 'none' : '';
     positionControls();
     renderAll();
   });
@@ -253,6 +253,7 @@ export function onViewChange() {
   setExpPage(1);
   setWhPage(1);
   setXnReportPage(1);
+  setBattlePage(1);
   renderAll();
 }
 
