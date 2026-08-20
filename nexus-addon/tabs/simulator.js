@@ -411,7 +411,13 @@ function renderLossTable(containerId, losses) {
     row.className = 'sim-loss-row';
     const icon = document.createElement('div');
     icon.className = 'sim-loss-icon';
-    icon.textContent = '▶';
+    if (def?.imageUrl) {
+      const img = document.createElement('img');
+      img.src = def.imageUrl;
+      icon.appendChild(img);
+    } else {
+      icon.textContent = '▶';
+    }
     const qty = document.createElement('span');
     qty.className = 'sim-loss-qty';
     qty.textContent = `${l.lost.toFixed(1)}× ${def ? def.name : key}`;
