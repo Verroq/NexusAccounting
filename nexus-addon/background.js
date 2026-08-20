@@ -314,6 +314,8 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me');
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
+  if (msg.type === 'SHARE_SPY_INTEL') return shareSpyIntel();
+  if (msg.type === 'SYNC_SPY_INTEL') return syncSpyIntel();
   if (msg.type === 'GET_PLAYER_RANK') return getPlayerRanks(msg.name);
   if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
@@ -433,6 +435,135 @@ async function getAlliance() {
   } catch (err) {
     return { error: err.message };
   }
+}
+
+// ── Spy intel sharing ───────────────────────────────────────────────────────
+// Share spy reports with your alliance via a private Discord channel. The
+// alliance's own channel membership IS the access control — only people in the
+// channel see the intel, so there's no auth code and no game secret to manage.
+//   Share: upload the payload as a JSON attachment to the channel (bot POST).
+//   Sync:  read recent messages, fetch our attachments, merge into local intel.
+//          A tag guard drops any payload not from your alliance, so a mis-set
+//          channel can't leak another alliance's intel into your simulator.
+const SHARE_SPY_VERSION = 1;
+const DISCORD_API = 'https://discord.com/api/v10';
+const INTEL_FILENAME = /^nexus-spy-intel.*\.json$/i;
+
+async function discordCreds() {
+  const { discord_bot_token, discord_channel_id } =
+    await browser.storage.local.get(['discord_bot_token', 'discord_channel_id']);
+  return { token: discord_bot_token, channel: discord_channel_id };
+}
+
+// Dedup spy reports by id (newest created_at wins), tag imports with their
+// source, and cap at INTEL_KEEP. Pure — shared by file import and Discord sync.
+// Returns { merged, added } (added = new ids).
+function mergeSpyReports(base, incoming, sharedBy) {
+  const byId = {};
+  for (const r of (base || [])) byId[r.id] = r;
+  let added = 0;
+  for (const r of (incoming || [])) {
+    if (r == null || r.id == null) continue;
+    const existing = byId[r.id];
+    if (!existing || (r.created_at || '').localeCompare(existing.created_at || '') > 0) {
+      byId[r.id] = sharedBy ? { ...r, shared_by: r.shared_by || sharedBy } : r;
+      if (!existing) added++;
+    }
+  }
+  const merged = Object.values(byId)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    .slice(0, INTEL_KEEP);
+  return { merged, added };
+}
+
+async function shareSpyIntel() {
+  const [me, alliance, stored] = await Promise.all([
+    apiGet('/api/auth/me'),
+    getAlliance(),
+    nsGet(['spy_reports']),
+  ]);
+  if (me.error) return { error: me.error };
+  if (alliance.error) return { error: alliance.error };
+  const reports = stored.spy_reports || [];
+  if (!reports.length) return { error: 'No spy reports to share yet — scan a target first.' };
+
+  const { token, channel } = await discordCreds();
+  if (!token || !channel) return { error: 'Set a Discord bot token and channel ID first.' };
+
+  const author = me.user || me;
+  const username = author.username || author.name || null;
+  const payload = {
+    nexus_shared_spy_intel: SHARE_SPY_VERSION,
+    shared_at: new Date().toISOString(),
+    author: { id: author.id ?? author.userId ?? null, username },
+    alliance: { tag: alliance.tag, name: alliance.name },
+    universe_key: me.universeKey ?? author.universeKey ?? null,
+    spy_reports: reports,
+  };
+
+  // Upload the payload as a JSON attachment to the alliance's Discord channel.
+  try {
+    const fd = new FormData();
+    const filename = `nexus-spy-intel-${alliance.tag || 'x'}-${Date.now()}.json`;
+    fd.append('payload_json', JSON.stringify({
+      content: `🛰️ Spy intel from ${username || 'a member'} — ${reports.length} report(s)`,
+    }));
+    fd.append('files[0]', new Blob([JSON.stringify(payload)], { type: 'application/json' }), filename);
+    const res = await fetch(`${DISCORD_API}/channels/${channel}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bot ${token}` }, // do NOT set Content-Type — FormData sets the multipart boundary
+      body: fd,
+    });
+    if (!res.ok) throw new Error(`Discord ${res.status}`);
+  } catch (e) {
+    return { error: `Discord post failed: ${e.message}` };
+  }
+
+  return { ok: true, count: reports.length, alliance: { tag: alliance.tag, name: alliance.name } };
+}
+
+// Read recent channel messages, fetch every nexus-spy-intel attachment, and
+// merge the reports into local intel. Payloads from a different alliance tag
+// (or universe) are dropped — the guard against pulling foreign intel.
+async function syncSpyIntel() {
+  const alliance = await getAlliance();
+  if (alliance.error) return { error: alliance.error };
+  const { token, channel } = await discordCreds();
+  if (!token || !channel) return { error: 'Set a Discord bot token and channel ID first, then Sync.' };
+  const myUniverse = alliance.universeKey ?? null;
+
+  let messages;
+  try {
+    const res = await fetch(`${DISCORD_API}/channels/${channel}/messages?limit=50`, {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (!res.ok) return { error: `Discord ${res.status}` };
+    messages = await res.json();
+  } catch (e) {
+    return { error: `Sync failed: ${e.message}` };
+  }
+  const collected = [];
+  for (const m of (messages || [])) {
+    for (const a of (m.attachments || [])) {
+      if (!INTEL_FILENAME.test(a.filename || '')) continue;
+      try {
+        const r = await fetch(a.url); // Discord CDN URL, no auth
+        if (!r.ok) continue;
+        const p = await r.json();
+        if (p.nexus_shared_spy_intel !== SHARE_SPY_VERSION || !Array.isArray(p.spy_reports)) continue;
+        if (p.alliance?.tag && alliance.tag && p.alliance.tag !== alliance.tag) continue; // foreign alliance
+        if (p.universe_key && myUniverse && p.universe_key !== myUniverse) continue;       // foreign universe
+        const from = p.author?.username || 'an ally';
+        for (const rep of p.spy_reports) collected.push({ ...rep, shared_by: rep.shared_by || from });
+      } catch { /* skip unreadable/oversized attachment */ }
+    }
+  }
+  if (!collected.length) return { ok: true, added: 0, total: 0, empty: true };
+
+  const { spy_reports } = await nsGet(['spy_reports']);
+  const { merged, added } = mergeSpyReports(spy_reports, collected);
+  await nsSet({ spy_reports: merged });
+  return { ok: true, added, total: merged.length };
 }
 
 // Look up a player's per-category leaderboard ranks by exact name (finder
@@ -2993,7 +3124,7 @@ export {
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
-  fieldMatches, purgeOldData, freshestToken, resolveRecordsCap,
+  fieldMatches, purgeOldData, freshestToken, resolveRecordsCap, mergeSpyReports,
   nsGet, nsSet, nsRemove, gameUrlFor, setCurrentUniverse, getCurrentUniverse,
   processSpyReports, processCampScoutReports,
 };

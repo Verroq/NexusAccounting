@@ -426,6 +426,49 @@ document.getElementById('import-file').addEventListener('change', async function
   }
 });
 
+// ── Share spy intel ─────────────────────────────────────────────────────────
+
+// Persist Discord creds on edit. discord.com is in host_permissions, so no
+// runtime permission request is needed.
+(async () => {
+  const { discord_bot_token, discord_channel_id } =
+    await browser.storage.local.get(['discord_bot_token', 'discord_channel_id']);
+  const t = document.getElementById('discord-token');
+  const c = document.getElementById('discord-channel');
+  if (t) t.value = discord_bot_token || '';
+  if (c) c.value = discord_channel_id || '';
+})();
+function flashSaved(el) {
+  el.style.borderColor = '#3fb950';
+  setTimeout(() => { el.style.borderColor = '#30363d'; }, 800);
+}
+document.getElementById('discord-token').addEventListener('change', async function () {
+  await browser.storage.local.set({ discord_bot_token: this.value.trim() });
+  flashSaved(this);
+});
+document.getElementById('discord-channel').addEventListener('change', async function () {
+  await browser.storage.local.set({ discord_channel_id: this.value.trim() });
+  flashSaved(this);
+});
+
+// Post spy reports to the alliance Discord channel.
+document.getElementById('btn-share-spy').addEventListener('click', async function () {
+  const res = await browser.runtime.sendMessage({ type: 'SHARE_SPY_INTEL' });
+  if (res.error) { alert(`Share failed: ${res.error}`); return; }
+  this.textContent = `Posted ${res.count} ✓`;
+  setTimeout(() => { this.textContent = 'Share spy intel'; }, 2500);
+});
+
+// Pull intel from the alliance Discord channel and merge into local intel.
+document.getElementById('btn-sync-spy').addEventListener('click', async function () {
+  this.textContent = 'Syncing…';
+  const res = await browser.runtime.sendMessage({ type: 'SYNC_SPY_INTEL' });
+  if (res.error) { alert(`Sync failed: ${res.error}`); this.textContent = 'Sync intel'; return; }
+  await loadAll();
+  this.textContent = res.empty ? 'Nothing shared yet' : `+${res.added} (${res.total}) ✓`;
+  setTimeout(() => { this.textContent = 'Sync intel'; }, 2500);
+});
+
 // ── Init ───────────────────────────────────────────────────────────────────
 
 // On launch, if the stored report count is very large, offer a one-click purge

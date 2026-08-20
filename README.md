@@ -17,7 +17,7 @@ Firefox addon that tracks survey mission data from [Nexus Legacy](https://s0.nex
 
 The addon reads your `nexus_token` JWT directly from the browser cookies, no credentials to enter. You just need to be logged in to Nexus Legacy.
 
-All data is stored locally in `browser.storage.local`. Nothing is sent anywhere.
+All data is stored locally in `browser.storage.local`. Nothing is sent anywhere, except spy intel you explicitly share to your alliance's Discord channel (see [Sharing spy intel](#sharing-spy-intel-with-your-alliance-discord)).
 
 ## Usage
 
@@ -42,6 +42,44 @@ Use the **View** selector (All time / Daily / Hourly) to filter all stats and ch
 
 - **Records cap**: max survey reports kept locally. Oldest are dropped when limit is reached. Set to `0` for unlimited.
 - **Reset all data**: drops all stored reports (keeps your cap setting).
+
+## Sharing spy intel with your alliance (Discord)
+
+The addon can share spy reports across your alliance through a **private Discord
+channel**: one member posts intel, others pull it into their Combat Simulator.
+The channel's own membership is the access control — only people in the channel
+can read the intel, and Sync drops any report not from your alliance.
+
+Set this up **once per alliance**, then every member pastes the same two values
+into their addon.
+
+### 1. Create a Discord bot
+
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications) → **New Application**.
+2. **Bot** tab → **Reset Token** → copy the token (you'll share it with members).
+
+### 2. Invite the bot
+
+1. **OAuth2 → URL Generator**: scope **`bot`**, permissions **View Channel**, **Send Messages**, **Attach Files**, **Read Message History**.
+2. Open the generated URL and add the bot to your alliance server.
+3. Make a **private channel** only alliance members can see, and let the bot see it. This is where intel lives.
+
+### 3. Get the channel ID
+
+**Settings → Advanced → Developer Mode: ON**, then right-click the channel → **Copy Channel ID**.
+
+### 4. Configure the addon (each member)
+
+In the dashboard status bar, paste your **Discord bot token** and **Channel ID** (both save automatically). Then:
+
+- **Share spy intel** — posts your current spy reports to the channel.
+- **Sync intel** — pulls everyone's shared reports into your local intel, so they appear in the **Combat Simulator** report picker.
+
+### Security notes
+
+- The bot token is **shared among all members and stored in each addon** — anyone with it can post to / read that channel as the bot. Scope the bot to only the intel channel, and reset the token if it leaks.
+- Sync **only merges reports whose alliance tag and universe match yours**, so a mis-configured channel can't pull another alliance's intel into your data.
+- Sync reads the **last 50 messages** — older intel ages out of the channel.
 
 ## Screens
 
