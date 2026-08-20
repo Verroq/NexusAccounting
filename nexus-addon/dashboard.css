@@ -146,8 +146,6 @@ body {
   font-size: 11px; color: var(--color-muted);
   display: flex; flex-direction: column; gap: 8px;
 }
-.nx-sim-link { color: var(--color-accent); text-decoration: none; display: flex; align-items: center; gap: 6px; }
-.nx-sim-link:hover { text-decoration: underline; }
 
 .nx-main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 
@@ -342,12 +340,12 @@ button {
 .finder-controls button:hover, .controls button:hover, .pagination button:hover { background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface)); }
 .finder-controls button:disabled, .controls button:disabled, .pagination button:disabled { opacity: 0.45; cursor: default; }
 
-/* primary action buttons: Scan / Search / Launch — accent, matches .btn-primary */
-.finder-controls > button:not(#f-export):not(#f-import) {
+/* primary action buttons: Scan / Search / Launch / Simulate — accent, matches .btn-primary */
+.finder-controls > button:not(#f-export):not(#f-import):not(#btn-clear) {
   background: color-mix(in srgb, var(--color-accent) 18%, transparent);
   border: 1px solid var(--color-accent); color: var(--color-accent); font-weight: 500;
 }
-.finder-controls > button:not(#f-export):not(#f-import):hover {
+.finder-controls > button:not(#f-export):not(#f-import):not(#btn-clear):hover {
   background: color-mix(in srgb, var(--color-accent) 28%, transparent);
 }
 
@@ -558,3 +556,52 @@ th.sortable .arrow { margin-left: 4px; color: var(--color-accent); }
 }
 .m-switch:checked { background: var(--color-accent); }
 .m-switch:checked::before { transform: translateX(18px); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Combat Simulator (fleet-box/fleet-title/fleet-table/ship-group above are
+   shared with Fleet Templates; this block covers what's specific here)
+   ══════════════════════════════════════════════════════════════════════ */
+.sim-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+.fleet-title.defender { color: var(--res-hydrogen); }
+
+.load-fleet-bar, .coord-bar {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 10px; font-size: 0.78rem; color: var(--color-muted);
+}
+.coord-label { white-space: nowrap; }
+.coord-distance { color: var(--color-accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.tech-panel {
+  margin-bottom: 12px; padding: 8px 10px;
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+  border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+  font-size: 0.75rem; color: var(--color-muted);
+}
+.tech-panel summary { cursor: pointer; user-select: none; }
+.tech-grid {
+  display: grid; grid-template-columns: 1fr auto 1fr auto;
+  gap: 4px 8px; align-items: center; margin-top: 8px;
+}
+.tech-label { cursor: help; border-bottom: 1px dotted var(--color-neutral-800); }
+input.tech-input {
+  width: 50px; padding: 3px 6px; font-size: 0.8rem;
+}
+.tech-group {
+  grid-column: 1 / -1; margin-top: 6px; font-size: 0.7rem;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-muted);
+}
+
+.tip-box {
+  background: var(--color-surface); border: 1px solid var(--color-divider); border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius-md); padding: 10px 14px; font-size: 0.8rem; color: var(--color-muted);
+  margin-bottom: 20px;
+}
+
+.rounds-table { margin-bottom: 20px; }
+.survivors { margin-left: 8px; font-size: 0.75rem; white-space: nowrap; }
+
+.win-attacker { color: var(--color-danger); }
+.win-defender { color: var(--res-hydrogen); }
+.win-draw { color: var(--color-warning); }
+
+@media (max-width: 900px) { .sim-layout { grid-template-columns: 1fr; } }

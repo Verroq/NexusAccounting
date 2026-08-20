@@ -88,8 +88,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "dashboard.html",
-        "simulator.html"
+        "dashboard.html"
       ],
       "matches": [
         "https://*.nexuslegacy.space/*",
