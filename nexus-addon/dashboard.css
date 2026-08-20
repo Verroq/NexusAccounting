@@ -313,7 +313,7 @@ body {
   position: relative;
 }
 #g-stats-net::after {
-  content: "weighted value · ore×1 · silicates×2 · hydrogen×3 · alloys×5 · precursor fragments×50 · artifacts×2000";
+  content: attr(data-weights-note);
   display: block; width: 100%; margin-top: 4px;
   font-size: 12px; color: var(--color-muted);
 }

@@ -1063,6 +1063,10 @@ export function renderNetCards(containerId, collected, lost, periodLabel, fuelHy
     '', total >= 0 ? 'color:#56d364' : 'color:#ff7b72');
   totalCard.title = weightsTooltip() + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
   el.appendChild(totalCard);
+  // #g-stats-net's ::after caption (Global tab hero band) reads this attribute
+  // via content: attr(...) — CSS content strings can't reference JS values any
+  // other way. Harmless no-op on every other renderNetCards container.
+  el.dataset.weightsNote = weightsTooltip();
 }
 
 // Doughnut of a loot/resource breakdown (ore, silicates, hydrogen, alloys and
