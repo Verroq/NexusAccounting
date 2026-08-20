@@ -1,10 +1,10 @@
-// Combat simulator UI. The battle engine (tables, modifiers, Monte Carlo)
-// lives in engine.js, shared between this page and the node test suite.
+// Combat simulator tab. The battle engine (tables, modifiers, Monte Carlo)
+// lives in ../engine.js, shared between this page and the node test suite.
 
 import {
   shipDefs, setShipDefs, runSimulations, simulateOnce, computeMods,
   NO_MODS, TECHS, TECH_MAX_LEVEL, lossesToResources,
-} from './engine.js';
+} from '../engine.js';
 import {
   updateDistanceFromCoords, loadIntelReports, populatePlanetPicker, _resolvedDistanceAU,
 } from './simulator-intel.js';
@@ -94,7 +94,7 @@ export function updateFleetStats(side) {
     const text = statText(def, mods);
     td.textContent = text;
     // Highlight only ships whose stats actually changed
-    td.style.color = text !== statText(def, NO_MODS) ? '#7ee787' : '';
+    td.style.color = text !== statText(def, NO_MODS) ? 'var(--color-success)' : '';
   });
 }
 
@@ -217,7 +217,7 @@ function renderSampleBattle(attackerFleet, defenderFleet, opts) {
   const note = document.createElement('tr');
   const td = document.createElement('td');
   td.colSpan = 6;
-  td.style.cssText = 'color:#8b949e;font-size:0.75rem;';
+  td.style.cssText = 'color:var(--color-muted);font-size:0.75rem;';
   td.textContent = `Sample outcome: ${sample.outcome.replace(/_/g, ' ')} in ${sample.rounds} rounds (one run — varies; see stats above for averages).`;
   note.appendChild(td);
   tbody.appendChild(note);
@@ -242,7 +242,7 @@ function renderFuel(attackerLosses, opts) {
   );
   if (missing) {
     const hint = document.createElement('div');
-    hint.style.cssText = 'font-size:0.75rem;color:#8b949e;margin-top:6px;';
+    hint.style.cssText = 'font-size:0.75rem;color:var(--color-muted);margin-top:6px;';
     hint.textContent = 'Some ships have no fuel rate yet — open the game and Scrape Now to refresh ship data.';
     el.appendChild(hint);
   }
@@ -258,7 +258,7 @@ function updateSurvivors(side, losses) {
     }
     const alive = l.sent - l.lost;
     span.textContent = `→ ${alive.toFixed(1)} alive`;
-    span.style.color = alive >= l.sent * 0.99 ? '#56d364' : alive > 0 ? '#e3b341' : '#ff7b72';
+    span.style.color = alive >= l.sent * 0.99 ? 'var(--color-success)' : alive > 0 ? 'var(--color-warning)' : 'var(--color-danger)';
   });
 }
 
@@ -280,7 +280,7 @@ function renderLossTable(tbodyId, losses) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 4;
-    td.style.color = '#484f58';
+    td.className = 'zero';
     td.textContent = 'No ships';
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -301,7 +301,12 @@ function renderCostCards(elId, losses) {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
-async function init() {
+let inited = false;
+
+export async function initSimulatorTab() {
+  if (inited) return;
+  inited = true;
+
   const status = document.getElementById('sim-status');
   const { ships } = await browser.storage.local.get('ships');
 
@@ -375,6 +380,3 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   document.querySelectorAll('.survivors').forEach(s => { s.textContent = ''; });
   document.getElementById('results').style.display = 'none';
 });
-
-// Runs after every script on the page is loaded (this file is last).
-init();

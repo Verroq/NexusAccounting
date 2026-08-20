@@ -438,7 +438,7 @@ function lossesToResources(losses) {
 }
 
 
-// Engine ship stats are injected at runtime: by simulator.js in the browser,
+// Engine ship stats are injected at runtime: by tabs/simulator.js in the browser,
 // by the test harness under node. shipDefs is a live binding (see export above).
 function setShipDefs(defs) {
   shipDefs = defs;

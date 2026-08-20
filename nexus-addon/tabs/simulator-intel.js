@@ -1,6 +1,6 @@
-// Simulator: fleet import and intel auto-fill (spy + camp scout reports).
+// Combat simulator: fleet import and intel auto-fill (spy + camp scout reports).
 
-import { shipDefs } from './engine.js';
+import { shipDefs } from '../engine.js';
 import { fmt, updateFleetStats } from './simulator.js';   // circular: both are functions, only called from handlers
 
 // ── System coordinates & distance ──────────────────────────────────────────
@@ -153,8 +153,7 @@ function classifyDefenses(buildings) {
 let intelReports = [];
 
 async function loadIntelReports() {
-  // The simulator is a standalone page (no dashboard.js/common.js import
-  // graph), so this reads the same universe-namespaced keys the dashboard
+  // The simulator tab reads the same universe-namespaced keys the dashboard
   // writes, scoped by the same `selected_universe` preference the dashboard's
   // universe dropdown persists (default 's0') — see storage-keys.js for why
   // spy_reports/camp_scout_reports are namespaced. Same pattern as

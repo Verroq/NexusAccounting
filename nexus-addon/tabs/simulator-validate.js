@@ -1,6 +1,6 @@
-// Simulator: engine validation against recorded pirate raids.
+// Combat simulator: engine validation against recorded pirate raids.
 
-import { shipDefs, runSimulations } from './engine.js';
+import { shipDefs, runSimulations } from '../engine.js';
 import { makeStatCard } from './simulator.js';   // circular: function, used only in the handler
 
 // ── Engine validation against recorded raids ───────────────────────────────
@@ -26,8 +26,7 @@ document.getElementById('btn-validate').addEventListener('click', async function
   const summary = document.getElementById('validation-summary');
 
   try {
-    // The simulator is a standalone page (no dashboard.js/common.js import
-    // graph), so this reads the same universe-namespaced key the dashboard
+    // The simulator tab reads the same universe-namespaced key the dashboard
     // writes, scoped by the same `selected_universe` preference the dashboard's
     // universe dropdown persists (default 's0') — see storage-keys.js for why
     // pirate_recent_reports is namespaced.
@@ -83,7 +82,7 @@ document.getElementById('btn-validate').addEventListener('click', async function
       cells.forEach((v, idx) => {
         const td = document.createElement('td');
         td.textContent = v;
-        if (idx === 7) td.style.color = match ? '#56d364' : '#ff7b72';
+        if (idx === 7) td.style.color = match ? 'var(--color-success)' : 'var(--color-danger)';
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
