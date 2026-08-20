@@ -4,7 +4,7 @@
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-import { activeTab, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, nsGet, periodLabelFor, renderMarkdown, renderNetCards, selectedUniverse, setActiveTab, setSelectedUniverse, setStore, store } from './common.js';
+import { RARE_WEIGHT, RESOURCE_WEIGHTS, activeTab, applyResourceWeights, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, nsGet, periodLabelFor, renderMarkdown, renderNetCards, selectedUniverse, setActiveTab, setSelectedUniverse, setStore, store } from './common.js';
 import { SCOPED_KEYS } from './storage-keys.js';
 import { renderBattlesTab } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
@@ -34,12 +34,14 @@ export async function loadAll() {
   // setting/cache that isn't scoped to a universe.
   const [scoped, globalKeys] = await Promise.all([
     nsGet(SCOPED_KEYS),
-    browser.storage.local.get(['ships', 'records_cap', 'research', 'research_speed_mult', 'active_research']),
+    browser.storage.local.get(['ships', 'records_cap', 'research', 'research_speed_mult', 'active_research', 'resource_weights']),
   ]);
   setStore({ ...scoped, ...globalKeys });
 
   // A stored 0 means "unlimited"; missing falls back to the default cap.
   document.getElementById('records-cap').value = store.records_cap ?? 5000;
+  applyResourceWeights(store.resource_weights);
+  populateWeightInputs();
   updateStatus(store.last_scrape, store.last_error);
   renderAll();
   updateStorageFooter();
@@ -306,6 +308,33 @@ document.getElementById('btn-save-cap').addEventListener('click', async function
   input.style.borderColor = '#30363d';
   input.style.color = '#e6edf3';
   document.getElementById('cap-warning').style.display = 'none';
+  this.textContent = 'Saved ✓';
+  setTimeout(() => { this.textContent = 'Save'; }, 1500);
+});
+
+// ── Total-net weights ────────────────────────────────────────────────────
+
+function populateWeightInputs() {
+  for (const key of Object.keys(RESOURCE_WEIGHTS)) {
+    const el = document.getElementById(`w-${key}`);
+    if (el) el.value = RESOURCE_WEIGHTS[key];
+  }
+  document.getElementById('w-rare').value = RARE_WEIGHT;
+}
+
+document.getElementById('btn-save-weights').addEventListener('click', async function () {
+  const weights = {};
+  for (const key of [...Object.keys(RESOURCE_WEIGHTS), 'rare']) {
+    weights[key] = parseFloat(document.getElementById(`w-${key}`).value);
+  }
+  applyResourceWeights(weights);
+  populateWeightInputs();   // reflect back any values applyResourceWeights rejected (NaN/negative)
+  // Persist the corrected live values, not the raw (possibly-rejected) input —
+  // an invalid field must fall back to its old weight on reload, not silently
+  // become 0 (parseFloat('') → NaN → JSON null → Number(null) is 0, which
+  // applyResourceWeights would accept as a real weight).
+  await browser.storage.local.set({ resource_weights: { ...RESOURCE_WEIGHTS, rare: RARE_WEIGHT } });
+  renderAll();
   this.textContent = 'Saved ✓';
   setTimeout(() => { this.textContent = 'Save'; }, 1500);
 });

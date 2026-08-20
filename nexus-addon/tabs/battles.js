@@ -471,7 +471,8 @@ export function renderBattlesTab() {
   const totalNet = weighted(net);
   const netTotalCard = makeStatCard('Total net', (totalNet >= 0 ? '+' : '') + fmt(totalNet), '',
     totalNet >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  netTotalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5, exotics×10.'
+  netTotalCard.title = `Weighted: ore×${RESOURCE_WEIGHTS.ore}, silicates×${RESOURCE_WEIGHTS.silicates}, `
+    + `hydrogen×${RESOURCE_WEIGHTS.hydrogen}, alloys×${RESOURCE_WEIGHTS.alloys}, exotics×${RARE_WEIGHT}.`
     + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
   const netLabel = document.createElement('div');
   netLabel.className = 'section-label'; netLabel.textContent = 'Net (won − ship-loss cost)';

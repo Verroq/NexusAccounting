@@ -101,6 +101,19 @@
             <button id="btn-save-cap">Save</button>
           </div>
           <span id="cap-warning" style="display:none; color:var(--color-danger); font-size:0.75rem;">Must be a whole number ≥ 0</span>
+          <div class="nx-menu-row" style="flex-direction:column; align-items:stretch;">
+            <span title="How each resource counts toward every 'Total net' figure across the dashboard.">Total-net weights</span>
+            <div class="nx-weight-grid">
+              <label>Ore <input type="number" id="w-ore" min="0" step="0.1" /></label>
+              <label>Silicates <input type="number" id="w-silicates" min="0" step="0.1" /></label>
+              <label>Hydrogen <input type="number" id="w-hydrogen" min="0" step="0.1" /></label>
+              <label>Alloys <input type="number" id="w-alloys" min="0" step="0.1" /></label>
+              <label>Precursor Fragments <input type="number" id="w-precursor_fragments" min="0" step="1" /></label>
+              <label>Artifacts <input type="number" id="w-artifact" min="0" step="1" /></label>
+              <label>Other exotics <input type="number" id="w-rare" min="0" step="0.1" /></label>
+            </div>
+            <button id="btn-save-weights" style="align-self:flex-start;">Save</button>
+          </div>
           <div class="nx-menu-row">
             <button id="btn-rebuild" title="Recompute all aggregated stats from the stored report records — repairs drift after partial failures.">Rebuild stats</button>
             <button id="btn-export">Export JSON</button>

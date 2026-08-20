@@ -998,12 +998,36 @@ export function renderLostCards(destroyedId, repairId, lost, periodLabel) {
   if (repairId) fillResourceCards(repairId, lost.repair, periodLabel);
 }
 
-// Relative value of each resource, used to weight the net total.
+// Relative value of each resource, used to weight the net total. User-editable
+// (dashboard.js's ⚙ menu) — mutated in place via applyResourceWeights() so
+// every importer (this file's own renderNetCards, tabs/battles.js, …) sees
+// the live value without re-importing; persisted under the global (not
+// per-universe) 'resource_weights' key.
 export const RESOURCE_WEIGHTS = {
   ore: 1, silicates: 2, hydrogen: 3, alloys: 5,
   precursor_fragments: 50, artifact: 2000,
 };
-export const RARE_WEIGHT = 10;   // exotics with no specific weight above (ice, quantum dust, …)
+export let RARE_WEIGHT = 10;   // exotics with no specific weight above (ice, quantum dust, …)
+
+// Merge a saved { ore, silicates, hydrogen, alloys, precursor_fragments, artifact, rare }
+// into the live weights. Missing/invalid fields keep their current value.
+export function applyResourceWeights(weights) {
+  if (!weights) return;
+  for (const key of Object.keys(RESOURCE_WEIGHTS)) {
+    const v = Number(weights[key]);
+    if (Number.isFinite(v) && v >= 0) RESOURCE_WEIGHTS[key] = v;
+  }
+  const rare = Number(weights.rare);
+  if (Number.isFinite(rare) && rare >= 0) RARE_WEIGHT = rare;
+}
+
+// Tooltip text for every "Total net" stat card, built from the live weights
+// so it stays accurate after the user edits them.
+export function weightsTooltip() {
+  const w = RESOURCE_WEIGHTS;
+  return `Weighted: ore×${w.ore}, silicates×${w.silicates}, hydrogen×${w.hydrogen}, alloys×${w.alloys}, `
+    + `precursor fragments×${w.precursor_fragments}, artifacts×${w.artifact}, other exotics×${RARE_WEIGHT}.`;
+}
 
 // Net gain cards: resources collected minus ship build costs, per resource
 // (raw), plus a weighted total (ore×1, silicates×2, hydrogen×3, alloys×5).
@@ -1037,8 +1061,7 @@ export function renderNetCards(containerId, collected, lost, periodLabel, fuelHy
   }
   const totalCard = makeStatCard(`Total net${periodLabel}`, (total >= 0 ? '+' : '') + fmt(total),
     '', total >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5, precursor fragments×50, artifacts×2000, other exotics×10.'
-    + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
+  totalCard.title = weightsTooltip() + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
   el.appendChild(totalCard);
 }
 
