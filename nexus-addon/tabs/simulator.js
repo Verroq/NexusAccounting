@@ -80,9 +80,7 @@ function statText(def, mods) {
   const atk = Math.round(def.attack * (1 + attackBonus));
   const hp = Math.round(def.hp * (1 + mods.hull));
   const sh = Math.round(def.shieldHp * (1 + mods.shield));
-  const dr = mods.damageReduction > 0 ? ` · DR ${Math.round(mods.damageReduction * 100)}%` : '';
-  return `ATK ${atk} · HP ${hp} · SH ${sh}${dr}` +
-    (def.weaponType ? ` · ${def.weaponType}` : '') + ` · ${def.armorType}`;
+  return `ATK ${atk} · HP ${hp} · SH ${sh}`;
 }
 
 // Refresh the stat line of every ship row on one side after a tech change.
