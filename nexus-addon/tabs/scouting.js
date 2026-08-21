@@ -456,7 +456,7 @@ async function computeFuel() {
     const timeCell = tr.querySelector('.sc-time');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
-    const est = await fuelEstimate(planetId, sysId, ships);
+    const est = await fuelEstimate(planetId, sysId, ships, 'investigate');
     if (gen !== fuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
@@ -896,7 +896,7 @@ async function computeDebrisFuel() {
     const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
     if (nCell) nCell.textContent = ships.length ? named : '—';
     if (!ships.length) { cell.textContent = '—'; if (timeCell) timeCell.textContent = '—'; continue; }
-    const est = await fuelEstimate(srcId, sysId, ships);
+    const est = await fuelEstimate(srcId, sysId, ships, 'collect_debris');
     if (gen !== debrisFuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
@@ -1060,7 +1060,7 @@ async function computeSalvageFuel() {
     const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
     if (nCell) nCell.textContent = ships.length ? named : '—';
     if (!ships.length) { cell.textContent = '—'; if (timeCell) timeCell.textContent = '—'; continue; }
-    const est = await fuelEstimate(planetId, sysId, ships);
+    const est = await fuelEstimate(planetId, sysId, ships, 'collect_salvage');
     if (gen !== salvageFuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;

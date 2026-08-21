@@ -638,7 +638,7 @@ async function computeFuel() {
     const cell = tr.querySelector('.af-fuel');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
-    const est = await fuelEstimate(planetId, sysId, ships);
+    const est = await fuelEstimate(planetId, sysId, ships, 'mine');
     if (gen !== afFuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
     cell.textContent = `${est.fuelCost}`;
