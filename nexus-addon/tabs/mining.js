@@ -188,7 +188,7 @@ async function fillFuelRoi(rows) {
     const sysId = nameToId[(r.location || '').split(' / ')[0].trim()];
     let fuel = null;
     if (r.source_planet_id && sysId && Array.isArray(r.fleet) && r.fleet.length) {
-      const est = await fuelEstimate(r.source_planet_id, sysId, r.fleet);
+      const est = await fuelEstimate(r.source_planet_id, sysId, r.fleet, 'mine');
       if (gen !== roiGen) return;
       if (!est.error && est.fuelCost != null) fuel = est.fuelCost;
     }

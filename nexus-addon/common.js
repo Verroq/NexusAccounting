@@ -465,16 +465,28 @@ export function infoDialog(title, body) {
   ok.focus();
 }
 
-// Fuel estimate, cached per source+destination+ships so a known route with the
-// selected template never re-hits the API. Errors aren't cached (so they retry).
+// Fuel estimate, cached per source+destination+ships+missionType so a known
+// route with the selected template never re-hits the API. Errors aren't
+// cached (so they retry).
+//
+// missionType matters a lot: the server computes a completely different
+// (much faster) travelTime when it's present versus omitted — confirmed live
+// (same ships/route): no missionType → 898s, 'investigate' → 170s, and even
+// an unrecognized string still gets the fast formula, so it's presence, not
+// value, that the server keys on. fuelCost is identical either way. Pass the
+// real mission type ('investigate', 'collect_debris', 'collect_salvage',
+// 'mine', 'survey', ...) so the estimate matches what the mission will
+// actually take, not the slower generic-move number.
 const _fuelCache = new Map();
-export async function fuelEstimate(sourcePlanetId, targetSystemId, ships) {
+export async function fuelEstimate(sourcePlanetId, targetSystemId, ships, missionType) {
   const sig = ships.map(s => `${s.shipDefId}:${s.quantity}`).sort().join(',');
-  const key = `${sourcePlanetId}|${targetSystemId}|${sig}`;
+  const key = `${sourcePlanetId}|${targetSystemId}|${sig}|${missionType || ''}`;
   if (_fuelCache.has(key)) return _fuelCache.get(key);
+  const body = { sourcePlanetId, targetSystemId, ships };
+  if (missionType) body.missionType = missionType;
   const est = await browser.runtime.sendMessage({
     type: 'GET_FUEL_ESTIMATE',
-    body: { sourcePlanetId, targetSystemId, ships },
+    body,
   });
   if (!est.error) _fuelCache.set(key, est);
   return est;

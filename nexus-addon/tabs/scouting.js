@@ -431,24 +431,24 @@ function renderSurveys() {
 }
 
 // Fill the Fuel Cost column: one fuel-estimate per row for the selected
-// investigate template's ships (capped to the source planet). A generation
-// guard discards results from a superseded render/selection.
+// investigate template's ships, capped to the source planet's actual stock
+// via templateShips() — the same function investigate() dispatches with, so
+// the estimate (fuel cost + travel time) can't drift from what really gets
+// sent. A generation guard discards results from a superseded render/selection.
 let fuelGen = 0;
 async function computeFuel() {
   const gen = ++fuelGen;
   const planetId = Number(document.getElementById('sc-planet').value);
   const fuelCells = () => document.querySelectorAll('#sc-surveys-tbody td.sc-fuel');
   const timeCells = () => document.querySelectorAll('#sc-surveys-tbody td.sc-time');
-  // Estimate uses the template as designed (not capped to the planet's stock).
-  const tpl = scTemplates.find(t => String(t.id) === document.getElementById('sc-inv-template').value);
-  const ships = Object.entries(tpl ? tpl.ships : {})
-    .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
-    .filter(s => s.quantity > 0);
-  if (!ships.length) {
-    fuelCells().forEach(c => { c.textContent = '—'; c.title = tpl ? 'Template has no ships' : 'No template selected'; });
+  const templateId = document.getElementById('sc-inv-template').value;
+  const r = await templateShips(templateId, planetId);
+  if (r.error) {
+    fuelCells().forEach(c => { c.textContent = '—'; c.title = r.error; });
     timeCells().forEach(c => { c.textContent = '—'; });
     return;
   }
+  const ships = r.ships;
 
   for (const tr of document.querySelectorAll('#sc-surveys-tbody tr')) {
     if (gen !== fuelGen) return;
@@ -456,12 +456,13 @@ async function computeFuel() {
     const timeCell = tr.querySelector('.sc-time');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
-    const est = await fuelEstimate(planetId, sysId, ships);
+    const est = await fuelEstimate(planetId, sysId, ships, 'investigate');
     if (gen !== fuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    cell.title = (est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`)
+      + (r.short ? ' — template short on stock; estimate uses what would actually be sent' : '');
     if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
@@ -718,6 +719,26 @@ function planFleet(total, ships) {
   return out;
 }
 
+// Cap a planFleet() plan to what `planetId` actually has in stock — shared by
+// both the fuel/time estimate and the real send, so they can't drift apart
+// the way Investigate's uncapped-estimate/capped-send split used to.
+// `availCache` (optional, shared across a loop over many rows) avoids
+// re-fetching the same planet's stock once per row.
+async function capCargoFleet(plan, planetId, availCache) {
+  let av = availCache?.get(planetId);
+  if (!av) {
+    av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+    if (availCache) availCache.set(planetId, av);
+  }
+  if (av.error) return { error: av.error };
+  const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
+  const ships = plan
+    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
+    .filter(s => s.quantity > 0);
+  const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
+  return { ships, carried };
+}
+
 async function loadDebris() {
   const { debris_fields, debris_last_check } = await nsGet(['debris_fields', 'debris_last_check']);
   scDebris = (debris_fields || []).map(f => ({ ...f, total: (f.ore || 0) + (f.silicates || 0) + (f.alloys || 0) }));
@@ -847,25 +868,41 @@ async function computeDebrisFuel() {
     return;
   }
   const nameOf = id => (scCargoShips.find(c => c.shipDefId === id) || {}).name || '#' + id;
+  const availCache = new Map();   // reused across rows that share a source planet
   for (const tr of document.querySelectorAll('#sc-debris-tbody tr')) {
     if (gen !== debrisFuelGen) return;
-    const ships = planFleet(Number(tr.dataset.total) || 0, cargo);
-    const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
     const nCell = tr.querySelector('.sc-debris-shipn');
-    if (nCell) nCell.textContent = ships.length ? named : '—';
-
     const cell = tr.querySelector('.sc-debris-fuel');
     const timeCell = tr.querySelector('.sc-debris-time');
     const sysId = Number(tr.dataset.system);
     const srcId = debrisSourcePlanet(sysId)?.id;
     if (!cell || !sysId || !srcId) continue;
+    const total = Number(tr.dataset.total) || 0;
+    const plan = planFleet(total, cargo);
+    if (!plan.length) {
+      if (nCell) nCell.textContent = '—';
+      cell.textContent = '—'; if (timeCell) timeCell.textContent = '—';
+      continue;
+    }
+    // Capped to the source planet's actual stock — matches what collectDebris() will really send.
+    const capped = await capCargoFleet(plan, srcId, availCache);
+    if (gen !== debrisFuelGen) return;
+    if (capped.error) {
+      if (nCell) nCell.textContent = '—';
+      cell.textContent = '—'; cell.title = capped.error; if (timeCell) timeCell.textContent = '—';
+      continue;
+    }
+    const { ships, carried } = capped;
+    const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
+    if (nCell) nCell.textContent = ships.length ? named : '—';
     if (!ships.length) { cell.textContent = '—'; if (timeCell) timeCell.textContent = '—'; continue; }
-    const est = await fuelEstimate(srcId, sysId, ships);
+    const est = await fuelEstimate(srcId, sysId, ships, 'collect_debris');
     if (gen !== debrisFuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    cell.title = (est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`)
+      + (carried < total ? ' — capped to available cargo ships' : '');
     if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
@@ -881,14 +918,10 @@ async function collectDebris(field) {
   if (!plan.length) { status.textContent = 'Select cargo ships above first.'; return; }
 
   // Cap to what the source planet actually has; warn if that can't carry it all.
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-  if (av.error) { status.textContent = `Error: ${av.error}`; return; }
-  const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
-  const ships = plan
-    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
-    .filter(s => s.quantity > 0);
+  const capped = await capCargoFleet(plan, planetId);
+  if (capped.error) { status.textContent = `Error: ${capped.error}`; return; }
+  const { ships, carried } = capped;
   if (!ships.length) { status.textContent = 'None of the selected cargo ships are on this planet.'; return; }
-  const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
   const short = carried < field.total;
 
   if (!await confirmDialog(`Collect debris at ${field.system} (${field.total.toLocaleString()} cargo)?\n\n` +
@@ -1000,24 +1033,40 @@ async function computeSalvageFuel() {
     return;
   }
   const nameOf = id => (scCargoShips.find(c => c.shipDefId === id) || {}).name || '#' + id;
+  const availCache = new Map();
   for (const tr of document.querySelectorAll('#sc-salvage-tbody tr')) {
     if (gen !== salvageFuelGen) return;
-    const ships = planFleet(Number(tr.dataset.total) || 0, cargo);
-    const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
     const nCell = tr.querySelector('.sc-salvage-shipn');
-    if (nCell) nCell.textContent = ships.length ? named : '—';
-
     const cell = tr.querySelector('.sc-salvage-fuel');
     const timeCell = tr.querySelector('.sc-salvage-time');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
+    const total = Number(tr.dataset.total) || 0;
+    const plan = planFleet(total, cargo);
+    if (!plan.length) {
+      if (nCell) nCell.textContent = '—';
+      cell.textContent = '—'; if (timeCell) timeCell.textContent = '—';
+      continue;
+    }
+    // Capped to the source planet's actual stock — matches what collectSalvage() will really send.
+    const capped = await capCargoFleet(plan, planetId, availCache);
+    if (gen !== salvageFuelGen) return;
+    if (capped.error) {
+      if (nCell) nCell.textContent = '—';
+      cell.textContent = '—'; cell.title = capped.error; if (timeCell) timeCell.textContent = '—';
+      continue;
+    }
+    const { ships, carried } = capped;
+    const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
+    if (nCell) nCell.textContent = ships.length ? named : '—';
     if (!ships.length) { cell.textContent = '—'; if (timeCell) timeCell.textContent = '—'; continue; }
-    const est = await fuelEstimate(planetId, sysId, ships);
+    const est = await fuelEstimate(planetId, sysId, ships, 'collect_salvage');
     if (gen !== salvageFuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    cell.title = (est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`)
+      + (carried < total ? ' — capped to available cargo ships' : '');
     if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
@@ -1032,14 +1081,10 @@ async function collectSalvage(salvage) {
   if (!plan.length) { status.textContent = 'Select cargo ships above first.'; return; }
 
   // Cap to what the source planet has; warn if that can't carry it all.
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-  if (av.error) { status.textContent = `Error: ${av.error}`; return; }
-  const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
-  const ships = plan
-    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
-    .filter(s => s.quantity > 0);
+  const capped = await capCargoFleet(plan, planetId);
+  if (capped.error) { status.textContent = `Error: ${capped.error}`; return; }
+  const { ships, carried } = capped;
   if (!ships.length) { status.textContent = 'None of the selected cargo ships are on this planet.'; return; }
-  const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
   const short = carried < salvage.total;
 
   if (!await confirmDialog(`Collect salvage at ${salvage.system} (${salvage.total.toLocaleString()} cargo)?\n\n` +
