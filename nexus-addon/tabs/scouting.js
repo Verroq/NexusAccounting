@@ -431,24 +431,24 @@ function renderSurveys() {
 }
 
 // Fill the Fuel Cost column: one fuel-estimate per row for the selected
-// investigate template's ships (capped to the source planet). A generation
-// guard discards results from a superseded render/selection.
+// investigate template's ships, capped to the source planet's actual stock
+// via templateShips() — the same function investigate() dispatches with, so
+// the estimate (fuel cost + travel time) can't drift from what really gets
+// sent. A generation guard discards results from a superseded render/selection.
 let fuelGen = 0;
 async function computeFuel() {
   const gen = ++fuelGen;
   const planetId = Number(document.getElementById('sc-planet').value);
   const fuelCells = () => document.querySelectorAll('#sc-surveys-tbody td.sc-fuel');
   const timeCells = () => document.querySelectorAll('#sc-surveys-tbody td.sc-time');
-  // Estimate uses the template as designed (not capped to the planet's stock).
-  const tpl = scTemplates.find(t => String(t.id) === document.getElementById('sc-inv-template').value);
-  const ships = Object.entries(tpl ? tpl.ships : {})
-    .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
-    .filter(s => s.quantity > 0);
-  if (!ships.length) {
-    fuelCells().forEach(c => { c.textContent = '—'; c.title = tpl ? 'Template has no ships' : 'No template selected'; });
+  const templateId = document.getElementById('sc-inv-template').value;
+  const r = await templateShips(templateId, planetId);
+  if (r.error) {
+    fuelCells().forEach(c => { c.textContent = '—'; c.title = r.error; });
     timeCells().forEach(c => { c.textContent = '—'; });
     return;
   }
+  const ships = r.ships;
 
   for (const tr of document.querySelectorAll('#sc-surveys-tbody tr')) {
     if (gen !== fuelGen) return;
@@ -461,7 +461,8 @@ async function computeFuel() {
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    cell.title = (est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`)
+      + (r.short ? ' — template short on stock; estimate uses what would actually be sent' : '');
     if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
