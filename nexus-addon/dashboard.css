@@ -560,7 +560,16 @@ th.sortable .arrow { margin-left: 4px; color: var(--color-accent); }
 .fleet-table td { padding: 5px 8px; }
 .fleet-table .ship-name { width: 40%; }
 .fleet-table .ship-stats { color: var(--color-muted); font-size: 0.75rem; white-space: nowrap; }
-.fleet-table input { width: 80px; }
+.fleet-table input {
+  width: 80px; background: var(--color-bg); font-variant-numeric: tabular-nums; text-align: right;
+}
+/* No spinner arrows — Chrome's native widget renders wider than the box-sizing-
+   constrained width and overflows the .fleet-box border at this input size. */
+#fleets-content input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+#fleets-content input[type="number"]::-webkit-inner-spin-button,
+#fleets-content input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
 .ship-group td {
   padding-top: 12px; font-size: 0.7rem; text-transform: uppercase;
   letter-spacing: 0.08em; color: var(--color-muted); border-bottom: 1px solid var(--color-divider);
@@ -670,11 +679,10 @@ input.tech-input {
   font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase;
   color: color-mix(in srgb, var(--color-text) 46%, transparent); margin: 4px 0 6px;
 }
-/* research-level / ship-count inputs sit on the darker --color-bg fill, per spec */
-.sim-panel .fleet-table input, .sim-panel input.tech-input {
-  background: var(--color-bg); font-variant-numeric: tabular-nums;
-}
-.sim-panel .fleet-table input { width: 64px; text-align: right; }
+/* research-level inputs sit on the darker --color-bg fill, per spec (ship-count
+   inputs get the same fill via the shared base .fleet-table input rule). */
+.sim-panel input.tech-input { background: var(--color-bg); font-variant-numeric: tabular-nums; }
+.sim-panel .fleet-table input { width: 64px; }
 
 /* ── Simulation Result section label + fading rule ── */
 .sim-result-heading { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }
