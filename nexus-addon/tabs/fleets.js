@@ -27,10 +27,7 @@ const MINING_SHIPS = {
 };
 
 function statText(s) {
-  return `ATK ${s.attack} · HP ${s.hp} · SH ${s.shieldHp}` +
-    (s.weaponType ? ` · ${s.weaponType}` : '') +
-    (s.armorType ? ` · ${s.armorType}` : '') +
-    (s.miningCargo ? ` · cargo ${s.miningCargo}` : '');
+  return `ATK ${s.attack} · HP ${s.hp} · SH ${s.shieldHp}`;
 }
 
 // Load templates, migrating the legacy single `mining_template` if present.
