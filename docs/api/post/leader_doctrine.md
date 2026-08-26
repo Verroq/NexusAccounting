@@ -1,6 +1,6 @@
-# /api/leadership/repair
+# /api/leader/doctrine
 
-Starts repairing the command vessel at its current location.
+Switches the diplomat leader doctrine. The change is subject to the cooldown reported by `canSwitchAt` on [leader.md](../get/leader.md).
 
 ## Method
 
@@ -8,25 +8,21 @@ Starts repairing the command vessel at its current location.
 
 ## Request Body
 
-```text
-(no request body)
+```json
+{
+  "doctrine": "<doctrine key>"
+}
 ```
 
 ## Response Structure
 
 ```json
-{
-  "vessel": {},
-  "progress": {},
-  "location": {},
-  "destinations": [],
-  "repair": {}
-}
+{}
 ```
 
 ## Notes
 
-- `repair` in [leadership.md](./leadership.md) reports whether this is allowed (`available`, `reason`), the cost after `costReduction`, the required `shipyard`, and `durationSeconds`.
+- The client re-fetches `GET /api/leader` right after this call and reads the new `canSwitchAt` from there rather than from this response.
 
 ## Live Verification
 

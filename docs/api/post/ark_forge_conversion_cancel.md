@@ -20,7 +20,7 @@ Cancels an in-progress Titan to Ark Titan conversion.
 
 ## Notes
 
-- `conversionId` is `conversions[].id` from [ark_forge.md](./ark_forge.md).
+- `conversionId` is `conversions[].id` from [ark_forge.md](../get/ark_forge.md).
 
 ## Live Verification
 

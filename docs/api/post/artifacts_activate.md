@@ -23,7 +23,7 @@ Activates an artifact, paying its activation cost and starting its effect timer.
 ## Notes
 
 - `planetId` is the planet that pays the activation cost. A `global`-scope artifact still needs one.
-- Costs and duration come from `definition.activationCost*` / `activationTime` / `duration` in [artifacts.md](./artifacts.md).
+- Costs and duration come from `definition.activationCost*` / `activationTime` / `duration` in [artifacts.md](../get/artifacts.md).
 
 ## Live Verification
 

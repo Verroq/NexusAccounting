@@ -34,7 +34,7 @@ the fleet comes from the outpost's own garrison rather than from a planet.
 
 - `targetFieldId` — the asteroid field to mine. The client only offers outposts whose
   `asteroidField.id` matches the field being targeted, so in practice this is the field the outpost
-  already sits on (`outposts[].asteroidField.id` in [outposts.md](./outposts.md)).
+  already sits on (`outposts[].asteroidField.id` in [outposts.md](../get/outposts.md)).
 - `ships` — `[{ shipDefId, quantity }]`, drawn from the outpost's `garrison`, not from a planet
   fleet. An outpost with an empty `garrison` cannot be used.
 - `miningDuration` — seconds spent mining. **The client default here is `6000`**, unlike
@@ -69,8 +69,8 @@ dark     ice_drill, excavator
 ```
 
 - It also fetches `GET /api/leadership` in the same modal, to offer `attachLeader`.
-- The resulting mission appears in [fleet_missions.md](./fleet_missions.md) and its report in
-  [fleet_mining_reports.md](./fleet_mining_reports.md).
+- The resulting mission appears in [fleet_missions.md](../get/fleet_missions.md) and its report in
+  [fleet_mining_reports.md](../get/fleet_mining_reports.md).
 
 ## Live Verification
 

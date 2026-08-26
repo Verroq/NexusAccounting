@@ -42,8 +42,8 @@ Returns the full state of one Ark project: the project itself, every attached re
   level-15 research labs contributed by alliance members.
 - A lab only counts as qualifying when `level >= 15`, `powerLevel >= 100` and `damagePercent == 0`.
 - `labs[].planetBuildingId` is the building row id from the owner's planet, which is also what
-  [ark_labs_attach.md](./ark_labs_attach.md) and [ark_labs_detach.md](./ark_labs_detach.md) take.
-- `canStart` gates [ark_start.md](./ark_start.md); it turns true once `qualifyingLabCount`
+  [ark_labs_attach.md](../post/ark_labs_attach.md) and [ark_labs_detach.md](../post/ark_labs_detach.md) take.
+- `canStart` gates [ark_start.md](../post/ark_start.md); it turns true once `qualifyingLabCount`
   reaches `requiredLevel15Labs`.
 - The client polls this every 30s alongside `GET /api/ark`.
 - **Response shape is inferred** from the client's render code - the sweep account has no Ark

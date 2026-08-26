@@ -1,6 +1,6 @@
-# /api/leadership/talents/invest
+# /api/fleet/artifact-transfer
 
-Spends one unspent talent point on a single talent, raising it by one rank.
+Sends a fleet carrying one artifact from one owned planet to another. This is the only way to move an artifact between planets.
 
 ## Method
 
@@ -10,24 +10,24 @@ Spends one unspent talent point on a single talent, raising it by one rank.
 
 ```json
 {
-  "key": "economy_construction_speed"
+  "sourcePlanetId": 29925,
+  "targetPlanetId": 32268,
+  "artifactId": 38108,
+  "ships": [
+    { "shipDefId": 4, "quantity": 1 }
+  ]
 }
 ```
 
 ## Response Structure
 
 ```json
-{
-  "talent": {},
-  "vessel": {},
-  "progress": {}
-}
+{}
 ```
 
 ## Notes
 
-- `vessel.unspentTalentPoints` in [leadership.md](./leadership.md) is the budget for this call.
-- The response returns only the single updated talent; the client merges it into its cached `talents[]`.
+- Creates a normal fleet mission, so the result shows up in [fleet_missions.md](../get/fleet_missions.md).
 
 ## Live Verification
 

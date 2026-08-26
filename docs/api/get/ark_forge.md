@@ -26,7 +26,7 @@ Returns the Ark Forge status: which moon hosts the forge and at what level, in-f
 - `conversions[]` items carry `id`, `startedAt` and `completesAt`. A conversion takes 6 hours.
 - `titansAvailable[]` items carry `location` (the location kind), `locationName`,
   `shipInventoryId` and `quantity`. Both `location` and `shipInventoryId` are what
-  [ark_forge_convert.md](./ark_forge_convert.md) sends.
+  [ark_forge_convert.md](../post/ark_forge_convert.md) sends.
 - `arkTitansByMoon[]` / `arkTitansByPlanet[]` list where already-converted Ark Titans are
   stationed; `arkTitansOwned` is the total.
 - The client polls this every 30s while the forge panel is open.

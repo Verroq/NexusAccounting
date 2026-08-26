@@ -12,14 +12,14 @@ to use.
 2. Extract every `.get|.post|.put|.patch|.delete("<path>")` call argument. The client's axios
    instance uses `baseURL=/api`, so the literals are `/fleet/missions`, not `/api/fleet/missions`.
 3. Normalise `${...}` interpolations and numeric segments to `{id}`, then subtract the
-   endpoints already covered by `docs/api/*.md`.
+   endpoints already covered by `docs/api/{get,post}/*.md`.
 4. Live-probe every resulting **GET** whose path ids could be filled from the sweep account.
    No POST/PUT/PATCH/DELETE was issued.
 
 ## Result
 
 - **434 distinct endpoints** are reachable from the official client.
-- **106 of them now have a `docs/api/*.md` file** - the combat-simulator,
+- **106 of them now have a `docs/api/{get,post}/*.md` file** - the combat-simulator,
   leadership, artifacts, Ark / Ark Forge and outpost mining sets were written up after this
   discovery pass.
 - **328 do not** - listed below.
@@ -456,8 +456,8 @@ written for any of these without re-probing.
 - `/api/combat-simulator/bootstrap` (GET) and `/api/combat-simulator/simulate` (POST) - the
   server exposes the official battle simulator. Worth comparing against the addon's own
   combat model instead of calibrating it by hand. Now documented:
-  [combat_simulator_bootstrap.md](../combat_simulator_bootstrap.md),
-  [combat_simulator_simulate.md](../combat_simulator_simulate.md).
+  [combat_simulator_bootstrap.md](../get/combat_simulator_bootstrap.md),
+  [combat_simulator_simulate.md](../post/combat_simulator_simulate.md).
 - `/api/fleet/mining-fleet-operation-estimate` and `/api/fleet/patrol/fuel-estimate` are
   separate estimate endpoints from `/api/fleet/fuel-estimate`.
 - `/api/market/order-book` gives real depth per hub/pair; `/api/market/storage` and

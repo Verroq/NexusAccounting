@@ -28,7 +28,7 @@ Converts a Titan into an Ark Titan. The conversion takes 6 hours and is irrevers
 - `kind` is the `location` field of the chosen `titansAvailable[]` entry (where the Titan is
   stationed); `shipInventoryId` is that same entry's `shipInventoryId`.
 - Titans are built in a Moon Dockyard, so `titansAvailable` is empty until one exists.
-- Ark Titans are what [the Rift Seal endpoints](./_sweeps/client-bundle-discovery-2026-08-26.md)
+- Ark Titans are what [the Rift Seal endpoints](../_sweeps/client-bundle-discovery-2026-08-26.md)
   consume; see `/api/rift-seal` in the discovery report.
 
 ## Live Verification

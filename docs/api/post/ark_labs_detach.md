@@ -14,7 +14,7 @@ Detaches a previously attached research lab from an Ark project.
 
 ## Notes
 
-- Both ids come from [ark_detail.md](./ark_detail.md).
+- Both ids come from [ark_detail.md](../get/ark_detail.md).
 
 ## Live Verification
 

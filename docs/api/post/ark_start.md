@@ -1,6 +1,6 @@
-# /api/leader/doctrine
+# /api/ark/{projectId}/start
 
-Switches the diplomat leader doctrine. The change is subject to the cooldown reported by `canSwitchAt` on [leader.md](./leader.md).
+Starts construction on an announced Ark project. Only allowed once enough qualifying labs are attached.
 
 ## Method
 
@@ -8,10 +8,8 @@ Switches the diplomat leader doctrine. The change is subject to the cooldown rep
 
 ## Request Body
 
-```json
-{
-  "doctrine": "<doctrine key>"
-}
+```text
+(no request body)
 ```
 
 ## Response Structure
@@ -22,7 +20,9 @@ Switches the diplomat leader doctrine. The change is subject to the cooldown rep
 
 ## Notes
 
-- The client re-fetches `GET /api/leader` right after this call and reads the new `canSwitchAt` from there rather than from this response.
+- Gated by `canStart` in [ark_detail.md](../get/ark_detail.md).
+- Only the project initiator (`project.initiatorUserId`) can call this.
+- After starting, `project.completesAt` carries the finish time.
 
 ## Live Verification
 

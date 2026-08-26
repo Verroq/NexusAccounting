@@ -1,6 +1,6 @@
-# /api/leadership/modules/equip
+# /api/leadership/move
 
-Equips a leadership module on the command vessel.
+Sends the command vessel to another location. Travel may be instant or timed depending on the destination.
 
 ## Method
 
@@ -10,7 +10,8 @@ Equips a leadership module on the command vessel.
 
 ```json
 {
-  "moduleId": 879
+  "destinationType": "planet",
+  "destinationId": 29925
 }
 ```
 
@@ -18,18 +19,17 @@ Equips a leadership module on the command vessel.
 
 ```json
 {
-  "modules": [],
   "vessel": {},
-  "combatStats": {},
-  "effectiveEquippedEffects": [],
+  "progress": {},
+  "location": {},
+  "destinations": [],
   "repair": {}
 }
 ```
 
 ## Notes
 
-- `moduleId` is `modules[].id` from [leadership.md](./leadership.md), not the module `key`.
-- The response returns the recomputed slices of the leadership state, so a full `GET /api/leadership` refetch is not needed.
+- Valid `destinationType`/`destinationId` pairs come from `destinations[]` in [leadership.md](../get/leadership.md); each entry also carries a `travelTime`.
 
 ## Live Verification
 

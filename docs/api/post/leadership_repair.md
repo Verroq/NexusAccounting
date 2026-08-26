@@ -1,6 +1,6 @@
-# /api/fleet/artifact-transfer
+# /api/leadership/repair
 
-Sends a fleet carrying one artifact from one owned planet to another. This is the only way to move an artifact between planets.
+Starts repairing the command vessel at its current location.
 
 ## Method
 
@@ -8,26 +8,25 @@ Sends a fleet carrying one artifact from one owned planet to another. This is th
 
 ## Request Body
 
-```json
-{
-  "sourcePlanetId": 29925,
-  "targetPlanetId": 32268,
-  "artifactId": 38108,
-  "ships": [
-    { "shipDefId": 4, "quantity": 1 }
-  ]
-}
+```text
+(no request body)
 ```
 
 ## Response Structure
 
 ```json
-{}
+{
+  "vessel": {},
+  "progress": {},
+  "location": {},
+  "destinations": [],
+  "repair": {}
+}
 ```
 
 ## Notes
 
-- Creates a normal fleet mission, so the result shows up in [fleet_missions.md](./fleet_missions.md).
+- `repair` in [leadership.md](../get/leadership.md) reports whether this is allowed (`available`, `reason`), the cost after `costReduction`, the required `shipyard`, and `durationSeconds`.
 
 ## Live Verification
 

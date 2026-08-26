@@ -30,7 +30,7 @@ Applies a whole talent build at once (used by the client's build planner / after
 
 ## Notes
 
-- Talent keys and their max ranks come from `definitions.talents` in [leadership.md](./leadership.md).
+- Talent keys and their max ranks come from `definitions.talents` in [leadership.md](../get/leadership.md).
 - Respec cost and availability are in `respec` (`canResetFree`, `canResetPaid`, `priceCredits`).
 
 ## Live Verification

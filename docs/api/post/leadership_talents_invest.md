@@ -1,6 +1,6 @@
-# /api/ark/{projectId}/start
+# /api/leadership/talents/invest
 
-Starts construction on an announced Ark project. Only allowed once enough qualifying labs are attached.
+Spends one unspent talent point on a single talent, raising it by one rank.
 
 ## Method
 
@@ -8,21 +8,26 @@ Starts construction on an announced Ark project. Only allowed once enough qualif
 
 ## Request Body
 
-```text
-(no request body)
+```json
+{
+  "key": "economy_construction_speed"
+}
 ```
 
 ## Response Structure
 
 ```json
-{}
+{
+  "talent": {},
+  "vessel": {},
+  "progress": {}
+}
 ```
 
 ## Notes
 
-- Gated by `canStart` in [ark_detail.md](./ark_detail.md).
-- Only the project initiator (`project.initiatorUserId`) can call this.
-- After starting, `project.completesAt` carries the finish time.
+- `vessel.unspentTalentPoints` in [leadership.md](../get/leadership.md) is the budget for this call.
+- The response returns only the single updated talent; the client merges it into its cached `talents[]`.
 
 ## Live Verification
 

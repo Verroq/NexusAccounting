@@ -22,10 +22,10 @@ Attaches one of the caller's research labs to an Ark project, contributing it to
 
 ## Notes
 
-- `planetBuildingId` is `buildings[].id` from [planets_detail.md](./planets_detail.md) where
+- `planetBuildingId` is `buildings[].id` from [planets_detail.md](../get/planets_detail.md) where
   `definition.key == "research_lab"` and `level >= 1`.
 - The client only offers labs that are not already attached (compared against
-  `labs[].planetBuildingId` in [ark_detail.md](./ark_detail.md)).
+  `labs[].planetBuildingId` in [ark_detail.md](../get/ark_detail.md)).
 - Attaching a lab below level 15, under-powered, or damaged is accepted but does not count
   toward `qualifyingLabCount`.
 

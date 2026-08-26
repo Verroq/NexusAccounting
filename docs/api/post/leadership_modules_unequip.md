@@ -28,7 +28,7 @@ Unequips a leadership module on the command vessel.
 
 ## Notes
 
-- `moduleId` is `modules[].id` from [leadership.md](./leadership.md), not the module `key`.
+- `moduleId` is `modules[].id` from [leadership.md](../get/leadership.md), not the module `key`.
 - The response returns the recomputed slices of the leadership state, so a full `GET /api/leadership` refetch is not needed.
 
 ## Live Verification
