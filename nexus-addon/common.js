@@ -122,7 +122,11 @@ export async function confirmDialog(message, ships) {
 // tagged for the target field's zone — each gets a colour-coded button (green =
 // fleet already meets all quantities, red = at least one ship is below) that
 // merges the template ships into the current selection when clicked.
-export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2, escortTemplates = [] }) {
+// `untilFullState`, when passed, is a caller-owned { untilFull: bool } that gets
+// a "Mine until full" checkbox in this dialog; the dialog writes the choice back
+// into it. Left null, no checkbox is shown and the resolve value is unchanged,
+// so callers that do not mine (expeditions) are unaffected.
+export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2, escortTemplates = [], untilFullState = null }) {
   const defs = await shipDefs();
   const ids = [...new Set([
     ...Object.keys(seed).map(Number),
@@ -331,6 +335,20 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
       b.style.cssText = `padding:7px 16px;border-radius:6px;border:1px solid #39405a;cursor:pointer;${primary ? 'background:#238636;color:#fff;border-color:#2ea043' : 'background:#2a3146;color:#e6e8ee'}`;
       return b;
     };
+    // Mine-until-full toggle — a mission option, not part of the fleet, so it
+    // sits above the buttons rather than in the ship rows.
+    if (untilFullState) {
+      const fullRow = document.createElement('label');
+      fullRow.title = 'Keep mining past the usual 10 cycles until the mining hold is full or the field is depleted';
+      fullRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:12px;color:#8b949e;font-size:0.85rem;cursor:pointer';
+      const fullChk = document.createElement('input');
+      fullChk.type = 'checkbox';
+      fullChk.checked = !!untilFullState.untilFull;
+      fullChk.addEventListener('change', () => { untilFullState.untilFull = fullChk.checked; });
+      fullRow.append(fullChk, document.createTextNode('Mine until full'));
+      box.append(fullRow);
+    }
+
     const cancel = mk(document.createElement('button'), 'Cancel', false);
     mk(ok, 'Send', true);
     const done = (v) => { ov.remove(); resolve(v); };
