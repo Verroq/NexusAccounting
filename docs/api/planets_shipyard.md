@@ -15,10 +15,10 @@ Returns the full ship catalogue for the given planet's shipyard, including build
       "id": 1,
       "key": "probe",
       "name": "Probe",
-      "description": "Unmanned recon drone. Fastest ship, minimal spy power. Fragile — rapid-fire target for fighters.",
+      "description": "Unmanned recon drone. Fastest ship, minimal spy power. Fragile \u2014 rapid-fire target for fighters.",
       "shipClass": "recon",
-      "costOre": 46,
-      "costSilicates": 228,
+      "costOre": 40,
+      "costSilicates": 198,
       "costHydrogen": 0,
       "costAlloys": 0,
       "rareCosts": {},
@@ -26,13 +26,16 @@ Returns the full ship catalogue for the given planet's shipyard, including build
       "hp": 30,
       "shieldHp": 8,
       "attack": 0,
-      "speed": 25,
+      "speed": 30,
       "cargoCapacity": 0,
       "miningCargoCapacity": 0,
       "hangarCapacity": 0,
       "requiredShipyardLevel": 1,
       "requirements": [
-        { "key": "probe_technology", "type": "research" }
+        {
+          "key": "probe_technology",
+          "type": "research"
+        }
       ],
       "fuelRate": 0.5,
       "shipSize": "small",
@@ -42,21 +45,39 @@ Returns the full ship catalogue for the given planet's shipyard, including build
       "populationCost": 0,
       "populationCargoCapacity": 0,
       "allowedCargo": null,
-      "effectiveSpeed": 33,
-      "available": false,
+      "effectiveSpeed": 55,
+      "available": true,
       "researchMet": true,
-      "shipyardMet": false,
-      "currentShipyardLevel": 0,
+      "shipyardMet": true,
+      "currentShipyardLevel": 6,
       "shipyardName": "Planetary Shipyard",
-      "requirementNames": ["Probe Technology"],
+      "requirementNames": [
+        "Probe Technology"
+      ],
+      "effectiveHp": 39,
+      "effectiveShieldHp": 12,
+      "effectiveAttack": 0,
+      "effectiveCargoCapacity": 0,
+      "effectiveMiningCargoCapacity": 0,
       "repairCostPerUnit": {
-        "ore": 23,
-        "silicates": 114,
+        "ore": 20,
+        "silicates": 99,
         "hydrogen": 0,
         "alloys": 0
       }
     }
-  ]
+  ],
+  "shipSpeedMult": 0.5161290322580645,
+  "orbitalShipSpeedMult": 0.5925925925925926,
+  "shipScrapSpeedMult": 0.5161290322580645,
+  "orbitalShipScrapSpeedMult": 0.5925925925925926,
+  "planetaryQueue": null,
+  "orbitalQueue": null,
+  "planetaryQueueAll": [],
+  "orbitalQueueAll": [],
+  "planetaryQueueCount": 0,
+  "orbitalQueueCount": 0,
+  "maxQueueSize": 1
 }
 ```
 
@@ -76,3 +97,9 @@ Returns the full ship catalogue for the given planet's shipyard, including build
 - `populationCost` — population consumed per unit when built (relevant for capital ships).
 - `hangarCapacity` — number of smaller ships this ship can carry in its hangar.
 - This endpoint was not previously documented in the addon and was discovered via live network observation.
+
+## Live Verification
+
+- Verified 2026-08-26 on `s0`: `GET /api/planets/29925/shipyard` -> `200`.
+- Example above is a real response with every array truncated to its first item.
+- Live array sizes at capture time: `ships`=31.

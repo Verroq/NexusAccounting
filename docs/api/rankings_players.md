@@ -22,28 +22,38 @@ offset={number}   (optional)
   "leaderboard": [
     {
       "rank": 1,
-      "userId": 9696,
-      "username": "Uuuren",
-      "leaderType": "industrialist",
-      "allianceTag": "TAG",
+      "userId": 6965,
+      "username": "demona008",
+      "leaderType": "warlord",
+      "allianceId": 250,
+      "allianceTag": "HELL",
+      "allianceIconKey": "alliance_24",
       "isVacationMode": false,
-      "score": 123456,
-      "militaryScore": 12000,
-      "economyScore": 80000,
-      "researchScore": 30000,
-      "overallScore": 122000
+      "avatarUrl": null,
+      "portraitFrame": "/images/frames/founder.png",
+      "title": "title_platinum_founder",
+      "score": 664796759,
+      "militaryScore": 633619140,
+      "economyScore": 28479124,
+      "researchScore": 2698495,
+      "overallScore": 664796759
     }
   ],
   "pagination": {
-    "total": 1,
-    "limit": 25,
+    "total": 5848,
+    "limit": 100,
     "offset": 0,
-    "hasMore": false
+    "hasMore": true
   }
 }
 ```
 
 ## Notes
 
-- Live-validated on `s0` (200).
 - Addon uses this endpoint to look up player rank by name.
+
+## Live Verification
+
+- Verified 2026-08-26 on `s0`: `GET /api/rankings/players` -> `200`.
+- Example above is a real response with every array truncated to its first item.
+- Live array sizes at capture time: `leaderboard`=100.

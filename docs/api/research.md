@@ -12,15 +12,15 @@ Returns the full research catalogue for the authenticated player, including cost
 {
   "research": [
     {
-      "id": 75,
-      "key": "basic_armor",
-      "name": "Basic Armor Plating",
-      "description": "Reinforced hull plating and structural reinforcement. Improves ship and defense durability.",
+      "id": 124,
+      "key": "basic_computing",
+      "name": "Basic Computing",
+      "description": "Parallel processing algorithms accelerate research calculations.",
       "era": 1,
-      "branch": "military",
-      "category": "defense",
-      "costOre": 300,
-      "costSilicates": 150,
+      "branch": "science",
+      "category": "computing",
+      "costOre": 200,
+      "costSilicates": 300,
       "costHydrogen": 0,
       "costAlloys": 0,
       "rareCosts": {},
@@ -31,27 +31,55 @@ Returns the full research catalogue for the authenticated player, including cost
       "requiredLabLevel": 1,
       "requirements": [],
       "effects": [
-        { "type": "ship_hp_bonus", "value": 0.02 },
-        { "type": "building_hp_bonus", "value": 0.05 },
-        { "type": "unlock_building", "buildingKey": "defense_traps" }
+        {
+          "type": "research_speed_bonus",
+          "value": 0.03
+        }
       ],
       "sortOrder": 1,
       "status": "completed",
-      "startsAt": "2026-07-11T14:17:20.250Z",
-      "endsAt": "2026-07-11T15:07:35.250Z",
-      "completedAt": "2026-07-11T15:07:35.280Z",
-      "planetId": 35332,
+      "startsAt": "2026-07-02T14:13:53.843Z",
+      "endsAt": "2026-07-02T22:05:55.843Z",
+      "completedAt": "2026-07-02T22:05:55.878Z",
+      "planetId": 29925,
       "jobId": null,
       "pauseReason": null,
       "eraUnlocked": true,
-      "level": 3,
-      "isMaxed": false,
-      "nextCostOre": 8100,
-      "nextCostSilicates": 4050,
+      "level": 5,
+      "isMaxed": true,
+      "nextCostOre": 0,
+      "nextCostSilicates": 0,
       "nextCostHydrogen": 0,
       "nextCostAlloys": 0,
       "nextRareCosts": {},
-      "nextResearchTime": 12150
+      "nextResearchTime": 0
+    }
+  ],
+  "researchSpeedMult": 0.5865102639296187,
+  "precursorFragmentEffectBonus": 0,
+  "precursorFragmentEffectMultiplierBonus": 0,
+  "activeResearch": {
+    "id": 64,
+    "key": "plasma_weapons",
+    "name": "Plasma Weapons",
+    "status": "in_progress",
+    "pauseReason": null,
+    "startsAt": "2026-08-25T06:42:36.056Z",
+    "endsAt": "2026-08-27T06:13:03.056Z",
+    "planetId": 29925,
+    "planetName": "Terra"
+  },
+  "activeResearches": [
+    {
+      "id": 64,
+      "key": "plasma_weapons",
+      "name": "Plasma Weapons",
+      "status": "in_progress",
+      "pauseReason": null,
+      "startsAt": "2026-08-25T06:42:36.056Z",
+      "endsAt": "2026-08-27T06:13:03.056Z",
+      "planetId": 29925,
+      "planetName": "Terra"
     }
   ]
 }
@@ -71,3 +99,9 @@ Returns the full research catalogue for the authenticated player, including cost
 - `isMaxed` is `true` when `level === maxLevel`; in that case all `nextCost*` fields are `0`.
 - `eraUnlocked` reflects whether the tech's era prerequisite is met for the player.
 - The addon accepts either `data.research` (object wrapper) or a bare array as the response root.
+
+## Live Verification
+
+- Verified 2026-08-26 on `s0`: `GET /api/research?planetId=29925` -> `200`.
+- Example above is a real response with every array truncated to its first item.
+- Live array sizes at capture time: `activeResearches`=3, `research`=131.

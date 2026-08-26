@@ -29,4 +29,4 @@ Collects resources from an outpost using a source planet fleet.
 ## Notes
 
 - Request shape confirmed from addon logistics send logic.
-- No live probe was possible in this sweep because no outpost ID was available for the current account.
+- Not probed: the sweep is read-only. Outpost IDs do now exist on the account (e.g. `654`), so a targeted write probe is possible if wanted.

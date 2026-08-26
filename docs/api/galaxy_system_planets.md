@@ -12,44 +12,50 @@ Returns all scannable entities in a system: planets, asteroid fields, and moons.
 {
   "planets": [
     {
-      "id": 74062,
-      "systemId": 5752,
-      "name": "Homeworld",
-      "position": 3,
-      "planetType": "terra",
-      "size": 220,
-      "temperature": 24,
-      "userId": 1234,
-      "isHomeworld": true,
-      "colonizedAt": "2026-01-01T00:00:00.000Z",
-      "ownerName": "Commander"
+      "id": 29922,
+      "name": "A12-27-P1",
+      "position": 1,
+      "planetType": "volcanic",
+      "size": 109,
+      "temperature": 358,
+      "userId": null,
+      "isHomeworld": false,
+      "colonizedAt": null,
+      "shieldReinforcedUntil": null,
+      "ownerName": null,
+      "ownerRace": null,
+      "ownerAvatarUrl": null,
+      "ownerAllianceTag": null,
+      "ownerPortraitFrame": null,
+      "ownerIsVacationMode": false,
+      "deadSpaceShieldActive": false
     }
   ],
-  "asteroidFields": [
-    {
-      "id": 11748,
-      "systemId": 5752,
-      "name": "G21-52-AF1",
-      "position": 9,
-      "fieldType": "ore",
-      "richness": 3,
-      "totalResources": 100000,
-      "remainingResources": 85000
-    }
-  ],
+  "asteroidFields": [],
   "moons": [
     {
-      "id": 8102,
-      "planetId": 74062,
-      "systemId": 5752,
-      "name": "Homeworld Moon",
-      "moonType": "rocky",
-      "size": 50,
-      "position": 3,
-      "buildingSlots": 8,
-      "userId": 1234
+      "id": 41772,
+      "planetId": 29923,
+      "name": "World 29923-a",
+      "moonType": "barren",
+      "size": 35,
+      "position": 1,
+      "buildingSlots": 6,
+      "userId": null,
+      "colonizedAt": null,
+      "ownerName": null,
+      "ownerAvatarUrl": null,
+      "ownerIsVacationMode": false
     }
-  ]
+  ],
+  "visibility": "full",
+  "included": {
+    "planets": true,
+    "moons": true,
+    "fields": true
+  },
+  "planetCount": null,
+  "hasCivilization": null
 }
 ```
 
@@ -58,3 +64,10 @@ Returns all scannable entities in a system: planets, asteroid fields, and moons.
 - Confirmed as a multi-entity payload by the map interception logic.
 - The addon stores `planets`, `asteroidFields`, and `moons` separately.
 - This is one of the richest discovery endpoints in the game surface used by the addon.
+
+## Live Verification
+
+- Verified 2026-08-26 on `s0`: `GET /api/galaxy/systems/577/planets` -> `200`.
+- Example above is a real response with every array truncated to its first item.
+- Live array sizes at capture time: `moons`=7, `planets`=6.
+- `asteroidFields` is empty for system 577; the array is populated for systems that have fields. `included` flags which of `planets` / `moons` / `fields` the response actually resolved.

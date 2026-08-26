@@ -21,62 +21,70 @@ None.
 
 ```json
 {
-    "user": {
-        "id": 1234,
-        "username": "RandomCommander",
-        "email": "steam-12345678901234567@noreply.nexuslegacy.space",
-        "race": "terran",
-        "leaderType": "industrialist",
-        "activeLeaderBonuses": {
-            "oreProductionBonus": 0.12,
-            "silicateProductionBonus": 0.12,
-            "hydrogenProductionBonus": 0.08,
-            "alloysProductionBonus": 0.08,
-            "miningYieldBonus": 0.1,
-            "storageBonus": 0.15,
-            "cargoBonus": 0.1
-        },
-        "genesisCode": "ABCDEF",
-        "precursorFragments": 15,
-        "createdAt": "2026-01-01T12:00:00.000Z",
-        "lastLoginAt": "2026-06-20T10:00:00.000Z",
-        "isAdmin": false,
-        "commandCenterActive": true,
-        "commandCenterExpiresAt": "2026-07-20T10:00:00.000Z",
-        "preferredLanguage": "en",
-        "steamId": "12345678901234567",
-        "steamAvatarUrl": "https://avatars.steamstatic.com/random_avatar_full.jpg",
-        "marketingEmailsOptIn": false,
-        "diplomatDoctrine": null,
-        "pendingDoctrine": null,
-        "doctrineActiveAt": null,
-        "starterBoostUntil": null,
-        "lastLeaderChangeAt": null,
-        "privateMessagesMutedUntil": null,
-        "privateMessagesMuteReason": null,
-        "vacationStartedAt": null,
-        "vacationUntil": null,
-        "vacationMinUntil": null,
-        "vacationNextAvailableAt": null,
-        "profileDeletionRequestedAt": null,
-        "profileDeletionScheduledAt": null,
-        "leaderChangeUses": 0,
-        "traderSummonUses": 0
+  "user": {
+    "id": 428,
+    "username": "Verrok",
+    "email": "verrokcsgo@gmail.com",
+    "race": "terran",
+    "leaderType": "explorer",
+    "activeLeaderBonuses": {
+      "expeditionLootBonus": 0.25,
+      "surveyLootBonus": 0.15,
+      "wormholeLootBonus": 0.2,
+      "artifactDropBonus": 0.25,
+      "shipSpeedBonus": 0.1,
+      "fuelCostBonus": 0.15,
+      "cargoBonus": 0.1,
+      "oreProductionBonus": 0.1,
+      "silicateProductionBonus": 0.1,
+      "hydrogenProductionBonus": 0.1,
+      "alloysProductionBonus": 0.1,
+      "popGrowthBonus": 0.2,
+      "workforceProductionBonus": 0.03
     },
-    "planets": [
-        {
-            "id": 99999,
-            "name": "Random's Homeworld",
-            "systemId": 8888,
-            "position": 3,
-            "planetType": "terra",
-            "isHomeworld": true,
-            "systemName": "A1-1",
-            "colonizedAt": "2026-01-01T12:00:00.000Z",
-            "systemX": 100.1234,
-            "systemY": -200.5678
-        }
-    ]
+    "diplomatDoctrine": null,
+    "pendingDoctrine": null,
+    "doctrineActiveAt": null,
+    "genesisCode": "ZU9XR7",
+    "precursorFragments": 19,
+    "createdAt": "2026-06-06T00:41:29.497Z",
+    "lastLoginAt": "2026-08-26T09:19:42.281Z",
+    "starterBoostUntil": null,
+    "isAdmin": false,
+    "commandCenterActive": false,
+    "commandCenterExpiresAt": "2026-08-22T09:52:57.630Z",
+    "preferredLanguage": "en",
+    "lastLeaderChangeAt": null,
+    "privateMessagesMutedUntil": null,
+    "privateMessagesMuteReason": null,
+    "vacationStartedAt": null,
+    "vacationUntil": null,
+    "vacationMinUntil": null,
+    "vacationNextAvailableAt": null,
+    "profileDeletionRequestedAt": null,
+    "profileDeletionScheduledAt": null,
+    "leaderChangeUses": 0,
+    "traderSummonUses": 0,
+    "steamId": null,
+    "steamAvatarUrl": null,
+    "marketingEmailsOptIn": false
+  },
+  "planets": [
+    {
+      "id": 29925,
+      "name": "Terra",
+      "systemId": 577,
+      "position": 4,
+      "planetType": "terra",
+      "isHomeworld": true,
+      "systemName": "A12-27",
+      "colonizedAt": "2026-06-06T00:41:29.508Z",
+      "sortOrder": 0,
+      "systemX": -238.32376,
+      "systemY": 636.6574,
+      "securityZone": "sentinel"
+    }
+  ]
 }
 ```
 
@@ -106,3 +114,10 @@ None.
     internal models.
 - Consumer code should tolerate nullable account-state fields (vacation,
     doctrine, moderation, deletion schedule).
+
+## Live Verification
+
+- Verified 2026-08-26 on `s0`: `GET /api/auth/me` -> `200`.
+- Example above is a real response with every array truncated to its first item.
+- Live array sizes at capture time: `planets`=6.
+- `user.activeLeaderBonuses` only lists the bonuses of the currently equipped leader, so its key set varies between accounts and over time.

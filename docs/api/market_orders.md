@@ -19,22 +19,31 @@ limit={number}
 {
   "orders": [
     {
-      "id": 2001,
-      "userId": 1234,
-      "username": "Trader",
-      "hubId": 44,
-      "orderType": "sell",
-      "offerResource": "ore",
-      "offerAmount": 10000,
-      "offerRemaining": 6400,
-      "requestResource": "hydrogen",
-      "requestAmount": 8500,
+      "id": 43022,
+      "userId": 14316,
+      "username": "Mucha",
+      "hubId": 10,
+      "orderType": "buy",
+      "offerResource": "silicates",
+      "offerAmount": 100000,
+      "offerRemaining": 100000,
+      "requestResource": "ore",
+      "requestAmount": 397000,
+      "baseResource": "ore",
+      "quoteResource": "silicates",
+      "limitPrice": 0.2518891687657431,
+      "baseAmount": 397000,
+      "baseRemaining": 397000,
+      "quoteAmount": 100000,
       "status": "active",
-      "expiresAt": "2026-07-14T12:00:00.000Z",
-      "createdAt": "2026-07-13T12:00:00.000Z"
+      "expiresAt": "2026-09-02T08:48:49.244Z",
+      "createdAt": "2026-08-26T08:48:49.243Z"
     }
   ],
   "pagination": {
+    "total": 207,
+    "limit": 25,
+    "offset": 0,
     "hasMore": true
   }
 }
@@ -80,3 +89,9 @@ The script:
 - keeps the best active order per directed resource pair
 - checks 2-step and 3-step cycles
 - reports only fee-adjusted profitable cycles, or the best near-misses if none are profitable
+
+## Live Verification
+
+- Verified 2026-08-26 on `s0`: `GET /api/market/orders?page=1&limit=25` -> `200`.
+- Example above is a real response with every array truncated to its first item.
+- Live array sizes at capture time: `orders`=25.

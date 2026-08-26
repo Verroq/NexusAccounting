@@ -23,5 +23,9 @@ limit={number}
 
 ## Notes
 
-- Live-validated on `s0` (200).
-- Current account sample was empty; fields inside `reports[]` were not observable.
+- Current account sample is still empty; fields inside `reports[]` remain unobserved.
+
+## Live Verification
+
+- Verified 2026-08-26 on `s0`: `GET /api/fleet/camp-scout-reports` -> `200`.
+- Live response was empty on the sweep account; the example above is kept as the documented shape.

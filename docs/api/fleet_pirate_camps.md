@@ -36,3 +36,8 @@ Returns the visible pirate camp list with health, loot tier, and scouting intel.
 
 - Confirmed from the `PirateCamp` model and the consuming view.
 - The addon caches and displays both active and destroyed camps.
+
+## Live Verification
+
+- Verified 2026-08-26 on `s0`: `GET /api/fleet/pirate-camps` -> `200`.
+- Live response was empty on the sweep account; the example above is kept as the documented shape.

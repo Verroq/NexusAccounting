@@ -12,16 +12,16 @@ Returns systems inside one sector.
 {
   "systems": [
     {
-      "id": 80,
-      "sectorId": 1,
-      "name": "A2-30",
-      "x": 906.61163,
-      "y": 473.12454,
-      "starType": "yellow",
+      "id": 4701,
+      "x": -717.9708,
+      "y": 740.1799,
+      "sectorId": 101,
+      "armId": 3,
+      "starType": "red_dwarf",
       "securityZone": "sentinel",
-      "planetCount": 9,
-      "hasColonies": true,
-      "visibility": "visible"
+      "requiresDeadPlanetOrigin": false,
+      "hasColonies": false,
+      "visibility": "partial"
     }
   ]
 }
@@ -29,4 +29,10 @@ Returns systems inside one sector.
 
 ## Notes
 
-- Live-validated on `s0` (200).
+
+## Live Verification
+
+- Verified 2026-08-26 on `s0`: `GET /api/galaxy/sectors/101/systems` -> `200`.
+- Example above is a real response with every array truncated to its first item.
+- Live array sizes at capture time: `systems`=50.
+- Live items no longer carry `name` or `planetCount`, which earlier revisions of this doc listed.
