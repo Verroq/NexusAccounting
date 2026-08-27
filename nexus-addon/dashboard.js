@@ -14,6 +14,7 @@ import { initAsteroidsTab } from './tabs/asteroids.js';
 import { renderFleetsTab } from './tabs/fleets.js';
 import { initScoutingTab } from './tabs/scouting.js';
 import { initXenoTab, renderXenoTab, setXnReportPage } from './tabs/xeno.js';
+import { renderIntelTab } from './tabs/intel.js';
 import { initFinderTab } from './tabs/finder.js';
 import { initMarketTab } from './tabs/market.js';
 import { renderGlobalTab } from './tabs/global.js';
@@ -112,6 +113,10 @@ export function renderAll() {
     renderDebrisTab();
     return;
   }
+  if (activeTab === 'intel') {
+    renderIntelTab();
+    return;
+  }
   if (activeTab === 'expeditions') {
     renderExpeditionsTab();
     return;
@@ -187,6 +192,7 @@ export const TAB_CONTENT = {
   fleets: 'fleets-content',
   scouting: 'scouting-content',
   xeno: 'xeno-content',
+  intel: 'intel-content',
   market: 'market-content',
   techtree: 'techtree-content',
   simulator: 'simulator-content',

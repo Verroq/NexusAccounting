@@ -428,6 +428,22 @@ th.sortable .arrow { margin-left: 4px; color: var(--color-accent); }
 
 @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
 
+/* Shared Intel: target groups on the left, player picker on the right. */
+.intel-layout { display: grid; grid-template-columns: 1fr 240px; gap: 18px; align-items: start; }
+.intel-players { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 4px; }
+.intel-player {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  padding: 6px 10px; border-radius: 6px; border: 1px solid transparent;
+  background: transparent; color: var(--color-text); cursor: pointer; font-size: 0.85rem;
+}
+.intel-player:hover { background: var(--color-surface); }
+.intel-player.active { background: var(--color-surface); border-color: var(--color-accent); }
+.intel-player .intel-player-count { margin-left: auto; color: var(--color-muted); font-size: 0.75rem; }
+@media (max-width: 900px) {
+  .intel-layout { grid-template-columns: 1fr; }
+  .intel-players { position: static; }
+}
+
 /* Asteroid Fields / Scouting: fuel + travel-time + ships-recommended cells
    (classes assigned in tabs/asteroids.js and tabs/scouting.js; an inline
    style still wins when a cell needs to flag e.g. an out-of-range fuel est.) */
