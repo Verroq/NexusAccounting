@@ -266,9 +266,12 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_SURVEY_COOLDOWNS') return apiGet('/api/fleet/survey-cooldowns');
   if (msg.type === 'GET_SURVEY_REPORTS') return apiGet('/api/fleet/survey-reports');
   if (msg.type === 'SEND_MINE') {
+    // mineUntilFull: keep mining past the usual 10 cycles until the hold is
+    // full or the field runs dry. Server treats it as optional.
     return gamePost('/api/fleet/mine', {
       sourcePlanetId: msg.sourcePlanetId, targetFieldId: msg.targetFieldId,
       ships: msg.ships, miningDuration: msg.miningDuration,
+      mineUntilFull: !!msg.mineUntilFull,
     });
   }
   if (msg.type === 'SEND_SURVEY') {

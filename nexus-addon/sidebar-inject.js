@@ -222,7 +222,9 @@ function recommend(m, excavator) {
 }
 // Confirmation dialog with the fleet composition — mirrors common.js
 // confirmDialog so a send from this window looks like one from the dashboard.
-function lsConfirm(message, ships, defs, altLabel) {
+// `untilFullState`, when passed, is a caller-owned { untilFull: bool } rendered
+// as a "Mine until full" checkbox; the dialog writes the choice back into it.
+function lsConfirm(message, ships, defs, altLabel, untilFullState = null) {
   return new Promise(resolve => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483647;display:flex;align-items:center;justify-content:center';
@@ -255,6 +257,19 @@ function lsConfirm(message, ships, defs, altLabel) {
       }
       box.append(row);
     }
+    // Mine-until-full toggle — a mission option, not part of the fleet.
+    if (untilFullState) {
+      const fullRow = document.createElement('label');
+      fullRow.title = 'Keep mining past the usual 10 cycles until the mining hold is full or the field is depleted';
+      fullRow.style.cssText = 'margin-top:12px;display:flex;align-items:center;gap:6px;color:#8b949e;font-size:0.85rem;cursor:pointer;white-space:normal';
+      const fullChk = document.createElement('input');
+      fullChk.type = 'checkbox';
+      fullChk.checked = !!untilFullState.untilFull;
+      fullChk.addEventListener('change', () => { untilFullState.untilFull = fullChk.checked; });
+      fullRow.append(fullChk, document.createTextNode('Mine until full'));
+      box.append(fullRow);
+    }
+
     const btns = document.createElement('div');
     btns.style.cssText = 'margin-top:18px;display:flex;gap:10px;justify-content:flex-end;white-space:normal';
     const mk = (label, primary) => {
@@ -345,6 +360,7 @@ async function openFieldsPanel() {
   }
   let tpl = templates.find(t => String(t.id) === String((template_selections || {})['af-template-select'])) || templates[0] || null;
   let excavator = localStorage.getItem('nx-ls-excavator') === '1';   // +20% capacity toggle
+  let untilFull = localStorage.getItem('nx-ls-until-full') === '1';   // mine until the hold is full
 
   // "Already mining" row highlight: fields we already control, or with an
   // active mine mission en route. Mirrors the Asteroids tab's criteria.
@@ -555,11 +571,14 @@ async function openFieldsPanel() {
       mineBtn.onclick = async () => {
         if (!canMine) return;
         const short = ships.some(s => (avail[s.shipDefId] || 0) < s.quantity);
+        const untilFullState = { untilFull };
         const r = await lsConfirm(
           `Send fleet?\nTo: ${m.name} (${m.system})\nFrom: ${planetName}` +
           (short ? '\n\n⚠ Some ships are short on this planet; sending what is available.' : ''),
-          ships, shipDefs);
+          ships, shipDefs, null, untilFullState);
         if (!r) return;
+        untilFull = untilFullState.untilFull;   // sticks for the next send
+        localStorage.setItem('nx-ls-until-full', untilFull ? '1' : '0');
         const sendShips = ships;
         // Reflect the sent fleet in the shared editor (escorts kept, miners swapped).
         shipsState.clear();
@@ -568,6 +587,7 @@ async function openFieldsPanel() {
         mineBtn.disabled = true; mineBtn.textContent = '…';
         const res = await ext.runtime.sendMessage({
           type: 'SEND_MINE', sourcePlanetId: planetId, targetFieldId: m.id, ships: sendShips, miningDuration: 600,
+          mineUntilFull: untilFull,
         });
         if (res && res.error) { mineBtn.textContent = '⛏'; mineBtn.disabled = false; window.alert(`Send failed: ${res.error}`); }
         else {

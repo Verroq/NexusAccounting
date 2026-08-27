@@ -478,6 +478,10 @@ async function sendMineMission(f) {
     ? afTemplates.filter(t => (t.escortZones || []).includes(fieldZone))
     : [];
 
+  // Caller-owned so the dialog can write the choice back; seeded from the last
+  // send so the toggle sticks between missions.
+  const untilFullState = { untilFull: localStorage.getItem('nx-af-until-full') === '1' };
+
   const ships = await editFleetDialog({
     title: `Mine ${f.name}`,
     subtitle: `To: ${f.name} (${f.system})\nFrom: ${planet ? planet.name : planetId}`,
@@ -485,8 +489,10 @@ async function sendMineMission(f) {
     excavatorShipDefId: exc ? exc.shipDefId : null,
     excavatorBonus: EXCAVATOR_BONUS,
     escortTemplates,
+    untilFullState,
   });
   if (!ships || !ships.length) return;   // cancelled or emptied
+  localStorage.setItem('nx-af-until-full', untilFullState.untilFull ? '1' : '0');
 
   status.textContent = `Sending to ${f.name}…`;
   const res = await browser.runtime.sendMessage({
@@ -495,6 +501,7 @@ async function sendMineMission(f) {
     targetFieldId: f.fieldId,
     ships,
     miningDuration: MINING_DURATION,
+    mineUntilFull: untilFullState.untilFull,
   });
   status.textContent = res.error ? `Send failed: ${res.error}` : `Fleet sent to ${f.name} ✓`;
   if (!res.error) {
