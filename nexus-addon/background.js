@@ -505,8 +505,8 @@ function parseIntelIndex(content) {
 }
 
 // Dedup spy reports by id (newest created_at wins), tag imports with their
-// source, and cap at INTEL_KEEP. Pure — shared by file import and Discord sync.
-// Returns { merged, added } (added = new ids).
+// source, and cap at INTEL_KEEP. Pure, so a Discord sync's merge is testable
+// without a live round-trip. Returns { merged, added } (added = new ids).
 function mergeSpyReports(base, incoming, sharedBy) {
   const byId = {};
   for (const r of (base || [])) byId[r.id] = r;
@@ -519,10 +519,7 @@ function mergeSpyReports(base, incoming, sharedBy) {
       if (!existing) added++;
     }
   }
-  const merged = Object.values(byId)
-    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
-    .slice(0, INTEL_KEEP);
-  return { merged, added };
+  return { merged: capIntel(byId), added };
 }
 
 // `reportIds` (optional) narrows the post to those reports — the Shared Intel
@@ -1942,6 +1939,17 @@ function extractFleet(arr) {
 }
 
 // Spy reports → defender intel for the simulator (latest INTEL_KEEP kept).
+// Newest-first, capped at INTEL_KEEP — the tail every intel merge shares.
+// The dedup that precedes it is deliberately NOT shared: scraped API reports
+// always overwrite what is stored (the server is authoritative), while shared
+// intel only overwrites when it is newer. Folding those together would take a
+// flag argument and read worse than the two loops do.
+function capIntel(byId) {
+  return Object.values(byId)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    .slice(0, INTEL_KEEP);
+}
+
 async function processSpyReports(reports) {
   if (!reports.length) return 0;
   const { spy_reports } = await nsGet(['spy_reports']);
@@ -1962,9 +1970,7 @@ async function processSpyReports(reports) {
       resources: r.resourceData || {},
     };
   }
-  const merged = Object.values(byId)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, INTEL_KEEP);
+  const merged = capIntel(byId);
   await nsSet({ spy_reports: merged });
   return merged.length;
 }
@@ -1986,9 +1992,7 @@ async function processCampScoutReports(reports) {
       fleet,
     };
   }
-  const merged = Object.values(byId)
-    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
-    .slice(0, INTEL_KEEP);
+  const merged = capIntel(byId);
   await nsSet({ camp_scout_reports: merged });
   return merged.length;
 }
