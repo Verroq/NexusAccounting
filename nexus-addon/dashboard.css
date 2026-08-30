@@ -458,6 +458,9 @@ th.sortable .arrow { margin-left: 4px; color: var(--color-accent); }
 .faq-item[open] > summary::before { content: '▾'; }
 .faq-item > p { margin: 8px 0 2px 18px; font-size: 11.5px; line-height: 1.6; color: color-mix(in srgb, var(--color-text) 50%, transparent); max-width: 70ch; }
 
+.intel-scan-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+.intel-scan-actions .intel-share { margin-left: 0; padding: 4px 14px; }
+
 .intel-section-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .intel-section-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 .intel-switch-label { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: color-mix(in srgb, var(--color-text) 55%, transparent); cursor: pointer; }

@@ -497,6 +497,50 @@ function defenseColumn(scan) {
   return col;
 }
 
+// Hand this scan to the Combat Simulator as the defender. The simulator's own
+// report picker holds the same reports keyed `spy-<id>`, so this drives that
+// rather than duplicating the fill logic.
+function simulateButton(scan) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'intel-share';
+  btn.textContent = 'Simulate Battle';
+  btn.title = 'Open the Combat Simulator with this report loaded as the defender';
+  btn.onclick = async (e) => {
+    e.preventDefault();          // the scan sits inside <details>; do not toggle it
+    e.stopPropagation();
+    btn.disabled = true;
+    const was = btn.textContent;
+    btn.textContent = 'Opening…';
+    try {
+      // Imported here, not at the top: the simulator chain wires DOM listeners
+      // at import time, and this module is otherwise pure render (its tests
+      // import it with no DOM). It also keeps that chain off the page for
+      // anyone who never presses this.
+      const [{ initSimulatorTab }, { applyIntelReport }] = await Promise.all([
+        import('./simulator.js'), import('./simulator-intel.js'),
+      ]);
+      document.querySelector('.tab[data-tab="simulator"]')?.click();
+      // The tab click starts init; await the same promise so the report list is
+      // actually loaded before we ask for one out of it.
+      await initSimulatorTab();
+      const id = `spy-${scan.id}`;
+      const sel = document.getElementById('report-select');
+      if (sel) sel.value = id;
+      if (!await applyIntelReport(id)) {
+        btn.textContent = 'Not loaded';
+        btn.title = 'The simulator could not find this report — try its own picker.';
+        btn.classList.add('failed');
+        return;
+      }
+    } finally {
+      btn.disabled = false;
+      if (!btn.classList.contains('failed')) btn.textContent = was;
+    }
+  };
+  return btn;
+}
+
 function renderScan(scan, freighterCapacity) {
   const wrap = el('div', 'intel-scan');
 
@@ -544,6 +588,10 @@ function renderScan(scan, freighterCapacity) {
     bWrap.append(grid);
   }
   wrap.append(bWrap);
+
+  const actions = el('div', 'intel-scan-actions');
+  actions.append(simulateButton(scan));
+  wrap.append(actions);
 
   return wrap;
 }
