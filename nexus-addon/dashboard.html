@@ -386,9 +386,12 @@
         <span class="intel-panel-summary" id="intel-summary"></span>
       </div>
       <p class="intel-panel-hint">
-        Sharing and syncing are set up on the <strong>Discord Setup</strong> tab — webhook URL, index
-        message ID, and the Share / Sync buttons all live there.
+        Pull in what your alliance has shared since last time. The webhook URL and index message ID
+        this needs are configured once on the <strong>Discord Setup</strong> tab.
       </p>
+      <div class="intel-panel-actions">
+        <button id="btn-sync-spy" class="intel-share" title="Pull shared intel listed in the alliance index message.">Sync intel</button>
+      </div>
     </div>
 
     <div class="intel-section-bar">
@@ -1336,7 +1339,6 @@
         </label>
         <div class="intel-panel-actions">
           <button id="btn-create-index" title="Post a new empty index message and store its ID. Do this once per alliance.">Create index message</button>
-          <button id="btn-sync-spy" title="Pull shared intel listed in the alliance index message.">Sync intel</button>
         </div>
       </div>
       <div class="intel-panel-warn">
@@ -1354,12 +1356,13 @@
         <strong>Share spy intel</strong> posts your own unshared scans as one JSON attachment and
         adds it to the index. Reports an ally shared with you are never re-posted, and a report you
         already shared is not posted twice — the Shared Intel tab shows those with the Share button
-        disabled. <strong>Sync intel</strong> walks the index, pulls every attachment, and merges
-        what it finds into your pool, tagged with who shared it.
+        disabled. <strong>Sync intel</strong> — the button sits on the Shared Intel tab, next to the
+        reports it pulls in — walks the index, fetches every attachment, and merges what it finds
+        into your pool, tagged with who shared it.
       </p>
       <p class="intel-panel-hint">
         A payload is merged only when it is stamped for your alliance tag; one stamped for another
-        universe is dropped. If Sync reports <em>N skipped</em>, hover the button — it names the
+        universe is dropped. If Sync reports <em>N skipped</em>, hover that button — it names the
         reason, usually an ally on an older build or a Discord rate limit worth retrying in a minute.
       </p>
     </div>
