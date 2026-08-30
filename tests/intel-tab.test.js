@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import {
-  UNKNOWN_PLAYER, YOU, contributorOf, fleetText, groupByTarget, intelSummary,
-  ownerOf, playerList, resourceEntries, resourceLabel, splitDefenses,
+  BAR_MIN_PCT, UNKNOWN_PLAYER, YOU, barPct, buildingColumns, categoryOf, contributorOf,
+  defenseRows, fleetText, groupByTarget,
+  intelSummary, lootEstimate, ownerOf, playerList, resourceEntries, resourceLabel,
+  raceFromImageUrl, resourceIconUrl, resourceVar, splitDefenses, turretPct, buildingIconUrls,
 } from '../nexus-addon/tabs/intel.js';
 
 const reports = [
@@ -124,4 +126,118 @@ test('playerList respects the shared-only filter', () => {
 test('ownerOf falls back to the unknown bucket', () => {
   assert.equal(ownerOf({ target_user: 'foe' }), 'foe');
   assert.equal(ownerOf({ target_user: null }), UNKNOWN_PLAYER);
+});
+
+test('lootEstimate halves the numeric total and sizes the freighter run', () => {
+  const est = lootEstimate({ ore: 400000, alloys: 100000, tier: 'exact' }, 25000);
+  assert.equal(est.total, 500000);
+  assert.equal(est.loot, 250000);
+  assert.equal(est.freighters, 10, '250k lootable / 25k capacity');
+  assert.equal(est.qualitative, false);
+});
+
+test('lootEstimate flags qualitative amounts and omits the freighter count', () => {
+  const est = lootEstimate({ ore: 'plenty', tier: 'estimate' }, 25000);
+  assert.equal(est.total, 0);
+  assert.equal(est.qualitative, true, 'no total to halve');
+  const noCap = lootEstimate({ ore: 100 }, null);
+  assert.equal(noCap.freighters, null, 'no ship def yet → no freighter figure');
+});
+
+test('barPct floors tiny values and clamps to the max', () => {
+  assert.equal(barPct(100, 100), 100);
+  assert.equal(barPct(50, 100), 50);
+  assert.equal(barPct(1, 1000000), BAR_MIN_PCT, 'a tiny share still shows a sliver');
+  assert.equal(barPct(5, 0), 0, 'no max → no bar');
+});
+
+test('turretPct scales against L12 and clamps above it', () => {
+  assert.equal(turretPct(12), 100);
+  assert.equal(turretPct(6), 50);
+  assert.equal(turretPct(20), 100, 'levels past the scale cap at full');
+});
+
+test('resourceVar maps named resources to tokens and the rest to rare', () => {
+  assert.equal(resourceVar('ore'), 'var(--res-ore)');
+  assert.equal(resourceVar('plasmaCore'), 'var(--res-plasma)');
+  assert.equal(resourceVar('darkMatter'), 'var(--res-rare)');
+});
+
+test('resourceIconUrl uses the snake_case game asset name', () => {
+  assert.match(resourceIconUrl('ore'), /\/images\/resources\/ore\.webp$/);
+  assert.match(resourceIconUrl('plasmaCore'), /\/images\/resources\/plasma_core\.webp$/,
+    'camelCase API key maps to the snake_case file');
+});
+
+test('buildingIconUrls offers the race path then the outpost fallback', () => {
+  const urls = buildingIconUrls('shield_generator', 'terran');
+  assert.equal(urls.length, 2);
+  assert.match(urls[0], /\/buildings\/terran\/shield_generator\.webp$/);
+  assert.match(urls[1], /\/buildings\/outpost\/shield_generator\.webp$/);
+});
+
+test('buildingIconUrls still offers outpost art when the race is unknown', () => {
+  assert.deepEqual(buildingIconUrls('turret', null).length, 1);
+  assert.deepEqual(buildingIconUrls(null, 'terran'), [], 'no key, no candidates');
+});
+
+test('raceFromImageUrl reads the race out of a ship art path', () => {
+  assert.equal(raceFromImageUrl('https://s0.nexuslegacy.space/api/images/ships/terran/probe.webp'), 'terran');
+  assert.equal(raceFromImageUrl(null), null);
+  assert.equal(raceFromImageUrl('https://example.com/nope.png'), null);
+});
+
+test('buildingColumns groups into the four reader columns, level-descending', () => {
+  const cols = buildingColumns([
+    { key: 'ore_mine', name: 'Ore Mine', level: 23 },
+    { key: 'solar_plant', name: 'Solar Plant', level: 20 },
+    { key: 'research_lab', name: 'Research Lab', level: 9 },
+    { key: 'p_shipyard', name: 'Shipyard', level: 12 },
+    { key: 'alloy_foundry', name: 'Alloy Foundry', level: 18 },
+    { key: 'residential', name: 'Residential', level: 10 },
+  ]);
+  assert.deepEqual(cols.map(c => c.label), ['Resources', 'Energy', 'Military', 'Utility'],
+    'fixed column order, empty categories omitted');
+  assert.deepEqual(cols[0].items.map(b => b.key), ['ore_mine', 'alloy_foundry'], 'highest level first');
+});
+
+test('buildingColumns keeps defense-category buildings out — they belong to Defenses', () => {
+  const cols = buildingColumns([
+    { key: 'ore_mine', level: 1 },
+    { key: 'shield_generator', level: 6 },
+    { key: 'aa_turret', level: 3 },
+    { key: 'garrison', level: 2 },
+  ]);
+  assert.deepEqual(cols.map(c => c.label), ['Resources']);
+});
+
+test('buildingColumns routes unmapped keys to Other instead of dropping them', () => {
+  const cols = buildingColumns([{ key: 'brand_new_thing', name: 'New', level: 1 }]);
+  assert.deepEqual(cols.map(c => c.label), ['Other']);
+  assert.equal(categoryOf('brand_new_thing'), 'other');
+  assert.equal(categoryOf('ore_mine'), 'resource');
+});
+
+test('buildingColumns categorises outpost structures that carry no server category', () => {
+  const cols = buildingColumns([
+    { key: 'extractor', level: 4 }, { key: 'dock', level: 2 }, { key: 'storage', level: 3 },
+  ]);
+  assert.deepEqual(cols.map(c => c.label), ['Resources', 'Military', 'Utility']);
+});
+
+test('defenseRows merges defenseData with defense-category buildings, deduped', () => {
+  const rows = defenseRows({
+    defense: [{ key: 'railgun_defense', name: 'Railgun', level: 4 }],
+    buildings: [
+      { key: 'ore_mine', level: 20 },
+      { key: 'aa_turret', name: 'AA Turret', level: 3 },
+      { key: 'railgun_defense', name: 'Railgun', level: 2 },  // stale duplicate
+    ],
+  });
+  assert.deepEqual(rows.map(r => r.key).sort(), ['aa_turret', 'railgun_defense']);
+  assert.equal(rows.find(r => r.key === 'railgun_defense').level, 4, 'highest level wins');
+});
+
+test('defenseRows copes with a scan that has neither field', () => {
+  assert.deepEqual(defenseRows({}), []);
 });

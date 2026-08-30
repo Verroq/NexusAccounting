@@ -121,14 +121,6 @@
             <button id="btn-import">Import JSON</button>
             <input id="import-file" type="file" accept=".json,application/json" style="display:none;" />
           </div>
-          <div class="nx-menu-row" style="flex-direction:column; align-items:stretch;">
-            <input id="discord-token" type="password" placeholder="Discord bot token" title="Bot token for your alliance's Discord. Leave blank to share by file only." />
-            <input id="discord-channel" type="text" placeholder="Channel ID" title="ID of the private alliance channel the bot posts to and reads from." />
-            <div class="nx-menu-row" style="padding:0;">
-              <button id="btn-share-spy" title="Share your spy reports with your alliance by posting them to the Discord channel.">Share spy intel</button>
-              <button id="btn-sync-spy" title="Pull spy intel your alliance posted to the Discord channel.">Sync intel</button>
-            </div>
-          </div>
           <div class="nx-menu-row">
             <button id="btn-reset" style="color:var(--color-danger); border-color:color-mix(in srgb, var(--color-danger) 45%, transparent);">Reset all data</button>
           </div>
@@ -383,17 +375,57 @@
 
   <div id="intel-content" style="display:none;">
     <div class="nx-screen-head"><h1>Shared Intel</h1><p>Spy reports pooled with your alliance, grouped by target</p></div>
-    <div class="stats" id="intel-stats"></div>
+    <div class="intel-panel">
+      <div class="intel-panel-head">
+        <span class="intel-panel-title">Alliance sharing</span>
+        <span class="intel-panel-summary" id="intel-summary"></span>
+      </div>
+      <p class="intel-panel-hint">
+        Intel is shared into a private Discord channel — the channel's membership is the access
+        control. Sharing uses a <strong>webhook URL</strong>, which is bound to that one channel:
+        create it in Discord under <em>Edit Channel → Integrations → Webhooks</em> and give the same
+        URL to every member.
+      </p>
+      <div class="intel-panel-fields">
+        <label class="intel-field intel-field-wide">
+          <span>Webhook URL — used to share</span>
+          <input id="discord-webhook" type="password" placeholder="https://discord.com/api/webhooks/…"
+                 title="Channel webhook your alliance shares. Bound to one channel, so it cannot read or post anywhere else." />
+        </label>
+        <div class="intel-panel-actions">
+          <button id="btn-share-spy" title="Post every spy report you hold to the alliance channel.">Share spy intel</button>
+        </div>
+      </div>
 
-    <div class="section-label" style="display:flex; align-items:center; gap:12px;">
-      <span>Targets — newest scan first</span>
-      <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.85rem; cursor:pointer; text-transform:none; letter-spacing:normal;"
-             title="Show only reports an ally shared, hiding your own scans.">
-        <input id="intel-shared-only" type="checkbox" /> From allies only
-      </label>
+      <p class="intel-panel-hint">
+        Sync needs one more shared value: the <strong>index message ID</strong>. Discord has no way
+        to list what a webhook has posted, so the alliance keeps a single pinned message listing
+        every intel post. One member presses <em>Create index message</em> once and shares the ID
+        the same way as the webhook URL. No bot token is involved.
+      </p>
+      <div class="intel-panel-fields">
+        <label class="intel-field intel-field-wide">
+          <span>Index message ID — shared by the alliance</span>
+          <input id="discord-index" type="text" placeholder="Message ID"
+                 title="The alliance's index message. Created once, then handed out with the webhook URL." />
+        </label>
+        <div class="intel-panel-actions">
+          <button id="btn-create-index" title="Post a new empty index message and store its ID. Do this once per alliance.">Create index message</button>
+          <button id="btn-sync-spy" title="Pull shared intel listed in the alliance index message.">Sync intel</button>
+        </div>
+      </div>
     </div>
+
+    <div class="intel-section-bar">
+      <span class="intel-section-label">Targets — newest scan first</span>
+      <label class="intel-switch-label" title="Show only reports an ally shared, hiding your own scans.">
+        <input id="intel-shared-only" type="checkbox" class="m-switch" /> From allies only
+      </label>
+      <span class="intel-rule"></span>
+    </div>
+
     <div class="intel-layout">
-      <div id="intel-groups"></div>
+      <div class="intel-groups" id="intel-groups"></div>
       <aside class="intel-players" id="intel-players"></aside>
     </div>
   </div>

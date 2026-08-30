@@ -14,7 +14,7 @@ import { initAsteroidsTab } from './tabs/asteroids.js';
 import { renderFleetsTab } from './tabs/fleets.js';
 import { initScoutingTab } from './tabs/scouting.js';
 import { initXenoTab, renderXenoTab, setXnReportPage } from './tabs/xeno.js';
-import { renderIntelTab } from './tabs/intel.js';
+import { renderIntelTab, requestDiscordAccess } from './tabs/intel.js';
 import { initFinderTab } from './tabs/finder.js';
 import { initMarketTab } from './tabs/market.js';
 import { renderGlobalTab } from './tabs/global.js';
@@ -473,28 +473,45 @@ document.getElementById('import-file').addEventListener('change', async function
 // Persist Discord creds on edit. discord.com is in host_permissions, so no
 // runtime permission request is needed.
 (async () => {
-  const { discord_bot_token, discord_channel_id } =
-    await browser.storage.local.get(['discord_bot_token', 'discord_channel_id']);
-  const t = document.getElementById('discord-token');
-  const c = document.getElementById('discord-channel');
-  if (t) t.value = discord_bot_token || '';
-  if (c) c.value = discord_channel_id || '';
+  const { discord_webhook_url, discord_index_message_id } =
+    await browser.storage.local.get(['discord_webhook_url', 'discord_index_message_id']);
+  const w = document.getElementById('discord-webhook');
+  if (w) w.value = discord_webhook_url || '';
+  const i = document.getElementById('discord-index');
+  if (i) i.value = discord_index_message_id || '';
+  // Sharing moved to webhook + index message; drop the old bot credentials so
+  // an application-wide token does not linger in storage after the upgrade.
+  await browser.storage.local.remove(['discord_bot_token', 'discord_channel_id']);
 })();
 function flashSaved(el) {
   el.style.borderColor = '#3fb950';
   setTimeout(() => { el.style.borderColor = '#30363d'; }, 800);
 }
-document.getElementById('discord-token').addEventListener('change', async function () {
-  await browser.storage.local.set({ discord_bot_token: this.value.trim() });
+document.getElementById('discord-webhook').addEventListener('change', async function () {
+  await browser.storage.local.set({ discord_webhook_url: this.value.trim() });
   flashSaved(this);
 });
-document.getElementById('discord-channel').addEventListener('change', async function () {
-  await browser.storage.local.set({ discord_channel_id: this.value.trim() });
+document.getElementById('discord-index').addEventListener('change', async function () {
+  await browser.storage.local.set({ discord_index_message_id: this.value.trim() });
   flashSaved(this);
+});
+
+// Bootstrap: post an empty index message and keep its ID. Run once per alliance.
+document.getElementById('btn-create-index').addEventListener('click', async function () {
+  if (!await requestDiscordAccess()) { alert('Access to discord.com was declined. Enable it in about:addons → Nexus Accounting → Permissions.'); return; }
+  if (document.getElementById('discord-index').value.trim() &&
+      !await confirmDialog('An index message ID is already set.\n\nCreating a new one starts an empty index — allies using the old ID will not see your intel until they switch. Continue?')) return;
+  const res = await browser.runtime.sendMessage({ type: 'CREATE_INTEL_INDEX' });
+  if (res.error) { alert(`Could not create index: ${res.error}`); return; }
+  document.getElementById('discord-index').value = res.indexId;
+  alert(`Index message created.\n\nID: ${res.indexId}\n\nGive this to every alliance member along with the webhook URL.`);
 });
 
 // Post spy reports to the alliance Discord channel.
 document.getElementById('btn-share-spy').addEventListener('click', async function () {
+  // Firefox MV3 host permissions are optional — ask from this click before the
+  // background fetch runs, or Discord's reply comes back CORS-blocked.
+  if (!await requestDiscordAccess()) { alert('Access to discord.com was declined. Enable it in about:addons → Nexus Accounting → Permissions.'); return; }
   const res = await browser.runtime.sendMessage({ type: 'SHARE_SPY_INTEL' });
   if (res.error) { alert(`Share failed: ${res.error}`); return; }
   this.textContent = `Posted ${res.count} ✓`;
@@ -503,6 +520,7 @@ document.getElementById('btn-share-spy').addEventListener('click', async functio
 
 // Pull intel from the alliance Discord channel and merge into local intel.
 document.getElementById('btn-sync-spy').addEventListener('click', async function () {
+  if (!await requestDiscordAccess()) { alert('Access to discord.com was declined. Enable it in about:addons → Nexus Accounting → Permissions.'); return; }
   this.textContent = 'Syncing…';
   const res = await browser.runtime.sendMessage({ type: 'SYNC_SPY_INTEL' });
   if (res.error) { alert(`Sync failed: ${res.error}`); this.textContent = 'Sync intel'; return; }
