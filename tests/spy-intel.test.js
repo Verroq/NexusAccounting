@@ -54,12 +54,25 @@ test('selectReportsToShare posts the whole pool when no ids are named', () => {
   assert.deepEqual(selectReportsToShare(null), [], 'no stored reports, nothing to post');
 });
 
-test('a whole-pool share leaves out intel a sync pulled in from allies', () => {
+test('a share leaves out intel a sync pulled in from allies', () => {
   // Otherwise every member re-posts the whole alliance's pool on every share.
   const mixed = [...pool, { id: 4, target_name: 'Ally scan', shared_by: 'Alice' }];
   assert.deepEqual(selectReportsToShare(mixed).map(r => r.id), [1, 2, 3]);
-  assert.deepEqual(selectReportsToShare(mixed, [4]).map(r => r.id), [4],
-    'naming an ally report explicitly still re-posts it');
+  assert.deepEqual(selectReportsToShare(mixed, [4]), [],
+    'an ally report is already in the index it came from, naming it changes nothing');
+});
+
+test('a report already posted is not posted again, on either path', () => {
+  // The mark rides on the report, so it survives export/import and retires
+  // with the report when capIntel drops it.
+  const marked = pool.map(r => (r.id === 2 ? { ...r, shared_at: '2026-08-30T10:00:00Z' } : r));
+  assert.deepEqual(selectReportsToShare(marked).map(r => r.id), [1, 3]);
+  assert.deepEqual(selectReportsToShare(marked, [2]), [],
+    'the per-report button cannot double-post it either');
+  assert.deepEqual(selectReportsToShare(marked, [2, 3]).map(r => r.id), [3],
+    'the rest of the batch still goes out');
+  assert.deepEqual(selectReportsToShare(marked.map(r => ({ ...r, shared_at: 'x' }))), [],
+    'a fully shared pool has nothing left to post');
 });
 
 test('selectReportsToShare narrows to the named report', () => {

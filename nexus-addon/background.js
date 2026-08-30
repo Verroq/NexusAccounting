@@ -528,21 +528,32 @@ function mergeSpyReports(base, incoming, sharedBy) {
   return { merged, added: newIds.filter(id => kept.has(id)).length };
 }
 
-// `reportIds` (optional) narrows the post to those reports — the Shared Intel
-// tab's per-report share button. Omitted, the whole local pool goes out.
-// Which reports a share posts: the named ids, or the whole pool when none are
-// given. Pure so the id filter is testable without a live Discord round-trip.
+// Which reports a share posts: the named ids (the Shared Intel tab's
+// per-report button), or the whole pool when none are given — minus anything
+// already in the alliance index. Pure so both filters are testable without a
+// live Discord round-trip.
+//
+// Two ways a report is already in the alliance index, and both are dropped on
+// both paths: `shared_at` is stamped on the reports we post ourselves, and
+// `shared_by` means a Sync pulled it out of that very channel. Posting either
+// again only adds a duplicate index entry that every ally then re-downloads.
+// The named path is guarded too — the per-report button is one stray
+// double-click away from the same duplicate.
+//
+// Both marks ride on the report object, so they survive an export/import and
+// travel with the payload; there is no side list to fall out of sync with the
+// pool, and capIntel retires a mark with the report it belongs to.
+//
+// A whole-pool share therefore posts only our OWN unshared scans. After a Sync
+// the pool holds every ally's reports too, and re-posting those round-trips the
+// whole alliance's intel through the index on every share — five members
+// sharing daily fill the 90-entry index with near-identical copies and every
+// Sync re-downloads them all.
 function selectReportsToShare(stored, reportIds) {
-  const all = stored || [];
-  // ponytail: a whole-pool share posts only our OWN scans. After a Sync the
-  // pool holds every ally's reports too, and re-posting those round-trips the
-  // whole alliance's intel through the index on every share — five members
-  // sharing daily fill the 90-entry index with near-identical copies and every
-  // Sync re-downloads them all. An explicit per-report share (reportIds) can
-  // still re-post an ally's report; only the default is narrowed.
-  if (!Array.isArray(reportIds) || !reportIds.length) return all.filter(r => r && !r.shared_by);
-  const want = new Set(reportIds);
-  return all.filter(r => want.has(r.id));
+  const named = Array.isArray(reportIds) && reportIds.length;
+  const want = named ? new Set(reportIds) : null;
+  return (stored || []).filter(r => r && !r.shared_by && !r.shared_at
+    && (!named || want.has(r.id)));
 }
 
 // Discord answers a refusal with {message, code} — surface both, because
@@ -578,9 +589,19 @@ async function shareSpyIntel(reportIds) {
   const stored = await nsGet(['spy_reports']);
   const reports = selectReportsToShare(stored.spy_reports, reportIds);
   if (!reports.length) {
-    return { error: (Array.isArray(reportIds) && reportIds.length)
-      ? 'That report is no longer in local storage.'
-      : 'No spy reports to share yet — scan a target first.' };
+    // "Already shared" and "nothing to share" need different fixes, so say
+    // which one it is.
+    const named = Array.isArray(reportIds) && reportIds.length;
+    const pool = stored.spy_reports || [];
+    const known = named ? pool.some(r => r && reportIds.includes(r.id)) : pool.length > 0;
+    if (!known) {
+      return { error: named
+        ? 'That report is no longer in local storage.'
+        : 'No spy reports to share yet — scan a target first.' };
+    }
+    return { error: named
+      ? 'That report is already in the alliance index — either you shared it, or it came from an ally.'
+      : 'Every report in your pool is already shared with your alliance.' };
   }
 
   const { webhook, indexId } = await discordCreds();
@@ -594,16 +615,21 @@ async function shareSpyIntel(reportIds) {
 
   const author = me.user || me;
   const username = author.username || author.name || null;
+  const sharedAt = new Date().toISOString();
+  // The reports go out already stamped, so an ally who later hands the batch
+  // back (a re-import, a restored backup) carries the mark with it rather than
+  // relying on our local bookkeeping.
+  const posted = reports.map(r => ({ ...r, shared_at: sharedAt }));
   const payload = {
     nexus_shared_spy_intel: SHARE_SPY_VERSION,
-    shared_at: new Date().toISOString(),
+    shared_at: sharedAt,
     author: { id: author.id ?? author.userId ?? null, username },
     alliance: { tag: alliance.tag, name: alliance.name },
     // From the session token via getAlliance — /api/auth/me carries no
     // universe field, so reading it off `me` always yielded null and left
     // every shared payload unstamped.
     universe_key: alliance.universeKey ?? null,
-    spy_reports: reports,
+    spy_reports: posted,
   };
 
   // Upload the payload as a JSON attachment to the alliance's Discord channel.
@@ -643,8 +669,20 @@ async function shareSpyIntel(reportIds) {
   const idx = await appendToIntelIndex(webhook, indexId, messageId)
     .catch(e => ({ error: `${e.message}.` }));
   if (idx.error) {
+    // Not recorded as shared: allies cannot see a batch that never made the
+    // index, so the user has to be able to share it again.
     return { error: `Posted, but the shared index could not be updated: ${idx.error} Allies will not see this batch until someone shares again.` };
   }
+
+  // Only now is the batch really shared: stamp our own copies. Re-read the
+  // pool rather than reusing the one read above — a Sync may have merged into
+  // it while the upload was in flight, and writing the stale copy back would
+  // drop what it pulled in.
+  const done = new Set(posted.map(r => r.id));
+  const { spy_reports } = await nsGet(['spy_reports']);
+  await nsSet({
+    spy_reports: (spy_reports || []).map(r => (r && done.has(r.id) ? { ...r, shared_at: sharedAt } : r)),
+  });
 
   return { ok: true, count: reports.length, alliance: { tag: alliance.tag, name: alliance.name } };
 }

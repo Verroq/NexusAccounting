@@ -361,9 +361,16 @@ function shareButton(scan) {
   btn.type = 'button';
   btn.className = 'intel-share';
   btn.textContent = 'Share';
-  btn.title = scan.shared_by
-    ? 'Post this report to the alliance Discord channel again'
-    : 'Post this report to the alliance Discord channel';
+  if (scan.shared_by || scan.shared_at) {
+    // Already in the alliance index — either a Sync pulled it out of that
+    // channel, or we posted it ourselves. Posting it back only duplicates it.
+    btn.disabled = true;
+    btn.title = scan.shared_by
+      ? `Already in the alliance index — shared by ${scan.shared_by}`
+      : `Already shared with your alliance on ${new Date(scan.shared_at).toLocaleString()}`;
+    return btn;
+  }
+  btn.title = 'Post this report to the alliance Discord channel';
   btn.onclick = async (e) => {
     e.preventDefault();      // the header sits inside <details>; do not toggle it
     e.stopPropagation();
