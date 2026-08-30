@@ -752,12 +752,33 @@ async function createIntelIndex() {
 // (we don't know our own tag/universe) is still accepted — that is our gap,
 // not the payload's.
 // Pure so the boundary is testable without a live Discord round-trip.
-function acceptSharedIntel(payload, myTag, myUniverse) {
+// Returns null when the payload is ours to merge, or a short human reason it
+// was dropped. Sync shows that reason: a silently ignored payload is
+// indistinguishable from "nobody shared anything", which is the state an ally
+// on an older build (or a mis-set channel) actually lands you in.
+function sharedIntelReject(payload, myTag, myUniverse) {
   const p = payload || {};
-  if (p.nexus_shared_spy_intel !== SHARE_SPY_VERSION || !Array.isArray(p.spy_reports)) return false;
-  if (myTag && p.alliance?.tag !== myTag) return false;
-  if (myUniverse && p.universe_key !== myUniverse) return false;
-  return true;
+  if (p.nexus_shared_spy_intel !== SHARE_SPY_VERSION || !Array.isArray(p.spy_reports)) {
+    return `not a v${SHARE_SPY_VERSION} intel payload (got version ${p.nexus_shared_spy_intel ?? 'none'})`;
+  }
+  if (myTag && p.alliance?.tag !== myTag) {
+    return `stamped for alliance ${p.alliance?.tag ?? 'nobody'}, we are ${myTag}`;
+  }
+  // Only a CONTRADICTING universe stamp is foreign. An absent one is not:
+  // builds before the stamp was wired to the session token read it off
+  // /api/auth/me, which has no universe field, so they post `universe_key:
+  // null` on every share — and a real ally on such a build would silently
+  // vanish from Sync. The tag above is the mandatory scope check, and it is
+  // enough: an alliance is a per-universe game entity, so a tag match already
+  // pins the universe. The stamp is the belt to that braces.
+  if (myUniverse && p.universe_key && p.universe_key !== myUniverse) {
+    return `stamped for universe ${p.universe_key}, we are ${myUniverse}`;
+  }
+  return null;
+}
+
+function acceptSharedIntel(payload, myTag, myUniverse) {
+  return sharedIntelReject(payload, myTag, myUniverse) === null;
 }
 
 // Read the index message, fetch every intel message it lists, and merge their
@@ -806,6 +827,11 @@ async function syncSpyIntel() {
   // message is gone, the index is just stale); anything else means this sync is
   // PARTIAL, and the caller has to say so rather than show a clean "+3 ✓".
   let failed = 0;
+  // Payloads the trust boundary turned away, plus the first reason, so the UI
+  // can say "3 ignored: stamped for universe nobody, we are s0" instead of
+  // "nothing shared yet".
+  let rejected = 0;
+  let rejectNote = '';
   for (const id of ids) {
     let m;
     try {
@@ -819,19 +845,23 @@ async function syncSpyIntel() {
         const r = await discordFetch(a.url); // freshly signed CDN URL, no auth
         if (!r.ok) { if (r.status !== 404) failed++; continue; }
         const p = await r.json();
-        if (!acceptSharedIntel(p, alliance.tag, myUniverse)) continue;
+        const why = sharedIntelReject(p, alliance.tag, myUniverse);
+        if (why) { rejected++; rejectNote ||= why; continue; }
         const from = p.author?.username || 'an ally';
         for (const rep of p.spy_reports) collected.push({ ...rep, shared_by: rep.shared_by || from });
       } catch { failed++; /* unreadable/oversized attachment */ }
     }
   }
-  // Everything failing is not "nothing shared yet" — don't let it read as empty.
-  if (!collected.length) return { ok: true, added: 0, total: 0, failed, empty: !failed };
+  // Failing or being turned away is not "nothing shared yet" — don't let
+  // either read as empty.
+  if (!collected.length) {
+    return { ok: true, added: 0, total: 0, failed, rejected, rejectNote, empty: !failed && !rejected };
+  }
 
   const { spy_reports } = await nsGet(['spy_reports']);
   const { merged, added } = mergeSpyReports(spy_reports, collected);
   await nsSet({ spy_reports: merged });
-  return { ok: true, added, total: merged.length, failed };
+  return { ok: true, added, total: merged.length, failed, rejected, rejectNote };
 }
 
 // Look up a player's per-category leaderboard ranks by exact name (finder
@@ -3401,7 +3431,7 @@ export {
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
   fieldMatches, purgeOldData, freshestToken, resolveRecordsCap, mergeSpyReports, selectReportsToShare, WEBHOOK_RE,
-  formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, discordFetch,
+  formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, sharedIntelReject, discordFetch,
   nsGet, nsSet, nsRemove, gameUrlFor, setCurrentUniverse, getCurrentUniverse,
   processSpyReports, processCampScoutReports,
 };

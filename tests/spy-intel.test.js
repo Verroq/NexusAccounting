@@ -4,7 +4,7 @@ import { makeBrowserStub, loadBackground } from './helpers.js';
 import { withoutSecrets } from '../nexus-addon/storage-keys.js';
 
 makeBrowserStub(); // background.js touches `browser` at import time
-const { mergeSpyReports, selectReportsToShare, WEBHOOK_RE, formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, discordFetch } =
+const { mergeSpyReports, selectReportsToShare, WEBHOOK_RE, formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, sharedIntelReject, discordFetch } =
   await loadBackground();
 
 test('mergeSpyReports dedups by id, newest created_at wins', () => {
@@ -159,13 +159,21 @@ test('acceptSharedIntel rejects anything that is not a spy-intel payload', () =>
   assert.equal(acceptSharedIntel({}, 'NEX', 's0'), false);
 });
 
-test('acceptSharedIntel rejects a payload that simply omits the stamps', () => {
+test('acceptSharedIntel rejects a payload that omits the alliance tag', () => {
   // The bypass: a guard of the form `p.tag && mine && differ` passes anything
   // that leaves the field out, which is exactly what a hostile payload does.
-  assert.equal(acceptSharedIntel(intel({ universe_key: null }), 'NEX', 's0'), false);
   assert.equal(acceptSharedIntel(intel({ alliance: {} }), 'NEX', 's0'), false, 'no tag is not our tag');
   assert.equal(acceptSharedIntel({ nexus_shared_spy_intel: 1, spy_reports: [{ id: 1 }] }, 'NEX', 's0'), false,
     'a payload carrying no stamps at all is foreign');
+});
+
+test('acceptSharedIntel takes an unstamped universe from an ally on an older build', () => {
+  // Builds before the stamp was read off the session token post universe_key:
+  // null on every share. The tag is the mandatory scope check — an alliance is
+  // a per-universe entity — so an unstamped payload from our own tag is ours.
+  assert.equal(acceptSharedIntel(intel({ universe_key: null }), 'NEX', 's0'), true);
+  assert.equal(acceptSharedIntel(intel({ universe_key: 'nf' }), 'NEX', 's0'), false,
+    'a stamp that contradicts us is still foreign');
 });
 
 test('acceptSharedIntel still accepts a stamp we have nothing to check against', () => {
@@ -220,4 +228,14 @@ test('mergeSpyReports counts only what survived the INTEL_KEEP cap', () => {
   assert.equal(a2, 1, 'a report newer than the cap line does count');
   assert.equal(m2.length, 200);
   assert.ok(m2.some(r => r.id === 'new'));
+});
+
+test('a rejected payload comes with the reason Sync shows the user', () => {
+  // Without it, an ally on an older build is indistinguishable from an empty
+  // channel: both render as "nothing shared yet".
+  assert.equal(sharedIntelReject(intel(), 'NEX', 's0'), null, 'ours to merge');
+  assert.equal(sharedIntelReject(intel({ universe_key: null }), 'NEX', 's0'), null, 'unstamped, but our tag');
+  assert.match(sharedIntelReject(intel({ universe_key: 'nf' }), 'NEX', 's0'), /universe nf, we are s0/);
+  assert.match(sharedIntelReject(intel({ alliance: { tag: 'EVIL' } }), 'NEX', 's0'), /alliance EVIL, we are NEX/);
+  assert.match(sharedIntelReject({}, 'NEX', 's0'), /not a v1 intel payload \(got version none\)/);
 });

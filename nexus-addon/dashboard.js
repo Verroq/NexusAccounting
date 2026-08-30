@@ -527,11 +527,12 @@ document.getElementById('btn-sync-spy').addEventListener('click', async function
   const res = await browser.runtime.sendMessage({ type: 'SYNC_SPY_INTEL' });
   if (res.error) { infoDialog('Sync failed', res.error); this.textContent = 'Sync intel'; return; }
   await loadAll();
-  this.title = res.failed
-    ? `${res.failed} shared message(s) could not be read this run (Discord rate limit or network). Sync again in a minute to pick up the rest.`
-    : '';
+  const notes = [];
+  if (res.failed) notes.push(`${res.failed} shared message(s) could not be read this run (Discord rate limit or network). Sync again in a minute to pick up the rest.`);
+  if (res.rejected) notes.push(`${res.rejected} payload(s) ignored — ${res.rejectNote}. An ally on an older build posts intel without those stamps; they need to update the addon and share again.`);
+  this.title = notes.join('\n\n');
   this.textContent = res.empty ? 'Nothing shared yet'
-    : `+${res.added} (${res.total})${res.failed ? ` ⚠ ${res.failed} missed` : ' ✓'}`;
+    : `+${res.added} (${res.total})${res.failed || res.rejected ? ` ⚠ ${(res.failed || 0) + (res.rejected || 0)} skipped` : ' ✓'}`;
   setTimeout(() => { this.textContent = 'Sync intel'; }, 2500);
 });
 
