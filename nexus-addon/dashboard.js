@@ -5,7 +5,7 @@
 // ── Storage ────────────────────────────────────────────────────────────────
 
 import { RARE_WEIGHT, RESOURCE_WEIGHTS, activeTab, applyResourceWeights, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, nsGet, periodLabelFor, renderMarkdown, renderNetCards, selectedUniverse, setActiveTab, setSelectedUniverse, setStore, store } from './common.js';
-import { SCOPED_KEYS } from './storage-keys.js';
+import { SCOPED_KEYS, withoutSecrets } from './storage-keys.js';
 import { renderBattlesTab, setBattlePage } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
@@ -14,6 +14,7 @@ import { initAsteroidsTab } from './tabs/asteroids.js';
 import { renderFleetsTab } from './tabs/fleets.js';
 import { initScoutingTab } from './tabs/scouting.js';
 import { initXenoTab, renderXenoTab, setXnReportPage } from './tabs/xeno.js';
+import { renderIntelTab, requestDiscordAccess } from './tabs/intel.js';
 import { initFinderTab } from './tabs/finder.js';
 import { initMarketTab } from './tabs/market.js';
 import { renderGlobalTab } from './tabs/global.js';
@@ -112,6 +113,10 @@ export function renderAll() {
     renderDebrisTab();
     return;
   }
+  if (activeTab === 'intel') {
+    renderIntelTab();
+    return;
+  }
   if (activeTab === 'expeditions') {
     renderExpeditionsTab();
     return;
@@ -187,6 +192,7 @@ export const TAB_CONTENT = {
   fleets: 'fleets-content',
   scouting: 'scouting-content',
   xeno: 'xeno-content',
+  intel: 'intel-content',
   market: 'market-content',
   techtree: 'techtree-content',
   simulator: 'simulator-content',
@@ -378,7 +384,7 @@ document.getElementById('btn-rebuild').addEventListener('click', async function 
 // ── Export / Import ────────────────────────────────────────────────────────
 
 document.getElementById('btn-export').addEventListener('click', async function () {
-  const data = await browser.storage.local.get(null);
+  const data = withoutSecrets(await browser.storage.local.get(null));
   // records_cap is already stored as a plain number (0 = unlimited).
   const payload = {
     nexus_accounting_backup: 1,
@@ -460,6 +466,74 @@ document.getElementById('import-file').addEventListener('change', async function
   } finally {
     setTimeout(() => { btn.textContent = 'Import JSON'; }, 2000);
   }
+});
+
+// ── Share spy intel ─────────────────────────────────────────────────────────
+
+// Persist Discord creds on edit. Note that declaring discord.com in
+// host_permissions does NOT grant it on Firefox MV3 (they are optional there),
+// which is why every button below goes through requestDiscordAccess() first —
+// see the longer explanation on requestDiscordAccess in tabs/intel.js.
+(async () => {
+  const { discord_webhook_url, discord_index_message_id } =
+    await browser.storage.local.get(['discord_webhook_url', 'discord_index_message_id']);
+  const w = document.getElementById('discord-webhook');
+  if (w) w.value = discord_webhook_url || '';
+  const i = document.getElementById('discord-index');
+  if (i) i.value = discord_index_message_id || '';
+  // Sharing moved to webhook + index message; drop the old bot credentials so
+  // an application-wide token does not linger in storage after the upgrade.
+  await browser.storage.local.remove(['discord_bot_token', 'discord_channel_id']);
+})();
+function flashSaved(el) {
+  el.style.borderColor = '#3fb950';
+  setTimeout(() => { el.style.borderColor = '#30363d'; }, 800);
+}
+document.getElementById('discord-webhook').addEventListener('change', async function () {
+  await browser.storage.local.set({ discord_webhook_url: this.value.trim() });
+  flashSaved(this);
+});
+document.getElementById('discord-index').addEventListener('change', async function () {
+  await browser.storage.local.set({ discord_index_message_id: this.value.trim() });
+  flashSaved(this);
+});
+
+// Bootstrap: post an empty index message and keep its ID. Run once per alliance.
+document.getElementById('btn-create-index').addEventListener('click', async function () {
+  if (!await requestDiscordAccess()) { infoDialog('Discord access declined', 'Access to discord.com was declined. Enable it in about:addons → Nexus Accounting → Permissions.'); return; }
+  if (document.getElementById('discord-index').value.trim() &&
+      !await confirmDialog('An index message ID is already set.\n\nCreating a new one starts an empty index — allies using the old ID will not see your intel until they switch. Continue?')) return;
+  const res = await browser.runtime.sendMessage({ type: 'CREATE_INTEL_INDEX' });
+  if (res.error) { infoDialog('Could not create index', res.error); return; }
+  document.getElementById('discord-index').value = res.indexId;
+  infoDialog('Index message created', `ID: ${res.indexId}\n\nGive this to every alliance member along with the webhook URL.`);
+});
+
+// Post spy reports to the alliance Discord channel.
+document.getElementById('btn-share-spy').addEventListener('click', async function () {
+  // Firefox MV3 host permissions are optional — ask from this click before the
+  // background fetch runs, or Discord's reply comes back CORS-blocked.
+  if (!await requestDiscordAccess()) { infoDialog('Discord access declined', 'Access to discord.com was declined. Enable it in about:addons → Nexus Accounting → Permissions.'); return; }
+  const res = await browser.runtime.sendMessage({ type: 'SHARE_SPY_INTEL' });
+  if (res.error) { infoDialog('Share failed', res.error); return; }
+  this.textContent = `Posted ${res.count} ✓`;
+  setTimeout(() => { this.textContent = 'Share spy intel'; }, 2500);
+});
+
+// Pull intel from the alliance Discord channel and merge into local intel.
+document.getElementById('btn-sync-spy').addEventListener('click', async function () {
+  if (!await requestDiscordAccess()) { infoDialog('Discord access declined', 'Access to discord.com was declined. Enable it in about:addons → Nexus Accounting → Permissions.'); return; }
+  this.textContent = 'Syncing…';
+  const res = await browser.runtime.sendMessage({ type: 'SYNC_SPY_INTEL' });
+  if (res.error) { infoDialog('Sync failed', res.error); this.textContent = 'Sync intel'; return; }
+  await loadAll();
+  const notes = [];
+  if (res.failed) notes.push(`${res.failed} shared message(s) could not be read this run (Discord rate limit or network). Sync again in a minute to pick up the rest.`);
+  if (res.rejected) notes.push(`${res.rejected} payload(s) ignored — ${res.rejectNote}. An ally on an older build posts intel without those stamps; they need to update the addon and share again.`);
+  this.title = notes.join('\n\n');
+  this.textContent = res.empty ? 'Nothing shared yet'
+    : `+${res.added} (${res.total})${res.failed || res.rejected ? ` ⚠ ${(res.failed || 0) + (res.rejected || 0)} skipped` : ' ✓'}`;
+  setTimeout(() => { this.textContent = 'Sync intel'; }, 2500);
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────

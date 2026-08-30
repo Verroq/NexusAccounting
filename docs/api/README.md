@@ -21,8 +21,15 @@ The index below stays grouped by game area, so the folder in each link tells you
 
 ## Confirmed Core Behavior
 
-- Requests are sent with browser session cookies via `credentials: include`.
-- The extension rewrites `Origin` and `Referer` for `/api/*` requests so dashboard-originated calls behave like in-game requests.
+- GETs go straight from the background service worker via `apiGet()`, authenticated with a
+  `Bearer` token read from the game session cookie.
+- POSTs are routed through an open game tab instead (`gamePost()` → the content script's
+  `GAME_FETCH` handler, with a `scripting` fallback when no content script is live). A `Bearer`
+  POST sent directly from the extension carries the extension's `Origin`, which the server
+  answers with a 500 — running the fetch in the page makes it same-origin, exactly like the
+  game's own call.
+- The tab is matched against the current universe's host specifically, not a
+  `*.nexuslegacy.space` wildcard, so a request never crosses universes when both are open.
 - Rate-limit headers `ratelimit-limit`, `ratelimit-remaining`, and `ratelimit-reset` are observed and used by the client.
 
 ## Live Audit (Primary: S0)

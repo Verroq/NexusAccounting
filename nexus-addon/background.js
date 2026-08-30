@@ -3,7 +3,7 @@
 // is defined here on both Chrome (polyfilled) and Firefox (native). Tests import
 // this file directly with a stubbed `browser`, skipping the polyfill entirely.
 
-import { SCOPED_KEYS } from './storage-keys.js';
+import { SCOPED_KEYS, withoutSecrets } from './storage-keys.js';
 
 // Multi-universe support: each universe (`s0`, `nf`, ...) is its own game host
 // with its own session. gameUrlFor() replaces the old hardcoded GAME_URL.
@@ -317,6 +317,9 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me');
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
+  if (msg.type === 'SHARE_SPY_INTEL') return shareSpyIntel(msg.reportIds);
+  if (msg.type === 'SYNC_SPY_INTEL') return syncSpyIntel();
+  if (msg.type === 'CREATE_INTEL_INDEX') return createIntelIndex();
   if (msg.type === 'GET_PLAYER_RANK') return getPlayerRanks(msg.name);
   if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
@@ -431,11 +434,434 @@ async function getAlliance() {
     return {
       tag: a.tag || null,
       name: a.name || null,
+      // From the game-session token, not the alliance payload — /api/alliances/my
+      // has no universe field. Without this the shared-intel universe guard has
+      // nothing to compare against and silently passes everything.
+      universeKey: universeKey || null,
       memberIds: members.map(m => m.userId).filter(x => x != null),
     };
   } catch (err) {
     return { error: err.message };
   }
+}
+
+// ── Spy intel sharing ───────────────────────────────────────────────────────
+// Share spy reports with your alliance via a private Discord channel. The
+// alliance's own channel membership IS the access control — only people in the
+// channel see the intel, so there's no auth code and no game secret to manage.
+//   Share: upload the payload as a JSON attachment to the channel (bot POST).
+//   Sync:  read recent messages, fetch our attachments, merge into local intel.
+//          A tag guard drops any payload not from your alliance, so a mis-set
+//          channel can't leak another alliance's intel into your simulator.
+const SHARE_SPY_VERSION = 1;
+const INTEL_FILENAME = /^nexus-spy-intel.*\.json$/i;
+
+// Everything here runs on the webhook id+token in the URL — no Authorization
+// header anywhere, which is what keeps us clear of Discord's edge rule that
+// rejects `Authorization: Bot …` from a browser User-Agent (403 code 40333).
+// Three webhook endpoints need no auth at all:
+//   POST   /webhooks/{id}/{token}?wait=true          → returns the created message
+//   GET    /webhooks/{id}/{token}/messages/{msgId}   → a message this webhook sent
+//   PATCH  /webhooks/{id}/{token}/messages/{msgId}   → edit one
+// There is NO endpoint to enumerate a webhook's messages, so we keep our own
+// index: one webhook message whose content lists the ids of every intel post.
+// Its id is a second shared constant, handed out with the webhook URL.
+const WEBHOOK_RE = /^https:\/\/(?:\w+\.)?discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+$/;
+const SNOWFLAKE_RE = /^\d{17,20}$/;
+
+async function discordCreds() {
+  const { discord_webhook_url, discord_index_message_id } =
+    await browser.storage.local.get(['discord_webhook_url', 'discord_index_message_id']);
+  return { webhook: discord_webhook_url, indexId: discord_index_message_id };
+}
+
+// The index message's content. Kept plain-text and human-readable so an
+// alliance member can eyeball it in Discord. Capped well under Discord's
+// 2000-char message limit: 19-char snowflake + separator ≈ 20 chars, so 90 ids
+// leaves comfortable headroom for the header. Oldest ids fall off first, which
+// matches the old "last 50 messages" behaviour.
+const INTEL_INDEX_HEADER = 'NEXUS-INTEL-INDEX v1';
+const INTEL_INDEX_MAX = 90;
+
+function formatIntelIndex(ids) {
+  const clean = [];
+  for (const id of (ids || [])) {
+    const s = String(id);
+    if (SNOWFLAKE_RE.test(s) && !clean.includes(s)) clean.push(s);
+  }
+  return `${INTEL_INDEX_HEADER}\n${clean.slice(-INTEL_INDEX_MAX).join(' ')}`;
+}
+
+// Tolerant on purpose: a member editing the message by hand, or a stray line
+// Discord wrapped, must not wipe the alliance's index. Anything that is not a
+// snowflake is ignored rather than treated as corruption.
+function parseIntelIndex(content) {
+  if (typeof content !== 'string') return [];
+  const out = [];
+  for (const tok of content.split(/\s+/)) {
+    if (SNOWFLAKE_RE.test(tok) && !out.includes(tok)) out.push(tok);
+  }
+  return out;
+}
+
+// Dedup spy reports by id (newest created_at wins), tag imports with their
+// source, and cap at INTEL_KEEP. Pure, so a Discord sync's merge is testable
+// without a live round-trip. Returns { merged, added } (added = new ids).
+function mergeSpyReports(base, incoming, sharedBy) {
+  const byId = {};
+  for (const r of (base || [])) byId[r.id] = r;
+  const newIds = [];
+  for (const r of (incoming || [])) {
+    if (r == null || r.id == null) continue;
+    const existing = byId[r.id];
+    if (!existing || (r.created_at || '').localeCompare(existing.created_at || '') > 0) {
+      byId[r.id] = sharedBy ? { ...r, shared_by: r.shared_by || sharedBy } : r;
+      if (!existing) newIds.push(r.id);
+    }
+  }
+  const merged = capIntel(byId);
+  // Count only the new ids that survived the cap. capIntel drops the oldest
+  // past INTEL_KEEP, so counting them before it told a user syncing an
+  // alliance with more than INTEL_KEEP pooled reports "+60" when the store had
+  // grown by none of them.
+  const kept = new Set(merged.map(r => r.id));
+  return { merged, added: newIds.filter(id => kept.has(id)).length };
+}
+
+// Which reports a share posts: the named ids (the Shared Intel tab's
+// per-report button), or the whole pool when none are given — minus anything
+// already in the alliance index. Pure so both filters are testable without a
+// live Discord round-trip.
+//
+// Two ways a report is already in the alliance index, and both are dropped on
+// both paths: `shared_at` is stamped on the reports we post ourselves, and
+// `shared_by` means a Sync pulled it out of that very channel. Posting either
+// again only adds a duplicate index entry that every ally then re-downloads.
+// The named path is guarded too — the per-report button is one stray
+// double-click away from the same duplicate.
+//
+// Both marks ride on the report object, so they survive an export/import and
+// travel with the payload; there is no side list to fall out of sync with the
+// pool, and capIntel retires a mark with the report it belongs to.
+//
+// A whole-pool share therefore posts only our OWN unshared scans. After a Sync
+// the pool holds every ally's reports too, and re-posting those round-trips the
+// whole alliance's intel through the index on every share — five members
+// sharing daily fill the 90-entry index with near-identical copies and every
+// Sync re-downloads them all.
+function selectReportsToShare(stored, reportIds) {
+  const named = Array.isArray(reportIds) && reportIds.length;
+  const want = named ? new Set(reportIds) : null;
+  return (stored || []).filter(r => r && !r.shared_by && !r.shared_at
+    && (!named || want.has(r.id)));
+}
+
+// Discord answers a refusal with {message, code} — surface both, because
+// "Missing Access" (bot not in the channel) and "Missing Permissions" (in it,
+// but cannot post or attach) need completely different fixes, and a bare 403
+// tells the user neither.
+async function discordError(res) {
+  let detail = '';
+  try {
+    const body = await res.json();
+    if (body && body.message) detail = ` — ${body.message}${body.code ? ` (code ${body.code})` : ''}`;
+  } catch { /* non-JSON body, status alone will have to do */ }
+  const hint = res.status === 403 ? ' The webhook exists but cannot post here — check the channel still allows it.'
+    : res.status === 401 ? ' The webhook URL is wrong or the webhook was deleted and recreated.'
+      : res.status === 404 ? ' Webhook or index message not found — it was deleted, or the index message ID is wrong.'
+        : res.status === 429 ? ' Rate-limited by Discord; wait and retry.' : '';
+  return `Discord ${res.status}${detail}.${hint}`;
+}
+
+async function shareSpyIntel(reportIds) {
+  const [me, alliance] = await Promise.all([
+    apiGet('/api/auth/me'),
+    getAlliance(),
+  ]);
+  if (me.error) return { error: me.error };
+  if (alliance.error) return { error: alliance.error };
+  // Only after getAlliance(): nsGet resolves its `${currentUniverse}__` prefix
+  // at call time, and getAlliance() is what sets currentUniverse from the
+  // session token. Read it in parallel and a service worker that just
+  // restarted still holds the 's0' default, so an `nf` player's share reads an
+  // empty pool and reports "no spy reports to share yet". syncSpyIntel already
+  // sequences it this way.
+  const stored = await nsGet(['spy_reports']);
+  const reports = selectReportsToShare(stored.spy_reports, reportIds);
+  if (!reports.length) {
+    // "Already shared" and "nothing to share" need different fixes, so say
+    // which one it is.
+    const named = Array.isArray(reportIds) && reportIds.length;
+    const pool = stored.spy_reports || [];
+    const known = named ? pool.some(r => r && reportIds.includes(r.id)) : pool.length > 0;
+    if (!known) {
+      return { error: named
+        ? 'That report is no longer in local storage.'
+        : 'No spy reports to share yet — scan a target first.' };
+    }
+    return { error: named
+      ? 'That report is already in the alliance index — either you shared it, or it came from an ally.'
+      : 'Every report in your pool is already shared with your alliance.' };
+  }
+
+  const { webhook, indexId } = await discordCreds();
+  if (!webhook) return { error: 'Set your alliance webhook URL first (Shared Intel → Alliance sharing).' };
+  if (!WEBHOOK_RE.test(webhook)) {
+    return { error: 'That does not look like a Discord webhook URL — it should read https://discord.com/api/webhooks/<id>/<token>.' };
+  }
+  if (!SNOWFLAKE_RE.test(String(indexId || ''))) {
+    return { error: 'Set the alliance index message ID first, or press "Create index message" if you are setting the alliance up.' };
+  }
+
+  const author = me.user || me;
+  const username = author.username || author.name || null;
+  const sharedAt = new Date().toISOString();
+  // The reports go out already stamped, so an ally who later hands the batch
+  // back (a re-import, a restored backup) carries the mark with it rather than
+  // relying on our local bookkeeping.
+  const posted = reports.map(r => ({ ...r, shared_at: sharedAt }));
+  const payload = {
+    nexus_shared_spy_intel: SHARE_SPY_VERSION,
+    shared_at: sharedAt,
+    author: { id: author.id ?? author.userId ?? null, username },
+    alliance: { tag: alliance.tag, name: alliance.name },
+    // From the session token via getAlliance — /api/auth/me carries no
+    // universe field, so reading it off `me` always yielded null and left
+    // every shared payload unstamped.
+    universe_key: alliance.universeKey ?? null,
+    spy_reports: posted,
+  };
+
+  // Upload the payload as a JSON attachment to the alliance's Discord channel.
+  let messageId;
+  try {
+    const fd = new FormData();
+    const filename = `nexus-spy-intel-${alliance.tag || 'x'}-${Date.now()}.json`;
+    const what = reports.length === 1
+      ? `${reports[0].target_name || 'a target'}${reports[0].target_user ? ` (${reports[0].target_user})` : ''}`
+      : `${reports.length} report(s)`;
+    fd.append('payload_json', JSON.stringify({
+      content: `🛰️ Spy intel from ${username || 'a member'} — ${what}`,
+    }));
+    fd.append('files[0]', new Blob([JSON.stringify(payload)], { type: 'application/json' }), filename);
+    // No Authorization header: the webhook URL's own token is the credential,
+    // and its absence is what gets us past the edge block described above.
+    // Content-Type is left unset so FormData supplies the multipart boundary.
+    // `wait=true` makes Discord return the created message, which is the only
+    // way to learn its id — and the id is what Sync needs to read it back.
+    const res = await fetch(`${webhook}?wait=true`, { method: 'POST', body: fd });
+    if (!res.ok) return { error: await discordError(res) };
+    const msg = await res.json();
+    if (!msg || !SNOWFLAKE_RE.test(String(msg.id || ''))) {
+      return { error: 'Discord accepted the post but returned no message id, so allies will not see it. Try again.' };
+    }
+    messageId = String(msg.id);
+  } catch (e) {
+    // A CORS/NetworkError here almost always means the discord.com host
+    // permission is not granted (Firefox MV3 makes them optional).
+    return { error: `Discord post failed: ${e.message}. If this says NetworkError, grant discord.com access in about:addons → Nexus Accounting → Permissions.` };
+  }
+
+  // Deliberately outside the upload's try: the intel IS posted by here, so a
+  // NetworkError thrown inside appendToIntelIndex must not come back as
+  // "Discord post failed" — that reads as "nothing was posted" and pushes the
+  // user into the one retry that double-posts.
+  const idx = await appendToIntelIndex(webhook, indexId, messageId)
+    .catch(e => ({ error: `${e.message}.` }));
+  if (idx.error) {
+    // Not recorded as shared: allies cannot see a batch that never made the
+    // index, so the user has to be able to share it again.
+    return { error: `Posted, but the shared index could not be updated: ${idx.error} Allies will not see this batch until someone shares again.` };
+  }
+
+  // Only now is the batch really shared: stamp our own copies. Re-read the
+  // pool rather than reusing the one read above — a Sync may have merged into
+  // it while the upload was in flight, and writing the stale copy back would
+  // drop what it pulled in.
+  const done = new Set(posted.map(r => r.id));
+  const { spy_reports } = await nsGet(['spy_reports']);
+  await nsSet({
+    spy_reports: (spy_reports || []).map(r => (r && done.has(r.id) ? { ...r, shared_at: sharedAt } : r)),
+  });
+
+  return { ok: true, count: reports.length, alliance: { tag: alliance.tag, name: alliance.name } };
+}
+
+// Read-modify-write the index message, retrying on a lost update. Discord
+// offers no If-Match/ETag on webhook messages, so two members sharing at the
+// same instant can clobber each other; re-reading and re-appending closes the
+// window to the round-trip itself. After the retries we report failure rather
+// than silently dropping the id.
+async function appendToIntelIndex(webhook, indexId, messageId, attempts = 3) {
+  for (let i = 0; i < attempts; i++) {
+    const res = await fetch(`${webhook}/messages/${indexId}`);
+    if (!res.ok) return { error: await discordError(res) };
+    const current = parseIntelIndex((await res.json()).content);
+    if (current.includes(messageId)) return { ok: true };
+    const patch = await fetch(`${webhook}/messages/${indexId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: formatIntelIndex([...current, messageId]) }),
+    });
+    if (patch.ok) {
+      // Confirm our id survived — another member's concurrent PATCH may have
+      // landed between our read and our write.
+      const check = await fetch(`${webhook}/messages/${indexId}`);
+      if (check.ok && parseIntelIndex((await check.json()).content).includes(messageId)) return { ok: true };
+      continue;
+    }
+    if (patch.status !== 429) return { error: await discordError(patch) };
+    await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+  }
+  return { error: 'The index message kept being rewritten by other members.' };
+}
+
+// Create the alliance's index message and return its id, so one member can
+// bootstrap sharing and hand the id out with the webhook URL.
+async function createIntelIndex() {
+  const { webhook } = await discordCreds();
+  if (!webhook) return { error: 'Set your alliance webhook URL first.' };
+  if (!WEBHOOK_RE.test(webhook)) return { error: 'That does not look like a Discord webhook URL.' };
+  try {
+    const res = await fetch(`${webhook}?wait=true`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: formatIntelIndex([]) }),
+    });
+    if (!res.ok) return { error: await discordError(res) };
+    const msg = await res.json();
+    const id = String(msg?.id || '');
+    if (!SNOWFLAKE_RE.test(id)) return { error: 'Discord returned no message id.' };
+    await browser.storage.local.set({ discord_index_message_id: id });
+    return { ok: true, indexId: id };
+  } catch (e) {
+    return { error: `Could not create the index message: ${e.message}` };
+  }
+}
+
+// The trust boundary for pulled intel: a payload is merged only when it is a
+// payload we understand AND it is stamped for our alliance and universe. A
+// mis-set channel (or a hostile one) must not be able to inject another
+// alliance's scans into the simulator.
+//
+// A MISSING stamp is a mismatch, not a pass — guards of the form
+// `p.tag && mine && differ` were bypassable by simply omitting the field,
+// which is the whole attack. The exemption only ever covered payloads shared
+// from earlier commits on this branch (SHARE_SPY_VERSION is still 1 and
+// unreleased), so nothing real relies on it. A stamp we cannot check against
+// (we don't know our own tag/universe) is still accepted — that is our gap,
+// not the payload's.
+// Pure so the boundary is testable without a live Discord round-trip.
+// Returns null when the payload is ours to merge, or a short human reason it
+// was dropped. Sync shows that reason: a silently ignored payload is
+// indistinguishable from "nobody shared anything", which is the state an ally
+// on an older build (or a mis-set channel) actually lands you in.
+function sharedIntelReject(payload, myTag, myUniverse) {
+  const p = payload || {};
+  if (p.nexus_shared_spy_intel !== SHARE_SPY_VERSION || !Array.isArray(p.spy_reports)) {
+    return `not a v${SHARE_SPY_VERSION} intel payload (got version ${p.nexus_shared_spy_intel ?? 'none'})`;
+  }
+  if (myTag && p.alliance?.tag !== myTag) {
+    return `stamped for alliance ${p.alliance?.tag ?? 'nobody'}, we are ${myTag}`;
+  }
+  // Only a CONTRADICTING universe stamp is foreign. An absent one is not:
+  // builds before the stamp was wired to the session token read it off
+  // /api/auth/me, which has no universe field, so they post `universe_key:
+  // null` on every share — and a real ally on such a build would silently
+  // vanish from Sync. The tag above is the mandatory scope check, and it is
+  // enough: an alliance is a per-universe game entity, so a tag match already
+  // pins the universe. The stamp is the belt to that braces.
+  if (myUniverse && p.universe_key && p.universe_key !== myUniverse) {
+    return `stamped for universe ${p.universe_key}, we are ${myUniverse}`;
+  }
+  return null;
+}
+
+function acceptSharedIntel(payload, myTag, myUniverse) {
+  return sharedIntelReject(payload, myTag, myUniverse) === null;
+}
+
+// Read the index message, fetch every intel message it lists, and merge their
+// attachments into local intel. Payloads from a different alliance tag (or
+// universe) are dropped — the guard against pulling foreign intel.
+//
+// Attachment CDN URLs are signed and expire (~24h; expired ones 404), so they
+// are never stored — each sync re-reads the message, which is what makes
+// Discord hand back a freshly signed URL.
+// Discord rate-limits webhook message reads, and one sync is up to
+// INTEL_INDEX_MAX messages plus an attachment fetch each, back to back — 429s
+// are routine, not exceptional. A 429 means "come back", not "gone": treating
+// it like a deleted message silently dropped most of the alliance's intel
+// while still reporting a successful sync.
+async function discordFetch(url, attempts = 3) {
+  let res;
+  for (let i = 0; i < attempts; i++) {
+    res = await fetch(url);
+    if (res.status !== 429) return res;
+    // retry_after is fractional seconds in the JSON body; the header mirrors it.
+    const body = await res.json().catch(() => null);
+    const secs = Number(body?.retry_after ?? res.headers?.get?.('retry-after')) || 1;
+    await new Promise(r => setTimeout(r, Math.min(secs, 10) * 1000));
+  }
+  return res;   // still 429 after the retries — the caller counts it as missed
+}
+
+async function syncSpyIntel() {
+  const alliance = await getAlliance();
+  if (alliance.error) return { error: alliance.error };
+  const { webhook, indexId } = await discordCreds();
+  if (!webhook || !WEBHOOK_RE.test(webhook)) return { error: 'Set your alliance webhook URL first, then Sync.' };
+  if (!SNOWFLAKE_RE.test(String(indexId || ''))) return { error: 'Set the alliance index message ID first, then Sync.' };
+  const myUniverse = alliance.universeKey ?? null;
+
+  let ids;
+  try {
+    const res = await fetch(`${webhook}/messages/${indexId}`);
+    if (!res.ok) return { error: await discordError(res) };
+    ids = parseIntelIndex((await res.json()).content);
+  } catch (e) {
+    return { error: `Sync failed: ${e.message}` };
+  }
+  const collected = [];
+  // Shared messages Discord would not hand over this run. A 404 is benign (the
+  // message is gone, the index is just stale); anything else means this sync is
+  // PARTIAL, and the caller has to say so rather than show a clean "+3 ✓".
+  let failed = 0;
+  // Payloads the trust boundary turned away, plus the first reason, so the UI
+  // can say "3 ignored: stamped for universe nobody, we are s0" instead of
+  // "nothing shared yet".
+  let rejected = 0;
+  let rejectNote = '';
+  for (const id of ids) {
+    let m;
+    try {
+      const res = await discordFetch(`${webhook}/messages/${id}`);
+      if (!res.ok) { if (res.status !== 404) failed++; continue; }
+      m = await res.json();
+    } catch { failed++; continue; }
+    for (const a of (m.attachments || [])) {
+      if (!INTEL_FILENAME.test(a.filename || '')) continue;
+      try {
+        const r = await discordFetch(a.url); // freshly signed CDN URL, no auth
+        if (!r.ok) { if (r.status !== 404) failed++; continue; }
+        const p = await r.json();
+        const why = sharedIntelReject(p, alliance.tag, myUniverse);
+        if (why) { rejected++; rejectNote ||= why; continue; }
+        const from = p.author?.username || 'an ally';
+        for (const rep of p.spy_reports) collected.push({ ...rep, shared_by: rep.shared_by || from });
+      } catch { failed++; /* unreadable/oversized attachment */ }
+    }
+  }
+  // Failing or being turned away is not "nothing shared yet" — don't let
+  // either read as empty.
+  if (!collected.length) {
+    return { ok: true, added: 0, total: 0, failed, rejected, rejectNote, empty: !failed && !rejected };
+  }
+
+  const { spy_reports } = await nsGet(['spy_reports']);
+  const { merged, added } = mergeSpyReports(spy_reports, collected);
+  await nsSet({ spy_reports: merged });
+  return { ok: true, added, total: merged.length, failed, rejected, rejectNote };
 }
 
 // Look up a player's per-category leaderboard ranks by exact name (finder
@@ -1631,6 +2057,17 @@ function extractFleet(arr) {
 }
 
 // Spy reports → defender intel for the simulator (latest INTEL_KEEP kept).
+// Newest-first, capped at INTEL_KEEP — the tail every intel merge shares.
+// The dedup that precedes it is deliberately NOT shared: scraped API reports
+// always overwrite what is stored (the server is authoritative), while shared
+// intel only overwrites when it is newer. Folding those together would take a
+// flag argument and read worse than the two loops do.
+function capIntel(byId) {
+  return Object.values(byId)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    .slice(0, INTEL_KEEP);
+}
+
 async function processSpyReports(reports) {
   if (!reports.length) return 0;
   const { spy_reports } = await nsGet(['spy_reports']);
@@ -1651,9 +2088,7 @@ async function processSpyReports(reports) {
       resources: r.resourceData || {},
     };
   }
-  const merged = Object.values(byId)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, INTEL_KEEP);
+  const merged = capIntel(byId);
   await nsSet({ spy_reports: merged });
   return merged.length;
 }
@@ -1675,9 +2110,7 @@ async function processCampScoutReports(reports) {
       fleet,
     };
   }
-  const merged = Object.values(byId)
-    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
-    .slice(0, INTEL_KEEP);
+  const merged = capIntel(byId);
   await nsSet({ camp_scout_reports: merged });
   return merged.length;
 }
@@ -2564,7 +2997,7 @@ async function rebuildAggregates() {
 const BACKUP_INTERVAL_MS = 7 * 24 * 3600 * 1000;
 
 async function backupToDownloads(reason) {
-  const data = await browser.storage.local.get(null);
+  const data = withoutSecrets(await browser.storage.local.get(null));
   if (data.records_cap === Infinity) data.records_cap = 0;
   const payload = {
     nexus_accounting_backup: 1,
@@ -2997,7 +3430,8 @@ export {
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
-  fieldMatches, purgeOldData, freshestToken, resolveRecordsCap,
+  fieldMatches, purgeOldData, freshestToken, resolveRecordsCap, mergeSpyReports, selectReportsToShare, WEBHOOK_RE,
+  formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, sharedIntelReject, discordFetch,
   nsGet, nsSet, nsRemove, gameUrlFor, setCurrentUniverse, getCurrentUniverse,
   processSpyReports, processCampScoutReports,
 };
