@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { makeBrowserStub, loadBackground } from './helpers.js';
 
 makeBrowserStub(); // background.js touches `browser` at import time
-const { mergeSpyReports, selectReportsToShare, WEBHOOK_RE, formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX } =
+const { mergeSpyReports, selectReportsToShare, WEBHOOK_RE, formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel } =
   await loadBackground();
 
 test('mergeSpyReports dedups by id, newest created_at wins', () => {
@@ -108,4 +108,37 @@ test('index dedups and drops the oldest ids past the cap', () => {
 test('a formatted index stays under Discord\'s 2000-char message limit', () => {
   const many = Array.from({ length: INTEL_INDEX_MAX + 50 }, (_, i) => String(1000000000000000000n + BigInt(i)));
   assert.ok(formatIntelIndex(many).length < 2000, `was ${formatIntelIndex(many).length}`);
+});
+
+// The trust boundary for pulled intel. A mis-set (or hostile) channel must not
+// inject another alliance's scans into the simulator.
+const intel = (over = {}) => ({
+  nexus_shared_spy_intel: 1,
+  spy_reports: [{ id: 1 }],
+  alliance: { tag: 'NEX' },
+  universe_key: 's0',
+  ...over,
+});
+
+test('acceptSharedIntel takes payloads stamped for our alliance and universe', () => {
+  assert.equal(acceptSharedIntel(intel(), 'NEX', 's0'), true);
+});
+
+test('acceptSharedIntel rejects a foreign alliance or universe', () => {
+  assert.equal(acceptSharedIntel(intel({ alliance: { tag: 'EVIL' } }), 'NEX', 's0'), false);
+  assert.equal(acceptSharedIntel(intel({ universe_key: 'nf' }), 'NEX', 's0'), false,
+    'same alliance tag in another universe is still foreign intel');
+});
+
+test('acceptSharedIntel rejects anything that is not a spy-intel payload', () => {
+  assert.equal(acceptSharedIntel(intel({ nexus_shared_spy_intel: 2 }), 'NEX', 's0'), false, 'wrong version');
+  assert.equal(acceptSharedIntel(intel({ spy_reports: 'nope' }), 'NEX', 's0'), false, 'reports not an array');
+  assert.equal(acceptSharedIntel(null, 'NEX', 's0'), false);
+  assert.equal(acceptSharedIntel({}, 'NEX', 's0'), false);
+});
+
+test('acceptSharedIntel accepts unstamped payloads so upgrades keep old intel', () => {
+  // universe_key was null on everything shared before that field was wired up.
+  assert.equal(acceptSharedIntel(intel({ universe_key: null }), 'NEX', 's0'), true);
+  assert.equal(acceptSharedIntel(intel(), 'NEX', null), true, 'we cannot tell our own universe');
 });

@@ -434,6 +434,10 @@ async function getAlliance() {
     return {
       tag: a.tag || null,
       name: a.name || null,
+      // From the game-session token, not the alliance payload — /api/alliances/my
+      // has no universe field. Without this the shared-intel universe guard has
+      // nothing to compare against and silently passes everything.
+      universeKey: universeKey || null,
       memberIds: members.map(m => m.userId).filter(x => x != null),
     };
   } catch (err) {
@@ -580,7 +584,10 @@ async function shareSpyIntel(reportIds) {
     shared_at: new Date().toISOString(),
     author: { id: author.id ?? author.userId ?? null, username },
     alliance: { tag: alliance.tag, name: alliance.name },
-    universe_key: me.universeKey ?? author.universeKey ?? null,
+    // From the session token via getAlliance — /api/auth/me carries no
+    // universe field, so reading it off `me` always yielded null and left
+    // every shared payload unstamped.
+    universe_key: alliance.universeKey ?? null,
     spy_reports: reports,
   };
 
@@ -673,6 +680,24 @@ async function createIntelIndex() {
   }
 }
 
+// The trust boundary for pulled intel: a payload is merged only when it is a
+// payload we understand AND it is stamped for our alliance and universe. A
+// mis-set channel (or a hostile one) must not be able to inject another
+// alliance's scans into the simulator.
+//
+// Unstamped payloads are accepted deliberately: `universe_key` was null on
+// everything shared before that field was wired up, and rejecting them would
+// silently drop an alliance's back-catalogue on upgrade. A payload that DOES
+// carry a stamp must match. Same rule for the tag, which has always been set.
+// Pure so the boundary is testable without a live Discord round-trip.
+function acceptSharedIntel(payload, myTag, myUniverse) {
+  const p = payload || {};
+  if (p.nexus_shared_spy_intel !== SHARE_SPY_VERSION || !Array.isArray(p.spy_reports)) return false;
+  if (p.alliance?.tag && myTag && p.alliance.tag !== myTag) return false;
+  if (p.universe_key && myUniverse && p.universe_key !== myUniverse) return false;
+  return true;
+}
+
 // Read the index message, fetch every intel message it lists, and merge their
 // attachments into local intel. Payloads from a different alliance tag (or
 // universe) are dropped — the guard against pulling foreign intel.
@@ -710,9 +735,7 @@ async function syncSpyIntel() {
         const r = await fetch(a.url); // freshly signed CDN URL, no auth
         if (!r.ok) continue;
         const p = await r.json();
-        if (p.nexus_shared_spy_intel !== SHARE_SPY_VERSION || !Array.isArray(p.spy_reports)) continue;
-        if (p.alliance?.tag && alliance.tag && p.alliance.tag !== alliance.tag) continue; // foreign alliance
-        if (p.universe_key && myUniverse && p.universe_key !== myUniverse) continue;       // foreign universe
+        if (!acceptSharedIntel(p, alliance.tag, myUniverse)) continue;
         const from = p.author?.username || 'an ally';
         for (const rep of p.spy_reports) collected.push({ ...rep, shared_by: rep.shared_by || from });
       } catch { /* skip unreadable/oversized attachment */ }
@@ -3286,7 +3309,7 @@ export {
   checkDrift, ensureSchema, appendToArchive, loadArchive,
   systemFromLocation, resolveZone, backfillZones, processMissions,
   fieldMatches, purgeOldData, freshestToken, resolveRecordsCap, mergeSpyReports, selectReportsToShare, WEBHOOK_RE,
-  formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX,
+  formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel,
   nsGet, nsSet, nsRemove, gameUrlFor, setCurrentUniverse, getCurrentUniverse,
   processSpyReports, processCampScoutReports,
 };
