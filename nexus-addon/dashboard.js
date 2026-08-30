@@ -196,6 +196,8 @@ export const TAB_CONTENT = {
   market: 'market-content',
   techtree: 'techtree-content',
   simulator: 'simulator-content',
+  discordsetup: 'discordsetup-content',
+  faq: 'faq-content',
 };
 
 document.querySelectorAll('.tab').forEach(btn => {
@@ -207,7 +209,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     }
     // View mode and records cap are meaningless on the finder and debris tabs.
     document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'simulator') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'simulator' || activeTab === 'discordsetup' || activeTab === 'faq') ? 'none' : '';
     positionControls();
     renderAll();
   });
