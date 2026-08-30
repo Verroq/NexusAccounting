@@ -174,9 +174,15 @@ export function splitDefenses(defense) {
 }
 
 // Short fleet summary for the collapsed group header.
-export function fleetText(fleet = []) {
-  if (!fleet.length) return '—';
-  const sorted = [...fleet].sort((a, b) => (b.quantity || 0) - (a.quantity || 0));
+export function fleetText(fleet) {
+  // `|| []`, not a default param: shared payloads are parsed from remote JSON
+  // and validated only at the envelope level, so an ally on an older build can
+  // hand us `fleet: null` — which a default param does not catch, and which
+  // blanks the whole tab from inside renderGroup. Every sibling normalises the
+  // same way.
+  const list = fleet || [];
+  if (!list.length) return '—';
+  const sorted = [...list].sort((a, b) => (b.quantity || 0) - (a.quantity || 0));
   const head = sorted.slice(0, 3).map(f => `${f.quantity}× ${f.name || f.key}`).join(', ');
   return sorted.length > 3 ? `${head} +${sorted.length - 3} more` : head;
 }

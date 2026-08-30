@@ -91,6 +91,10 @@ test('splitDefenses tolerates a missing or non-array defense field', () => {
 
 test('fleetText shows the biggest stacks and rolls up the rest', () => {
   assert.equal(fleetText([]), '—');
+  // A shared report from an older/edited build can carry `fleet: null`; a
+  // throw here aborts renderGroup and blanks the whole tab.
+  assert.equal(fleetText(null), '—');
+  assert.equal(fleetText(undefined), '—');
   assert.equal(
     fleetText([
       { name: 'Probe', quantity: 2 },

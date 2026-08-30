@@ -13,6 +13,19 @@
 //
 // Archive shard keys (e.g. `survey_archive_2026-06`) are dynamic — namespaced
 // directly by appendToArchive/loadArchive/purgeOldData, not listed here.
+// Keys that must never leave the browser in a backup file. The Discord webhook
+// URL is a write token for the alliance's channel: anyone handed a backup could
+// post to that channel and read the alliance's pooled intel. Stripped from both
+// backup paths — dashboard.js's Export JSON and background.js's
+// backupToDownloads (which also runs unattended, weekly and pre-reset).
+export const SECRET_KEYS = ['discord_webhook_url'];
+
+export function withoutSecrets(data) {
+  const out = { ...data };
+  for (const k of SECRET_KEYS) delete out[k];
+  return out;
+}
+
 export const SCOPED_KEYS = [
   // Surveys
   'totals', 'daily', 'hourly', 'resources_lost', 'event_breakdown', 'recent_reports', 'seen_ids',
