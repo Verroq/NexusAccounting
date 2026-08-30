@@ -52,6 +52,11 @@
         <button class="tab nx-nav-item" data-tab="techtree"><span class="nx-nav-icon">⌥</span><span>Tech Tree</span></button>
         <button class="tab nx-nav-item" data-tab="simulator"><span class="nx-nav-icon">⌖</span><span>Combat Simulator</span></button>
       </div>
+      <div class="nx-nav-group">
+        <div class="nx-nav-group-title">Help</div>
+        <button class="tab nx-nav-item" data-tab="discordsetup"><span class="nx-nav-icon">✉</span><span>Discord Setup</span></button>
+        <button class="tab nx-nav-item" data-tab="faq"><span class="nx-nav-icon">?</span><span>FAQ</span></button>
+      </div>
     </nav>
 
     <div class="nx-sidebar-footer">
@@ -381,39 +386,9 @@
         <span class="intel-panel-summary" id="intel-summary"></span>
       </div>
       <p class="intel-panel-hint">
-        Intel is shared into a private Discord channel — the channel's membership is the access
-        control. Sharing uses a <strong>webhook URL</strong>, which is bound to that one channel:
-        create it in Discord under <em>Edit Channel → Integrations → Webhooks</em> and give the same
-        URL to every member.
+        Sharing and syncing are set up on the <strong>Discord Setup</strong> tab — webhook URL, index
+        message ID, and the Share / Sync buttons all live there.
       </p>
-      <div class="intel-panel-fields">
-        <label class="intel-field intel-field-wide">
-          <span>Webhook URL — used to share</span>
-          <input id="discord-webhook" type="password" placeholder="https://discord.com/api/webhooks/…"
-                 title="Channel webhook your alliance shares. Bound to one channel, so it cannot read or post anywhere else." />
-        </label>
-        <div class="intel-panel-actions">
-          <button id="btn-share-spy" title="Post every spy report you hold to the alliance channel.">Share spy intel</button>
-        </div>
-      </div>
-
-      <p class="intel-panel-hint">
-        Sync needs one more shared value: the <strong>index message ID</strong>. Discord has no way
-        to list what a webhook has posted, so the alliance keeps a single pinned message listing
-        every intel post. One member presses <em>Create index message</em> once and shares the ID
-        the same way as the webhook URL. No bot token is involved.
-      </p>
-      <div class="intel-panel-fields">
-        <label class="intel-field intel-field-wide">
-          <span>Index message ID — shared by the alliance</span>
-          <input id="discord-index" type="text" placeholder="Message ID"
-                 title="The alliance's index message. Created once, then handed out with the webhook URL." />
-        </label>
-        <div class="intel-panel-actions">
-          <button id="btn-create-index" title="Post a new empty index message and store its ID. Do this once per alliance.">Create index message</button>
-          <button id="btn-sync-spy" title="Pull shared intel listed in the alliance index message.">Sync intel</button>
-        </div>
-      </div>
     </div>
 
     <div class="intel-section-bar">
@@ -1314,6 +1289,186 @@
       <div class="stats" id="fuel-stats"></div>
     </div>
 
+  </div>
+
+  <div id="discordsetup-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Discord Setup</h1><p>Pool spy intel with your alliance through one private Discord channel</p></div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">How it works</span></div>
+      <p class="intel-panel-hint">
+        There is no bot account and no bot token. Intel is posted into a private Discord channel
+        with a <strong>webhook URL</strong>, and the channel's membership <em>is</em> the access
+        control — only people in the channel see what is shared. Every member of the alliance uses
+        the same two values: the webhook URL, and the ID of one index message.
+      </p>
+      <p class="intel-panel-hint">
+        The index exists because Discord gives a webhook no way to list what it has posted. The
+        alliance keeps a single message holding the IDs of every intel post; Share appends to it,
+        Sync reads it back. It holds the 90 most recent posts, oldest dropping off first.
+      </p>
+    </div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Setup — once per alliance</span></div>
+      <ol class="faq-steps">
+        <li>In Discord, create a private channel and invite the alliance to it.</li>
+        <li><em>Edit Channel → Integrations → Webhooks → New Webhook</em>, then <em>Copy Webhook URL</em>.</li>
+        <li>Paste it below. It saves as you leave the field.</li>
+        <li>Press <em>Create index message</em>. One member does this, once.</li>
+        <li>Hand the webhook URL and the index message ID to every member — they paste both here.</li>
+      </ol>
+      <div class="intel-panel-fields">
+        <label class="intel-field intel-field-wide">
+          <span>Webhook URL — used to share</span>
+          <input id="discord-webhook" type="password" placeholder="https://discord.com/api/webhooks/…"
+                 title="Channel webhook your alliance shares. Bound to one channel, so it cannot read or post anywhere else." />
+        </label>
+        <div class="intel-panel-actions">
+          <button id="btn-share-spy" title="Post every spy report you hold to the alliance channel.">Share spy intel</button>
+        </div>
+      </div>
+      <div class="intel-panel-fields">
+        <label class="intel-field intel-field-wide">
+          <span>Index message ID — shared by the alliance</span>
+          <input id="discord-index" type="text" placeholder="Message ID"
+                 title="The alliance's index message. Created once, then handed out with the webhook URL." />
+        </label>
+        <div class="intel-panel-actions">
+          <button id="btn-create-index" title="Post a new empty index message and store its ID. Do this once per alliance.">Create index message</button>
+          <button id="btn-sync-spy" title="Pull shared intel listed in the alliance index message.">Sync intel</button>
+        </div>
+      </div>
+      <div class="intel-panel-warn">
+        <p class="intel-panel-hint">
+          The webhook URL is a write credential for that channel: anyone holding it can post there.
+          It is stored locally, masked in the field above, and deliberately left out of every
+          backup and export, so handing someone a backup file does not hand them the channel.
+        </p>
+      </div>
+    </div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Share and Sync</span></div>
+      <p class="intel-panel-hint">
+        <strong>Share spy intel</strong> posts your own unshared scans as one JSON attachment and
+        adds it to the index. Reports an ally shared with you are never re-posted, and a report you
+        already shared is not posted twice — the Shared Intel tab shows those with the Share button
+        disabled. <strong>Sync intel</strong> walks the index, pulls every attachment, and merges
+        what it finds into your pool, tagged with who shared it.
+      </p>
+      <p class="intel-panel-hint">
+        A payload is merged only when it is stamped for your alliance tag; one stamped for another
+        universe is dropped. If Sync reports <em>N skipped</em>, hover the button — it names the
+        reason, usually an ally on an older build or a Discord rate limit worth retrying in a minute.
+      </p>
+    </div>
+  </div>
+
+  <div id="faq-content" style="display:none;">
+    <div class="nx-screen-head"><h1>FAQ</h1><p>How the addon collects, stores and shows your data</p></div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Collecting</span></div>
+      <details class="faq-item">
+        <summary>Where do the numbers come from?</summary>
+        <p>The addon reads the same fleet report APIs the game itself uses, with your existing game
+        session cookie. It never types into the game or plays for you — it reads reports you have
+        already earned and adds them up.</p>
+      </details>
+      <details class="faq-item">
+        <summary>How often does it scrape?</summary>
+        <p>Every 15 minutes while the browser is running, plus once on install and on update. Press
+        <em>Scrape now</em> in the top bar if you want it immediately. Requests are paced against
+        the server's own rate-limit headers, so a big catch-up scan slows itself down rather than
+        getting throttled.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Nothing is updating — what do I check first?</summary>
+        <p>The status pill at the top names the last error. The usual cause is a missing game
+        session: open the game in a normal tab, logged in, and scrape again. A session in a
+        container tab or a private window is found too, but a logged-out one is not.</p>
+      </details>
+    </div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Universes</span></div>
+      <details class="faq-item">
+        <summary>What does the universe selector at the top do?</summary>
+        <p>It picks which universe's stored data you are looking at. It does not steer the scraper —
+        that follows whichever universe your live game session belongs to. So you can browse S0
+        while New Frontier is being scraped.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Can data from two universes mix?</summary>
+        <p>No. Every scraped report, aggregate and archive key is stored under a per-universe
+        prefix. Settings, ship definitions and research are deliberately shared across universes.</p>
+      </details>
+    </div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Your data</span></div>
+      <details class="faq-item">
+        <summary>Where is my data kept, and does it leave my browser?</summary>
+        <p>In the browser's own extension storage, on this machine. Nothing is sent anywhere — the
+        one exception is spy intel you explicitly Share, which goes to your alliance's Discord
+        channel and nowhere else.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Are there backups?</summary>
+        <p>Yes — a full snapshot is written to <code>Downloads/NexusAccounting/</code> weekly, and
+        before anything destructive (reset, import, schema fallback). <em>Export JSON</em> makes one
+        on demand. Your Discord webhook URL is stripped from all of them, since it is a credential.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Why did my oldest reports disappear?</summary>
+        <p>The records cap in the top bar's ⚙ menu bounds how many raw records are kept hot; older
+        ones are archived or dropped past the cap. Aggregates already computed from them stay
+        correct. Shared spy intel keeps the 200 most recent reports.</p>
+      </details>
+      <details class="faq-item">
+        <summary>The totals look wrong after an update.</summary>
+        <p>Press <em>Rebuild stats</em>. It recomputes every aggregate from the stored raw records,
+        which is the fix whenever a parser changed or a partial scrape landed.</p>
+      </details>
+    </div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Alliance sharing</span></div>
+      <details class="faq-item">
+        <summary>Do I need a Discord bot or a bot token?</summary>
+        <p>No. Sharing uses a channel webhook URL only. Setup is on the <strong>Discord Setup</strong>
+        tab.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Firefox asks for access to discord.com every time I press Share.</summary>
+        <p>Firefox treats the addon's host permissions as optional, so it asks from the click
+        itself. Granting it once is enough; if you decline, the post is blocked before it is sent.
+        You can grant it permanently in <em>about:addons → Nexus Accounting → Permissions</em>.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Sync says nothing was shared, but I can see the file in Discord.</summary>
+        <p>Check the Sync button's tooltip. A payload is only merged when it carries your alliance
+        tag, and one stamped for another universe is refused; both cases now report a count and a
+        reason. An ally on an older build may also have posted before the message ID reached the
+        index — ask them to share again after updating.</p>
+      </details>
+    </div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Combat simulator</span></div>
+      <details class="faq-item">
+        <summary>How accurate is it?</summary>
+        <p>The engine is calibrated against real battle reports, including the 30% debris rate and
+        the weapon-versus-armour matrix. Treat it as a good estimate of a fight's shape, not a
+        promise — the server rolls its own dice.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Where do the defender's ships come from?</summary>
+        <p>From your scraped spy reports, including intel your alliance shared with you. A target
+        you have never scanned and nobody shared cannot be imported.</p>
+      </details>
+    </div>
   </div>
 
     </div><!-- /.nx-content -->
