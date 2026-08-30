@@ -458,6 +458,38 @@ th.sortable .arrow { margin-left: 4px; color: var(--color-accent); }
 .faq-item[open] > summary::before { content: '▾'; }
 .faq-item > p { margin: 8px 0 2px 18px; font-size: 11.5px; line-height: 1.6; color: color-mix(in srgb, var(--color-text) 50%, transparent); max-width: 70ch; }
 
+/* Combat simulator — per-side fleet tabs. Pills, not styled divs, so they get
+   the global :focus-visible ring and keyboard activation for free. */
+.sim-fleet-tabs {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 9px 18px; border-bottom: 1px solid var(--color-divider);
+  background: color-mix(in srgb, var(--color-bg) 45%, transparent);
+}
+.sim-fleet-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; font-size: 11.5px; letter-spacing: 0.02em;
+  white-space: nowrap; cursor: pointer;
+  border: 1px solid var(--color-divider); background: transparent;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+.sim-fleet-tab:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.sim-fleet-tab.active.attacker {
+  border-color: #e0736b; color: #e0736b;
+  background: color-mix(in srgb, #e0736b 14%, transparent);
+}
+.sim-fleet-tab.active.defender {
+  border-color: var(--color-accent); color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+.sim-fleet-tab-x { font-size: 11px; opacity: 0.6; cursor: pointer; }
+.sim-fleet-tab-x:hover { opacity: 1; }
+.sim-fleet-add {
+  padding: 4px 10px; border-radius: 999px; font-size: 11.5px; cursor: pointer;
+  border: 1px solid var(--color-divider); background: transparent;
+  color: color-mix(in srgb, var(--color-text) 62%, transparent);
+}
+.sim-fleet-add:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+
 .intel-scan-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
 .intel-scan-actions .intel-share { margin-left: 0; padding: 4px 14px; }
 

@@ -4,7 +4,7 @@ import { setupDomStub } from './helpers.js';
 
 // simulator.js wires DOM listeners at import (run button, reset); stub first.
 setupDomStub();
-const { lossEntries, fleetRows, simPayload } = await import('../nexus-addon/tabs/simulator.js');
+const { lossEntries, fleetRows, simPayload, mergeSideFleets } = await import('../nexus-addon/tabs/simulator.js');
 
 // Trimmed from a real POST /api/combat-simulator/simulate response (s0,
 // 2026-08-30) — see docs/api/post/combat_simulator_simulate.md. The shapes that
@@ -88,4 +88,50 @@ test('an empty report is what made every ship look alive', () => {
   const rows = fleetRows({ 5: 1800, 16: 20 }, undefined, undefined);
   assert.deepEqual(rows.map(r => r.remain), [1800, 20],
     'sent - nothing lost — which is why the guard above must reject that payload');
+});
+
+// Several fleets per side is a UI affordance, not an API one: the game's
+// calculator takes `{ attacker, defender }` with a single bonuses block, one
+// type and one leadership flag per side. Fleets on a side therefore merge into
+// one coalition, and anything they disagree on cannot be sent.
+const fleet = (over = {}) => ({
+  type: 'player', pirateZone: '', quantities: {}, useOwnBonuses: false,
+  attachLeadership: false, bonuses: {}, ...over,
+});
+
+test('mergeSideFleets sums quantities across a side', () => {
+  const { fleet: merged, conflicts } = mergeSideFleets([
+    fleet({ quantities: { 5: 100, 9: 10 } }),
+    fleet({ quantities: { 5: 50, 13: 1 } }),
+  ]);
+  assert.deepEqual(conflicts, []);
+  assert.deepEqual(merged.sort((a, b) => a.shipDefId - b.shipDefId), [
+    { shipDefId: 5, quantity: 150 },
+    { shipDefId: 9, quantity: 10 },
+    { shipDefId: 13, quantity: 1 },
+  ]);
+});
+
+test('mergeSideFleets drops ships nobody brought', () => {
+  const { fleet: merged } = mergeSideFleets([fleet({ quantities: { 5: 0 } }), fleet()]);
+  assert.deepEqual(merged, []);
+});
+
+test('mergeSideFleets names settings the request cannot carry', () => {
+  const clash = (a, b) => mergeSideFleets([fleet(a), fleet(b)]).conflicts;
+  assert.deepEqual(clash({}, { type: 'pirate' }), ['ship type (player / NPC / pirate)']);
+  assert.deepEqual(clash({}, { attachLeadership: true }), ['the leadership toggle']);
+  assert.deepEqual(clash({ bonuses: { attackBonus: '10' } }, {}), ['manual bonuses']);
+  assert.deepEqual(
+    clash({ type: 'pirate', pirateZone: 'open' }, { type: 'pirate', pirateZone: 'sentinel' }),
+    ['pirate zone'],
+  );
+  // Same settings, different ships, is the normal case and must stay clean.
+  assert.deepEqual(clash({ quantities: { 5: 1 } }, { quantities: { 6: 2 } }), []);
+});
+
+test('mergeSideFleets handles a single fleet and an empty side', () => {
+  assert.deepEqual(mergeSideFleets([fleet({ quantities: { 5: 3 } }) ]).fleet,
+    [{ shipDefId: 5, quantity: 3 }]);
+  assert.deepEqual(mergeSideFleets([]), { conflicts: [], fleet: [] });
 });

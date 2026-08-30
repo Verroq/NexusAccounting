@@ -102,11 +102,162 @@ function sideType(side) {
   return document.getElementById(`${side}-type`)?.value || 'player';
 }
 
+// ── Fleet tabs ─────────────────────────────────────────────────────────────
+// Each side owns an ordered list of fleets and one active index. Only the
+// active fleet is on screen — one form that gets swapped, not N stacked ones —
+// so switching tabs captures the inputs into the outgoing fleet and repaints
+// them from the incoming one.
+
+let nextFleetId = 1;
+
+function newFleet() {
+  return {
+    id: nextFleetId++,
+    type: 'player',
+    pirateZone: '',
+    quantities: {},
+    useOwnBonuses: false,
+    attachLeadership: false,
+    bonuses: {},                 // raw input strings: '' means "not stated"
+    defenseLevels: {},
+    defenseBonuses: { buildingHpBonus: '', planetaryDefenseBonus: '' },
+  };
+}
+
+const SIDES = {
+  attacker: { fleets: [newFleet()], active: 0 },
+  defender: { fleets: [newFleet()], active: 0 },
+};
+
+// Every read clamps, so a removal can never leave a dangling index.
+function activeFleet(side) {
+  const s = SIDES[side];
+  s.active = Math.max(0, Math.min(s.active, s.fleets.length - 1));
+  return s.fleets[s.active];
+}
+
+function captureFleet(side) {
+  const f = activeFleet(side);
+  f.type = sideType(side);
+  f.pirateZone = document.getElementById(`${side}-zone`)?.value || '';
+  f.quantities = readQuantities(side);
+  f.useOwnBonuses = document.getElementById(`${side}-own-bonuses`).checked;
+  f.attachLeadership = document.getElementById(`${side}-leadership`).checked;
+  f.bonuses = {};
+  document.querySelectorAll(`input[data-bonus-side="${side}"]`).forEach(input => {
+    f.bonuses[input.dataset.bonus] = input.value;
+  });
+  if (side === 'defender') {
+    f.defenseLevels = {};
+    document.querySelectorAll('input[data-def-key]').forEach(input => {
+      f.defenseLevels[input.dataset.defKey] = input.value;
+    });
+    f.defenseBonuses = {
+      buildingHpBonus: document.getElementById('def-building-hp-bonus').value,
+      planetaryDefenseBonus: document.getElementById('def-planetary-bonus').value,
+    };
+  }
+  return f;
+}
+
+function restoreFleet(side) {
+  const f = activeFleet(side);
+  const typeSel = document.getElementById(`${side}-type`);
+  if (typeSel) typeSel.value = f.type;
+  const zoneSel = document.getElementById(`${side}-zone`);
+  if (zoneSel && f.pirateZone) zoneSel.value = f.pirateZone;
+  document.getElementById(`${side}-own-bonuses`).checked = f.useOwnBonuses;
+  document.getElementById(`${side}-leadership`).checked = f.attachLeadership;
+  buildFleetInputs(side, f.quantities);
+  document.querySelectorAll(`input[data-bonus-side="${side}"]`).forEach(input => {
+    input.value = f.bonuses[input.dataset.bonus] ?? '';
+  });
+  if (side === 'defender') {
+    document.querySelectorAll('input[data-def-key]').forEach(input => {
+      input.value = f.defenseLevels[input.dataset.defKey] ?? 0;
+    });
+    document.getElementById('def-building-hp-bonus').value = f.defenseBonuses.buildingHpBonus ?? '';
+    document.getElementById('def-planetary-bonus').value = f.defenseBonuses.planetaryDefenseBonus ?? '';
+  }
+  applySideVisibility(side);
+  renderFleetTabs(side);
+}
+
+function selectFleet(side, index) {
+  captureFleet(side);
+  SIDES[side].active = index;
+  restoreFleet(side);
+}
+
+function addFleet(side) {
+  captureFleet(side);
+  SIDES[side].fleets.push(newFleet());
+  SIDES[side].active = SIDES[side].fleets.length - 1;
+  restoreFleet(side);
+}
+
+function removeFleet(side, index) {
+  const s = SIDES[side];
+  if (s.fleets.length < 2) return;      // a side never reaches zero fleets
+  const wasActive = index === s.active;
+  if (!wasActive) captureFleet(side);   // the on-screen fleet is not the one going
+  s.fleets.splice(index, 1);
+  if (index <= s.active) s.active = Math.max(0, s.active - 1);
+  restoreFleet(side);
+}
+
+const SIDE_LABEL = { attacker: 'Attacker', defender: 'Defender' };
+
+function renderFleetTabs(side) {
+  const strip = document.getElementById(`${side}-fleet-tabs`);
+  if (!strip) return;
+  strip.textContent = '';
+  const { fleets, active } = SIDES[side];
+
+  fleets.forEach((f, i) => {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = `sim-fleet-tab ${side}${i === active ? ' active' : ''}`;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', String(i === active));
+    tab.append(document.createTextNode(`${SIDE_LABEL[side]} ${i + 1}`));
+    tab.onclick = () => selectFleet(side, i);
+
+    // Hidden on the last remaining fleet, so a side can never reach zero.
+    if (fleets.length > 1) {
+      const x = document.createElement('span');
+      x.className = 'sim-fleet-tab-x';
+      x.textContent = '✕';
+      x.setAttribute('role', 'button');
+      x.setAttribute('aria-label', `Remove ${SIDE_LABEL[side]} ${i + 1}`);
+      x.onclick = (e) => {
+        e.stopPropagation();        // removing must not also select
+        removeFleet(side, i);
+      };
+      tab.append(x);
+    }
+    strip.append(tab);
+  });
+
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'sim-fleet-add';
+  add.textContent = `+ Add ${side}`;
+  add.onclick = () => addFleet(side);
+  strip.append(add);
+
+  const title = document.getElementById(side === 'attacker' ? 'atk-fleet-name' : 'def-fleet-name');
+  if (title) title.textContent = `${SIDE_LABEL[side]} ${active + 1} Fleet`;
+}
+
 // ── Inputs ─────────────────────────────────────────────────────────────────
 
-function buildFleetInputs(side) {
+function buildFleetInputs(side, quantities) {
   const tbody = document.getElementById(`${side}-ships`);
-  const previous = readQuantities(side);
+  // Keep what was typed when the side's type changes and the same ship exists
+  // in the new pool — retyping a fleet to compare it against pirates is the
+  // most common reason to flip that select.
+  const previous = quantities || readQuantities(side);
   tbody.textContent = '';
   for (const def of shipsForSide(side)) {
     const tr = document.createElement('tr');
@@ -128,9 +279,6 @@ function buildFleetInputs(side) {
     const input = document.createElement('input');
     input.type = 'number';
     input.min = 0;
-    // Keep what was typed when the side's type changes and the same ship exists
-    // in the new pool — retyping a fleet to compare it against pirates is the
-    // most common reason to flip that select.
     input.value = previous[def.id] || 0;
     input.dataset.side = side;
     input.dataset.shipId = def.id;
@@ -241,17 +389,49 @@ function readDefenseLevels() {
   return out;
 }
 
+// The game's simulator is 1-versus-1: `{ attacker, defender }`, one `bonuses`
+// object, one type and one leadership flag per side. Several fleets on a side
+// therefore go as one coalition — quantities summed — and any setting they
+// disagree on is a conflict the request cannot carry.
+export function mergeSideFleets(fleets) {
+  const list = fleets || [];
+  const conflicts = [];
+  const first = list[0] || {};
+  const same = (get, label) => {
+    if (list.some(f => JSON.stringify(get(f)) !== JSON.stringify(get(first)))) conflicts.push(label);
+  };
+  same(f => f.type, 'ship type (player / NPC / pirate)');
+  same(f => f.useOwnBonuses, 'the "use my own research" toggle');
+  same(f => f.attachLeadership, 'the leadership toggle');
+  same(f => f.bonuses, 'manual bonuses');
+  if (first.type === 'pirate') same(f => f.pirateZone, 'pirate zone');
+
+  const totals = {};
+  for (const f of list) {
+    for (const [id, qty] of Object.entries(f.quantities || {})) {
+      totals[id] = (totals[id] || 0) + (Number(qty) || 0);
+    }
+  }
+  return {
+    conflicts,
+    fleet: Object.entries(totals)
+      .filter(([, quantity]) => quantity > 0)
+      .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity })),
+  };
+}
+
 // One side of the request, shaped exactly as the game's own simulator sends it.
 function buildSide(side) {
+  captureFleet(side);                       // fold the on-screen inputs back in
+  const { fleet, conflicts } = mergeSideFleets(SIDES[side].fleets);
   const type = sideType(side);
-  const fleet = Object.entries(readQuantities(side))
-    .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }));
   const useOwnBonuses = type === 'player' && document.getElementById(`${side}-own-bonuses`).checked;
   const attachLeadership = type === 'player' && document.getElementById(`${side}-leadership`).checked;
   const levels = side === 'defender' && type === 'player' ? readDefenseLevels() : {};
   const pct = id => (Number(document.getElementById(id)?.value) || 0) / 100;
 
   return {
+    conflicts,
     type,
     fleet,
     bonuses: type === 'player' && !useOwnBonuses ? readBonuses(side) : undefined,
@@ -683,6 +863,7 @@ async function doInitSimulatorTab() {
     applySideVisibility(side);
   }
   buildDefenseInputs();
+  for (const side of ['attacker', 'defender']) renderFleetTabs(side);
 
   const classSel = document.getElementById('fleet-class');
   for (const c of shipClasses()) {
@@ -704,6 +885,19 @@ document.getElementById('btn-run').addEventListener('click', async function () {
 
   const attacker = buildSide('attacker');
   const defender = buildSide('defender');
+  const clash = [
+    ...attacker.conflicts.map(c => `attacker fleets disagree on ${c}`),
+    ...defender.conflicts.map(c => `defender fleets disagree on ${c}`),
+  ];
+  if (clash.length) {
+    // The game's calculator takes one settings block per side, so this cannot
+    // be sent as-is. Better to say so than to quietly use fleet 1's settings.
+    status.textContent = `${clash.join('; ')}. Several fleets on one side fight as a coalition, ` +
+      'so they must share those settings.';
+    return;
+  }
+  delete attacker.conflicts;
+  delete defender.conflicts;
   if (!attacker.fleet.length) { status.textContent = 'Attacker needs at least one ship.'; return; }
   if (!defender.fleet.length && !defender.planetaryDefense) {
     status.textContent = 'Defender needs ships, or a planetary defence level.';
@@ -737,6 +931,7 @@ document.getElementById('btn-run').addEventListener('click', async function () {
 });
 
 document.getElementById('btn-clear').addEventListener('click', () => {
+  for (const side of ['attacker', 'defender']) activeFleet(side).quantities = {};
   document.querySelectorAll('.fleet-table input').forEach(i => { i.value = 0; });
   document.querySelectorAll('.survivors').forEach(s => { s.textContent = ''; });
   document.getElementById('results').style.display = 'none';
