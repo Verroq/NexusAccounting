@@ -1,6 +1,6 @@
 # Privacy Policy — Nexus Accounting
 
-**Last updated: 2026-06-22**
+**Last updated: 2026-08-31**
 
 Nexus Accounting is a browser extension that reads your Nexus Legacy game data and displays it locally as a personal accounting dashboard. This policy describes exactly what data the extension accesses, how it is used, and where it goes.
 
@@ -47,7 +47,11 @@ The extension also writes automatic backup files to your `Downloads/NexusAccount
 
 ## 4. Data sharing and third parties
 
-**No data is shared with any third party.** All network communication is exclusively between your browser and `nexuslegacy.space` (the game's own servers). The extension does not contact any analytics service, telemetry endpoint, or server operated by the extension author.
+**No data is shared with any third party without your action.** The extension does not contact any analytics service, telemetry endpoint, or server operated by the extension author. Its automatic traffic — every scrape, every dashboard figure — is exclusively between your browser and `nexuslegacy.space` (the game's own servers).
+
+There is one exception, and it only runs when you ask for it: **Shared Intel**. If you configure a Discord webhook and press *Share*, the spy reports you selected are posted to that channel, and *Sync* reads back what your alliance posted there. The webhook URL is yours, the channel is yours, and nothing is sent to Discord unless you press one of those buttons. That URL is stored locally, and it is deliberately excluded from every backup and export file, because it is a credential.
+
+This policy covers the extension. The project website (these pages) loads a Buy Me a Coffee widget from `buymeacoffee.com`, which is a third party with its own privacy policy; it is not part of the extension and never sees your game data.
 
 ---
 
