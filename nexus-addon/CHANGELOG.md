@@ -4,6 +4,105 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- **Shared Intel**: a new tab pooling spy reports with your alliance through a
+  private Discord channel. The channel's membership is the access control —
+  there is no bot account and no bot token, only a channel webhook URL plus the
+  id of one index message the alliance keeps (Discord gives a webhook no way to
+  list what it has posted, so that message holds the ids of every intel post,
+  capped at the 90 most recent). Reports are grouped by target, newest scan
+  first, with loot, fleet, defences and buildings per scan, a per-report Share
+  button and an "from allies only" filter.
+- **Discord Setup tab**: webhook URL, index message id, Share and Create index
+  message, with the setup steps and what Share/Sync actually do. Sync lives on
+  the Shared Intel tab, beside the reports it pulls in.
+- **FAQ tab**: where the numbers come from, the 15-minute scrape, what the
+  universe selector does and does not steer, what backups contain, the records
+  cap, when to press Rebuild stats, why Firefox re-asks for discord.com.
+- **Combat Simulator now runs on the game's own calculator**. The local engine
+  is gone (see Removed); the tab calls
+  `GET /api/combat-simulator/bootstrap` for ship lists, your research profile,
+  pirate zones and planetary-defence keys, and
+  `POST /api/combat-simulator/simulate` for the battle. Ship rows carry real
+  combat stats, and results are the server's own report: outcome, per-round
+  damage, kills and HP, losses split into destroyed vs damaged, explicit
+  survivors, debris including rares, and the leadership vessel's fate.
+- **Multiple fleets per side in the simulator**, behind a pill tab strip on each
+  panel. Fleets on a side fight as one coalition — the game's calculator is
+  strictly one side versus one side, so quantities are summed and any setting
+  the fleets disagree on (type, own-research toggle, leadership, manual bonuses,
+  pirate zone) is reported by name instead of being silently taken from the
+  first fleet.
+- **Simulate Battle button on every spy report**, opening the simulator with
+  that scan loaded as the defender: ships, planetary defence levels, target
+  system and distance.
+- **"Mine until full" for asteroid mining**: `/api/fleet/mine` takes an optional
+  flag to keep mining past the usual 10 cycles until the hold is full or the
+  field is depleted. Offered as a checkbox on the fleet confirmation dialog of
+  both the dashboard and the in-game overlay, remembered between missions
+  (separately per surface).
+
+### Fixed
+- **Travel-time estimates were wildly wrong** because `fuelEstimate()` never
+  sent a `missionType` in its POST body. Confirmed live on the same route and
+  ships: without it the server answers 898s, with it 170s — any value works,
+  the server just switches to a different formula once the field is present at
+  all. `fuelCost` was never affected, which is why this only ever looked like a
+  clock bug.
+- **Estimates that did not match the fleet actually sent**: Scouting's
+  Investigate estimated from the template's uncapped ship list while the send
+  capped every type to the source planet's stock, and debris/salvage collection
+  did the same with its hauler plan. Since fleet speed follows the slowest ship,
+  a template short on one type produced a consistently wrong time. The capping
+  now happens in one shared place used by both the estimate and the send.
+- **Shared intel could leak across alliances or universes.** The payload guards
+  were of the form "if the field is present and differs", so a payload that
+  simply omitted the alliance tag passed unchecked. A missing tag is now a
+  mismatch. A missing universe stamp is not: builds before that field was wired
+  to the session token post `universe_key: null` on every share, and the
+  alliance tag already pins the universe.
+- **Sync silently dropped most of an alliance's intel.** Discord rate-limits
+  webhook reads and a full index is 90+ sequential requests, but a 429 was
+  treated exactly like a deleted message — while the run still reported
+  success. 429s are retried honouring `retry-after`, and a partial or refused
+  sync now reports how many payloads it skipped and why.
+- **The Discord webhook URL shipped in every backup.** It is a write credential
+  for the alliance channel; it is now stripped from both the manual export and
+  the automatic Downloads backup.
+- **Sharing the same report twice.** A report already posted, or one a Sync
+  pulled in from an ally, is no longer re-posted — the mark rides on the report
+  itself, so it survives an export/import.
+- **Simulator results showed every ship on both sides alive**: the POST
+  transport wraps a success as `{ok, data}`, so the report was being read off
+  the envelope. A reply carrying no report is now refused rather than drawn as a
+  battle where nothing died.
+- Fleet Templates ship rows now match the Combat Simulator's styling, and the
+  native number-input spinner is suppressed there — Chrome rendered it wider
+  than the input, overflowing the box.
+
+### Changed
+- Failure paths in the Discord flows use the in-page dialog instead of
+  `alert()`. Firefox lets a user permanently suppress native dialogs, which made
+  those failures completely silent.
+- `gamePost()`'s "no ships selected" guard applies only to bodies that carry a
+  fleet, so non-fleet POSTs can use the same routing.
+
+### Removed
+- **`engine.js` and its test suite.** The game shipped its own combat
+  simulator, so a second engine here could only drift from the server's balance
+  patches. Gone with it: simulation count, damage variance, max rounds,
+  shield-regen, the debris-rate slider, the research-level grids and "fill my
+  levels" (the server applies your real research now), and the loss-cost and
+  fuel panels that depended on the local stat table.
+
+### Docs
+- `docs/api` regenerated from a live read-only sweep of s0: 43 endpoint docs
+  rebuilt from real captured responses, each with a Live Verification section,
+  52 new endpoint docs from mapping the game client bundle, and the docs split
+  into `get/` and `post/` folders.
+
 ## [2.0.0] - 2026-08-20
 
 ### A little word
