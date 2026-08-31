@@ -320,6 +320,14 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SHARE_SPY_INTEL') return shareSpyIntel(msg.reportIds);
   if (msg.type === 'SYNC_SPY_INTEL') return syncSpyIntel();
   if (msg.type === 'CREATE_INTEL_INDEX') return createIntelIndex();
+  // The game grew its own combat simulator; ours calls it rather than keeping a
+  // second engine in step with the server's balance patches. Bootstrap is a
+  // plain GET (ship defs, own research/leadership profile, pirate zones,
+  // planetary-defense keys); simulate is a POST, so it goes through a game tab
+  // like every other POST — a Bearer POST straight from the extension trips an
+  // Origin 500 server-side.
+  if (msg.type === 'SIM_BOOTSTRAP') return apiGet('/api/combat-simulator/bootstrap');
+  if (msg.type === 'SIM_RUN') return simulateCombat(msg.attacker, msg.defender);
   if (msg.type === 'GET_PLAYER_RANK') return getPlayerRanks(msg.name);
   if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
@@ -864,6 +872,53 @@ async function syncSpyIntel() {
   return { ok: true, added, total: merged.length, failed, rejected, rejectNote };
 }
 
+// ── Combat simulator ────────────────────────────────────────────────────────
+// Thin proxy over the game's own simulator (POST /api/combat-simulator/simulate,
+// with GET /api/combat-simulator/bootstrap for the ship/defence/profile lists).
+// One side looks like:
+//   { type: 'player'|'npc'|'pirate', fleet: [{ shipDefId, quantity }],
+//     useOwnBonuses, attachLeadership,
+//     bonuses?, pirateZone?, hangarAssignments?,          // per type
+//     scoutPriorityTarget? (attacker) | scoutPriorityList? (defender),
+//     planetaryDefense?: { levels, buildingHpBonus, planetaryDefenseBonus } }
+// The answer carries `report` (rounds, outcome, per-side losses, debris,
+// shieldAbsorbedDamage), plus `exact` and/or `summary.outcomes` depending on
+// whether the server ran one battle or a distribution.
+//
+// The server refuses with a `code` rather than a message, and each one needs a
+// different response from the user, so they are translated here instead of
+// surfacing a bare 4xx.
+const SIM_ERRORS = {
+  CALCULATOR_UNAVAILABLE: 'The game\'s combat calculator is offline right now — try again later.',
+  CALCULATOR_BUSY: 'The game\'s combat calculator is busy — try again in a moment.',
+  SIMULATION_REJECTED: 'The game rejected this simulation — check the fleets and bonuses.',
+};
+
+async function simulateCombat(attacker, defender) {
+  if (!attacker || !defender) return { error: 'Both sides are required.' };
+  const hasFleet = side => (side.fleet || []).some(s => s && s.quantity > 0);
+  // The game applies the same rule: a defender may bring planetary defence
+  // instead of ships, but an attacker with nothing is not a battle.
+  if (!hasFleet(attacker)) return { error: 'Add at least one attacking ship.' };
+  if (!hasFleet(defender) && !defender.planetaryDefense) {
+    return { error: 'Add at least one defending ship, or some planetary defence.' };
+  }
+
+  const res = await gamePost('/api/combat-simulator/simulate', { attacker, defender });
+  if (res && res.error) {
+    // gamePost surfaces the body text on a non-2xx; pull the game's own code out
+    // of it when it is there.
+    const code = Object.keys(SIM_ERRORS).find(c => String(res.error).includes(c));
+    return { error: code ? SIM_ERRORS[code] : res.error };
+  }
+  // gamePost wraps a success as { ok: true, data } — the simulation itself is
+  // `data`. Every other caller only ever checks `error`, so the wrapper went
+  // unnoticed until a caller actually needed the body.
+  const sim = res && res.ok && res.data ? res.data : res;
+  if (!sim || !sim.report) return { error: 'The game answered, but with no combat report.' };
+  return sim;
+}
+
 // Look up a player's per-category leaderboard ranks by exact name (finder
 // rank columns). `category=` re-ranks the board; `rank` then holds that
 // category's rank. One request per category.
@@ -1342,7 +1397,7 @@ async function fuelEstimateGate() {
 // identical to the game's own call. A Bearer request straight from the
 // extension is rejected by the server (500).
 async function gamePost(path, body) {
-  if (!(body.ships || []).length) return { error: 'No ships selected.' };
+  if ('ships' in body && !(body.ships || []).length) return { error: 'No ships selected.' };
   if (path === '/api/fleet/fuel-estimate') await fuelEstimateGate();
   const { token, universeKey } = await getToken() || {};
   if (universeKey) currentUniverse = universeKey;   // getToken() may return null (no session)

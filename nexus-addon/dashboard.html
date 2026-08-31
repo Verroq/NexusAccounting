@@ -1136,28 +1136,10 @@
   <div id="simulator-content" style="display:none;">
     <div class="nx-screen-head">
       <h1>Combat Simulator</h1>
-      <p>Battle outcome projection · Monte-Carlo over recorded ship stats</p>
+      <p>Run by the game's own combat calculator — same maths as a real battle</p>
     </div>
 
     <div class="finder-controls">
-      <label>Simulations
-        <input id="opt-sims" type="number" value="100" min="1" max="10000" />
-      </label>
-      <label>Max rounds
-        <input id="opt-rounds" type="number" value="15" min="1" max="20" />
-      </label>
-      <label>Damage variance ±%
-        <input id="opt-variance" type="number" value="10" min="0" max="50" />
-      </label>
-      <label>Debris rate %
-        <input id="opt-debris" type="number" value="30" min="0" max="100" />
-      </label>
-      <label style="flex-direction:row; gap:5px;">
-        <input id="opt-shield-regen" type="checkbox" />Shields regenerate each round
-      </label>
-      <label style="flex-direction:row; gap:5px;">
-        <input id="opt-roundtrip" type="checkbox" checked />Round trip (×2 fuel)
-      </label>
       <button id="btn-run">⌖ Simulate Battle</button>
       <button id="btn-clear">↺ Reset</button>
       <span id="sim-status" style="margin-left:auto; color:var(--color-muted); font-size:0.8rem;"></span>
@@ -1169,98 +1151,106 @@
           <div class="sim-panel-icon">⚡</div>
           <div class="sim-panel-headtext">
             <div class="sim-panel-side">Attacker</div>
-            <div id="atk-fleet-name" class="sim-panel-name">Attacker Fleet</div>
+            <div id="atk-fleet-name" class="sim-panel-name">Attacker 1 Fleet</div>
           </div>
         </div>
+        <div class="sim-fleet-tabs" id="attacker-fleet-tabs" role="tablist"
+             aria-label="Attacker fleets"></div>
         <div class="sim-panel-body">
           <div class="load-fleet-bar">
+            <select id="attacker-type" title="Whose ships these are. NPC and pirate fleets use the game's own stat lines.">
+              <option value="player">Player</option>
+              <option value="npc">NPC</option>
+              <option value="pirate">Pirate</option>
+            </select>
+            <span id="attacker-zone-wrap" style="display:none;">
+              <select id="attacker-zone" title="Pirate zone — sets the pirate stat scaling"></select>
+            </span>
             <select id="fleet-planet" title="Planet to import ships from">
               <option value="home">Home planet</option>
             </select>
-            <select id="fleet-class" title="Filter by ship type">
-              <option value="">All types</option>
-              <option value="combat">Combat</option>
-              <option value="special">Special</option>
-              <option value="recon">Recon</option>
-              <option value="utility">Utility</option>
+            <select id="fleet-class" title="Filter by ship class">
+              <option value="">All classes</option>
             </select>
             <button id="btn-load-fleet">Load my fleet</button>
           </div>
-          <div class="coord-bar">
-            <span class="coord-label">Origin system</span>
-            <input id="atk-system" type="text" placeholder="e.g. A12-27" style="width:100px;" />
+          <div class="load-fleet-bar">
+            <label style="flex-direction:row; gap:5px;">System
+              <input id="atk-system" type="text" placeholder="e.g. A12-27" style="width:100px;" />
+            </label>
           </div>
-          <details class="tech-panel">
-            <summary>Research levels</summary>
-            <div class="load-fleet-bar" style="margin-top:8px;">
-              <button id="btn-fill-tech-attacker">Fill my levels</button>
-            </div>
-            <div class="tech-grid" id="attacker-techs"></div>
-          </details>
-          <div class="sim-ships-label">Combat Ships</div>
+          <div id="attacker-player-opts" class="tech-panel">
+            <label style="flex-direction:row; gap:5px;">
+              <input id="attacker-own-bonuses" type="checkbox" /> Use my own research and bonuses
+            </label>
+            <label style="flex-direction:row; gap:5px;">
+              <input id="attacker-leadership" type="checkbox" /> Attach my leadership
+            </label>
+            <div class="tech-grid" id="attacker-bonuses"></div>
+          </div>
           <table class="fleet-table"><tbody id="attacker-ships"></tbody></table>
         </div>
       </div>
+
       <div class="sim-panel sim-panel-defender">
         <div class="sim-panel-head">
           <div class="sim-panel-icon">⛨</div>
           <div class="sim-panel-headtext">
             <div class="sim-panel-side">Defender</div>
-            <div id="def-fleet-name" class="sim-panel-name">Defender Fleet</div>
+            <div id="def-fleet-name" class="sim-panel-name">Defender 1 Fleet</div>
           </div>
         </div>
+        <div class="sim-fleet-tabs" id="defender-fleet-tabs" role="tablist"
+             aria-label="Defender fleets"></div>
         <div class="sim-panel-body">
           <div class="load-fleet-bar">
-            <select id="report-select" style="flex:1;">
-              <option value="">Fill from intel report…</option>
+            <select id="defender-type" title="Whose ships these are. NPC and pirate fleets use the game's own stat lines.">
+              <option value="player">Player</option>
+              <option value="npc">NPC</option>
+              <option value="pirate">Pirate</option>
+            </select>
+            <span id="defender-zone-wrap" style="display:none;">
+              <select id="defender-zone" title="Pirate zone — sets the pirate stat scaling"></select>
+            </span>
+            <select id="report-select" style="flex:1;" title="Fill the defender from a spy or camp scout report">
+              <option value="">From intel report…</option>
             </select>
           </div>
-          <div class="coord-bar">
-            <span class="coord-label">Target system</span>
-            <input id="def-system" type="text" placeholder="e.g. G35-41" style="width:100px;" />
+          <div class="load-fleet-bar">
+            <label style="flex-direction:row; gap:5px;">System
+              <input id="def-system" type="text" placeholder="e.g. G35-41" style="width:100px;" />
+            </label>
             <span id="distance-display" class="coord-distance"></span>
           </div>
-          <details class="tech-panel">
-            <summary>Research levels</summary>
-            <div class="load-fleet-bar" style="margin-top:8px;">
-              <button id="btn-fill-tech-defender">Fill my levels</button>
+          <div id="defender-player-opts" class="tech-panel">
+            <label style="flex-direction:row; gap:5px;">
+              <input id="defender-own-bonuses" type="checkbox" /> Use my own research and bonuses
+            </label>
+            <label style="flex-direction:row; gap:5px;">
+              <input id="defender-leadership" type="checkbox" /> Attach my leadership
+            </label>
+            <div class="tech-grid" id="defender-bonuses"></div>
+          </div>
+          <div id="defender-defense-box" class="tech-panel">
+            <div class="section-label">Planetary defence</div>
+            <div class="tech-grid" id="defender-defense"></div>
+            <div class="tech-grid">
+              <label>Building HP bonus %
+                <input id="def-building-hp-bonus" type="number" class="tech-input" step="0.1" placeholder="0" />
+              </label>
+              <label>Planetary defence bonus %
+                <input id="def-planetary-bonus" type="number" class="tech-input" step="0.1" placeholder="0" />
+              </label>
             </div>
-            <div class="tech-grid" id="defender-techs"></div>
-          </details>
-          <label class="sim-marauder" title="Marauder-tier pirates have a hidden ×1.15 HP and shield multiplier (calibrated on battle #481281).">
-            <input type="checkbox" id="def-marauder" />
-            Marauder-tier pirates (×1.15 HP)
-          </label>
-          <div class="tech-panel">
-            <span class="tech-label" title="Missile Defense level (1–15). Missile weapon, heavy armor. RF: probe ×5, spy probe ×5, scout ×4, fighter ×3, interceptor ×2, assault shuttle ×2.">Missile Def</span>
-            <input type="number" id="def-missile" class="tech-input" min="0" max="15" value="0" />
-            <span class="tech-label" title="Laser Defense level (1–15). Laser weapon, heavy armor. No rapid fire.">Laser Def</span>
-            <input type="number" id="def-laser" class="tech-input" min="0" max="15" value="0" />
-            <span class="tech-label" title="Railgun Defense level (1–15). Kinetic weapon, heavy armor. RF: cruiser ×4, missile cruiser ×2, bomber ×2.">Railgun Def</span>
-            <input type="number" id="def-railgun" class="tech-input" min="0" max="15" value="0" />
-            <span class="tech-label" title="Plasma Defense level (1–15). Plasma weapon, heavy armor. RF: battleship ×2, carrier ×2, dreadnought ×2, titan ×2.">Plasma Def</span>
-            <input type="number" id="def-plasma" class="tech-input" min="0" max="15" value="0" />
-            <span class="tech-label" title="Ion Defense level (1–15). Ion weapon, heavy armor. Strong vs shielded ships (×2.0). No rapid fire.">Ion Def</span>
-            <input type="number" id="def-ion" class="tech-input" min="0" max="15" value="0" />
-            <span class="tech-label" title="Electronic Warfare level (1–10). No attack. Reduces attacker damage by 3% per level (max 30%). Bombers get ×3 RF against it.">EW</span>
-            <input type="number" id="def-ew" class="tech-input" min="0" max="10" value="0" />
-            <span class="tech-label" title="Shield Generator level (1–15). Generates a protective energy shield around the planet. Never fully disabled — always provides minimum protection. Effect not yet modeled.">Shield Gen</span>
-            <input type="number" id="def-shield" class="tech-input" min="0" max="15" value="0" />
           </div>
           <div id="target-intel" style="display:none;" class="tech-panel"></div>
-          <div class="sim-ships-label">Combat Ships</div>
           <table class="fleet-table"><tbody id="defender-ships"></tbody></table>
         </div>
       </div>
     </div>
 
     <div id="results" style="display:none;">
-      <div class="sim-result-heading">
-        <div class="sim-result-title">Simulation Result</div>
-        <div class="sim-result-rule"></div>
-      </div>
-
-      <div class="section-label">Outcome (across all simulations)</div>
+      <div class="section-label">Outcome</div>
       <div class="stats" id="outcome-stats"></div>
 
       <div class="sim-fleet-results" id="fleet-results"></div>
@@ -1272,14 +1262,12 @@
 
       <div class="sim-losses">
         <div>
-          <h3 class="sim-losses-heading">Attacker Losses</h3>
+          <div class="section-label">Attacker losses</div>
           <div class="sim-loss-rows" id="attacker-losses"></div>
-          <div class="stats" id="attacker-cost" style="margin-top:10px;"></div>
         </div>
         <div>
-          <h3 class="sim-losses-heading">Defender Losses</h3>
+          <div class="section-label">Defender losses</div>
           <div class="sim-loss-rows" id="defender-losses"></div>
-          <div class="stats" id="defender-cost" style="margin-top:10px;"></div>
         </div>
       </div>
 
@@ -1287,11 +1275,7 @@
         <div class="sim-debris-title">☄ Debris Field</div>
         <div class="sim-debris-row" id="debris-stats"></div>
       </div>
-
-      <div class="section-label">Fuel for the attacking fleet</div>
-      <div class="stats" id="fuel-stats"></div>
     </div>
-
   </div>
 
   <div id="discordsetup-content" style="display:none;">

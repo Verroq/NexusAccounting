@@ -1,7 +1,6 @@
 // Combat simulator: fleet import and intel auto-fill (spy + camp scout reports).
 
-import { shipDefs } from '../engine.js';
-import { fmt, updateFleetStats } from './simulator.js';   // circular: both are functions, only called from handlers
+import { fmt, shipIdByKey, shipDefById } from './simulator.js';   // circular: both are functions, only called from handlers
 
 // ── System coordinates & distance ──────────────────────────────────────────
 
@@ -83,11 +82,18 @@ document.getElementById('btn-load-fleet').addEventListener('click', async functi
       status.textContent = `Load fleet failed: ${res.error}`;
       return;
     }
+    // GET_FLEET answers keyed by ship key; the simulator's inputs are keyed by
+    // the game's shipDefId, so translate through the bootstrap ship list.
+    const byId = {};
+    for (const [key, qty] of Object.entries(res.fleet || {})) {
+      const id = shipIdByKey(key);
+      if (id != null) byId[id] = (byId[id] || 0) + (qty || 0);
+    }
     let total = 0;
-    document.querySelectorAll('input[data-side="attacker"][data-key]').forEach(input => {
-      const key = input.dataset.key;
-      if (classFilter && shipDefs[key]?.shipClass !== classFilter) return;
-      const qty = res.fleet[key] || 0;
+    document.querySelectorAll('input[data-side="attacker"][data-ship-id]').forEach(input => {
+      // shipClass comes from the simulator bootstrap, same source as the rows.
+      if (classFilter && shipDefById(input.dataset.shipId)?.shipClass !== classFilter) return;
+      const qty = byId[input.dataset.shipId] || 0;
       input.value = qty;
       total += qty;
     });
@@ -95,7 +101,7 @@ document.getElementById('btn-load-fleet').addEventListener('click', async functi
     const planetLabel = selOpt?.textContent || '';
     const typeLabel = classFilter
       ? document.getElementById('fleet-class').selectedOptions[0]?.textContent
-      : 'all types';
+      : 'all classes';
     status.textContent = `Loaded ${total} ships (${typeLabel}) from ${planetLabel}.`;
     if (selOpt?.dataset.systemName) {
       document.getElementById('atk-system').value = selOpt.dataset.systemName;
@@ -105,30 +111,6 @@ document.getElementById('btn-load-fleet').addEventListener('click', async functi
     this.disabled = false;
   }
 });
-
-// ── Fill tech levels from stored research ──────────────────────────────────
-
-async function fillTechLevels(side) {
-  const status = document.getElementById('sim-status');
-  const { research } = await browser.storage.local.get('research');
-  if (!research?.length) {
-    status.textContent = 'No research data — open the game and click Scrape Now first.';
-    return;
-  }
-  const levels = {};
-  for (const t of research) levels[t.key] = t.level || 0;
-  let filled = 0;
-  document.querySelectorAll(`input[data-tech-side="${side}"]`).forEach(input => {
-    const lvl = levels[input.dataset.tech] || 0;
-    input.value = lvl;
-    if (lvl > 0) filled++;
-  });
-  updateFleetStats(side);
-  status.textContent = `Filled ${filled} research levels into ${side} tech.`;
-}
-
-document.getElementById('btn-fill-tech-attacker').addEventListener('click', () => fillTechLevels('attacker'));
-document.getElementById('btn-fill-tech-defender').addEventListener('click', () => fillTechLevels('defender'));
 
 // ── Intel reports (spy + camp scout) → defender auto-fill ──────────────────
 
@@ -191,24 +173,30 @@ async function loadIntelReports() {
   }
 }
 
-document.getElementById('report-select').addEventListener('change', async function () {
-  const r = intelReports.find(x => x.id === this.value);
-  if (!r) return;
+// Fill the defender side from one intel report. Exported so the Shared Intel
+// tab's "Simulate Battle" button can drive it directly instead of faking a
+// change event on the picker.
+async function applyIntelReport(reportId) {
+  const r = intelReports.find(x => x.id === reportId);
+  if (!r) return false;
 
-  document.querySelectorAll('input[data-side="defender"][data-key]').forEach(input => {
-    const item = r.fleet.find(f => f.key === input.dataset.key);
-    input.value = item ? item.quantity : 0;
+  const byId = {};
+  for (const f of (r.fleet || [])) {
+    const id = shipIdByKey(f.key);
+    if (id != null) byId[id] = (byId[id] || 0) + (f.quantity || 0);
+  }
+  document.querySelectorAll('input[data-side="defender"][data-ship-id]').forEach(input => {
+    input.value = byId[input.dataset.shipId] || 0;
   });
 
+  // The defence inputs are built from the server's own key list, so match on
+  // that key rather than a fixed set of element ids.
   const defLevels = classifyDefenses(r.buildings);
-  document.getElementById('def-missile').value = defLevels.missile_defense;
-  document.getElementById('def-laser').value   = defLevels.laser_defense;
-  document.getElementById('def-railgun').value = defLevels.railgun_defense;
-  document.getElementById('def-plasma').value  = defLevels.plasma_defense;
-  document.getElementById('def-ion').value     = defLevels.ion_defense;
-  document.getElementById('def-ew').value      = defLevels.ew_system;
+  document.querySelectorAll('input[data-def-key]').forEach(input => {
+    input.value = defLevels[input.dataset.defKey] || 0;
+  });
 
-  renderTargetIntel(r);
+  await renderTargetIntel(r);
   const total = r.fleet.reduce((s, f) => s + f.quantity, 0);
   const defSummary = Object.entries(defLevels).filter(([,v]) => v > 0).map(([k,v]) => `${k.replace(/_/g,' ')} ${v}`).join(', ') || 'no defenses';
   document.getElementById('sim-status').textContent =
@@ -222,11 +210,16 @@ document.getElementById('report-select').addEventListener('change', async functi
     else { delete defInput.dataset.x; delete defInput.dataset.y; }
     updateDistanceFromCoords();
   }
+  return true;
+}
+
+document.getElementById('report-select').addEventListener('change', function () {
+  applyIntelReport(this.value);
 });
 
 const LOOT_FACTOR = 0.5; // assumed share of resources lootable in a raid
 
-function renderTargetIntel(r) {
+async function renderTargetIntel(r) {
   const panel = document.getElementById('target-intel');
   panel.textContent = '';
   if (!r.resources || !Object.keys(r.resources).length) {
@@ -260,8 +253,11 @@ function renderTargetIntel(r) {
   if (numericTotal > 0) {
     const loot = numericTotal * LOOT_FACTOR;
     const options = [];
+    // Cargo capacities come from the scraped ship defs in storage — the game's
+    // simulator bootstrap only carries combat-relevant fields.
+    const { ships } = await browser.storage.local.get('ships');
     for (const key of ['freighter', 'bulk_carrier', 'ore_freighter']) {
-      const d = shipDefs[key];
+      const d = (ships || {})[key];
       if (d?.cargoCapacity) options.push(`${Math.ceil(loot / d.cargoCapacity)}× ${d.name}`);
     }
     panel.appendChild(note(`Cargo for ~${LOOT_FACTOR * 100}% loot (${fmt(loot)}): ${options.join(' or ')}`));
@@ -274,6 +270,6 @@ coordInputHandler(document.getElementById('atk-system'));
 coordInputHandler(document.getElementById('def-system'));
 
 export {
-  updateDistanceFromCoords, loadIntelReports, populatePlanetPicker,
+  updateDistanceFromCoords, loadIntelReports, populatePlanetPicker, applyIntelReport,
   _resolvedDistanceAU, classifyDefenses, coordDistanceAU, COORD_TO_FUEL_AU,
 };
