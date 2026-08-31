@@ -1,0 +1,29 @@
+<!-- Buy Me a Coffee button, pinned bottom-right on every page. Minima only
+     offers a <head> hook, and the BMC script injects its button next to its own
+     <script> tag — inside <head> that button would never render. So the tag is
+     rebuilt on load inside a fixed-position <div> at the end of <body>. -->
+<style>
+  #bmc-float { position: fixed; right: 18px; bottom: 18px; z-index: 9999; }
+</style>
+<script>
+  addEventListener('DOMContentLoaded', function () {
+    var box = document.createElement('div');
+    box.id = 'bmc-float';
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js';
+    var attrs = {
+      'data-name': 'bmc-button',
+      'data-slug': 'verrokcsgo6',
+      'data-color': '#FFDD00',
+      'data-emoji': '',
+      'data-font': 'Lato',
+      'data-text': 'Buy me a coffee',
+      'data-outline-color': '#000000',
+      'data-font-color': '#000000',
+      'data-coffee-color': '#ffffff'
+    };
+    for (var k in attrs) s.setAttribute(k, attrs[k]);
+    box.appendChild(s);
+    document.body.appendChild(box);
+  });
+</script>

@@ -458,6 +458,22 @@ th.sortable .arrow { margin-left: 4px; color: var(--color-accent); }
 .faq-item[open] > summary::before { content: '▾'; }
 .faq-item > p { margin: 8px 0 2px 18px; font-size: 11.5px; line-height: 1.6; color: color-mix(in srgb, var(--color-text) 50%, transparent); max-width: 70ch; }
 
+/* Buy Me a Coffee button. Mirrors the official button's look (#FFDD00, Lato,
+   black outline) because an MV3 extension page cannot load the remote widget
+   script. Fixed bottom-right, so it is present on every tab. */
+.bmc-float {
+  position: fixed; right: 18px; bottom: 18px; z-index: 9000;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 0 15px; height: 40px; border-radius: 8px;
+  background: #FFDD00; border: 1px solid #000;
+  font-family: Lato, var(--font-sans, sans-serif); font-size: 15px;
+  color: #000; text-decoration: none; white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.bmc-float:hover { background: #ffe633; }
+.bmc-float:active { transform: translateY(1px); }
+.bmc-float-cup { font-size: 18px; line-height: 1; }
+
 /* Combat simulator — per-side fleet tabs. Pills, not styled divs, so they get
    the global :focus-visible ring and keyboard activation for free. */
 .sim-fleet-tabs {
