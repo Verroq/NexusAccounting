@@ -4,9 +4,11 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.1.0] - 2026-08-31
 
 ### Added
+- A **Buy Me a Coffee** button, pinned bottom-right of the dashboard. A plain
+  link, not the official widget script, which an MV3 extension page cannot load.
 - **Shared Intel**: a new tab pooling spy reports with your alliance through a
   private Discord channel. The channel's membership is the access control —
   there is no bot account and no bot token, only a channel webhook URL plus the
