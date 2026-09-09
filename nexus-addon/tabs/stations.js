@@ -848,15 +848,16 @@ function exportLedger() {
 // picks direction/station/resource/amount, then hands off to the shared fleet
 // editor for the ships.
 
-const mv = { open: false, dir: 'withdraw', stationId: null, resource: 'ore', amount: '' };
+// amounts: { resourceKey: raw input string } — a mission can carry several
+// resources at once, so the dialog tracks one amount per picked resource.
+const mv = { open: false, dir: 'withdraw', stationId: null, amounts: {} };
 
 function openMove(direction, stationId) {
   if (!stStations.length) return;
   mv.open = true;
   mv.dir = direction;
   mv.stationId = stationId ?? (stStations[0] && stStations[0].id);
-  mv.amount = '';
-  if (mv.dir === 'deposit' && !DEPOSITABLE.has(mv.resource)) mv.resource = 'ore';
+  mv.amounts = {};
   renderMove();
 }
 
@@ -870,6 +871,27 @@ export function moveLimit(st, direction, resourceKey) {
   const row = stationResources(st).find(r => r.key === resourceKey);
   if (!row) return 0;
   return direction === 'withdraw' ? Math.floor(row.amount) : Math.max(0, Math.floor(row.cap - row.amount));
+}
+
+// Whole units per resource, blanks and zeroes dropped: what actually ships.
+export function parsedAmounts(amounts) {
+  const out = {};
+  for (const [key, raw] of Object.entries(amounts || {})) {
+    const qty = Math.floor(Number(String(raw).replace(/[^0-9]/g, '')) || 0);
+    if (qty > 0) out[key] = qty;
+  }
+  return out;
+}
+
+// Resources asked for beyond what the station can give (or hold).
+export function overLimit(st, direction, amounts) {
+  return Object.entries(parsedAmounts(amounts))
+    .filter(([key, qty]) => qty > moveLimit(st, direction, key))
+    .map(([key]) => key);
+}
+
+export function totalAmount(amounts) {
+  return Object.values(parsedAmounts(amounts)).reduce((a, b) => a + b, 0);
 }
 
 function renderMove() {
@@ -890,8 +912,7 @@ function renderMove() {
     if (mv.dir === key) opt.classList.add('on');
     opt.addEventListener('click', () => {
       mv.dir = key;
-      mv.amount = '';                                            // limits differ per direction
-      if (key === 'deposit' && !DEPOSITABLE.has(mv.resource)) mv.resource = 'ore';
+      mv.amounts = {};   // limits differ per direction, and a deposit has no rare slots
       renderMove();
     });
     dirs.appendChild(opt);
@@ -906,7 +927,7 @@ function renderMove() {
     sel.appendChild(o);
   }
   sel.value = mv.stationId;
-  sel.onchange = () => { mv.stationId = Number(sel.value); mv.amount = ''; renderMove(); };
+  sel.onchange = () => { mv.stationId = Number(sel.value); mv.amounts = {}; renderMove(); };
 
   byId('st-mv-role').textContent = st
     ? `⚿ Withdraw access: ${st.withdrawAccessRole || 'unknown'}${st.canWithdrawResources === false ? ' — you do not hold it' : ''}`
@@ -916,54 +937,90 @@ function renderMove() {
   resBox.textContent = '';
   for (const r of stationResources(st || {})) {
     if (mv.dir === 'deposit' && !DEPOSITABLE.has(r.key)) continue;
+    const picked = r.key in mv.amounts;
     const opt = el('div', 'st-mv-res-opt');
-    if (mv.resource === r.key) {
+    if (picked) {
       opt.classList.add('on');
       opt.style.borderColor = resVar(r.key);
       opt.style.background = `color-mix(in srgb, ${resVar(r.key)} 12%, transparent)`;
     }
     opt.appendChild(el('span', null, r.label));
     opt.appendChild(el('span', 'st-num st-dim', fmt(Math.round(r.amount))));
-    opt.addEventListener('click', () => { mv.resource = r.key; mv.amount = ''; renderMove(); });
+    // Toggle: one mission can carry several resources, so picking is additive.
+    opt.addEventListener('click', () => {
+      if (picked) delete mv.amounts[r.key];
+      else mv.amounts[r.key] = '';
+      renderMove();
+    });
     resBox.appendChild(opt);
   }
 
-  const limit = moveLimit(st, mv.dir, mv.resource);
-  const amount = Math.floor(Number(String(mv.amount).replace(/[^0-9]/g, '')) || 0);
-  const over = amount > limit;
+  const over = overLimit(st, mv.dir, mv.amounts);
+  const parsed = parsedAmounts(mv.amounts);
+  const total = totalAmount(mv.amounts);
   const blocked = mv.dir === 'withdraw' && st && st.canWithdrawResources === false;
 
-  const input = byId('st-mv-amount');
-  input.value = mv.amount;
-  input.style.borderColor = over ? 'var(--color-danger)' : 'var(--color-divider)';
-  input.oninput = () => { mv.amount = input.value; renderMove(); };
-  byId('st-mv-max').onclick = () => { mv.amount = String(limit); renderMove(); };
+  // One amount row per picked resource, each with its own limit and Max.
+  const rows = byId('st-mv-rows');
+  rows.textContent = '';
+  const picked = Object.keys(mv.amounts);
+  byId('st-mv-empty').style.display = picked.length ? 'none' : '';
+  for (const key of picked) {
+    const res = STATION_RESOURCES.find(r => r.key === key) || { key, label: key };
+    const limit = moveLimit(st, mv.dir, key);
+    const row = el('div', 'st-mv-row');
 
-  const resLabel = (STATION_RESOURCES.find(r => r.key === mv.resource) || {}).label || mv.resource;
-  byId('st-mv-limit').textContent = mv.dir === 'withdraw'
-    ? `Available: ${fmt(limit)} ${resLabel}`
-    : `Free capacity: ${fmt(limit)} ${resLabel}`;
+    const name = el('div', 'st-mv-row-name', res.label);
+    name.style.color = resVar(key);
+    row.appendChild(name);
+
+    const input = el('input', 'st-mv-row-input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.placeholder = '0';
+    input.value = mv.amounts[key];
+    input.style.borderColor = over.includes(key) ? 'var(--color-danger)' : 'var(--color-divider)';
+    input.oninput = () => { mv.amounts[key] = input.value; renderMove(); };
+    row.appendChild(input);
+
+    const max = el('button', 'st-act st-act-ghost', 'Max');
+    max.onclick = () => { mv.amounts[key] = String(limit); renderMove(); };
+    row.appendChild(max);
+
+    row.appendChild(el('div', 'st-mv-row-limit st-num',
+      mv.dir === 'withdraw' ? `Available: ${fmt(limit)}` : `Free capacity: ${fmt(limit)}`));
+
+    const drop = el('button', 'st-act st-act-ghost', '✕');
+    drop.title = `Remove ${res.label}`;
+    drop.onclick = () => { delete mv.amounts[key]; renderMove(); };
+    row.appendChild(drop);
+
+    rows.appendChild(row);
+  }
 
   const warn = byId('st-mv-warn');
   warn.textContent = blocked
     ? `You do not hold ${st.withdrawAccessRole || 'the required'} rank at ${st.name} — withdrawals here are blocked.`
-    : over
-      ? `Above the ${mv.dir === 'withdraw' ? 'available' : 'free capacity'} limit of ${fmt(limit)}.`
+    : over.length
+      ? `Above the ${mv.dir === 'withdraw' ? 'available' : 'free capacity'} limit: `
+        + over.map(k => (STATION_RESOURCES.find(r => r.key === k) || {}).label || k).join(', ') + '.'
       : '';
   warn.style.display = warn.textContent ? '' : 'none';
 
+  const sign = mv.dir === 'withdraw' ? '−' : '+';
   const summary = byId('st-mv-summary');
-  summary.textContent = amount
-    ? `${mv.dir === 'withdraw' ? '−' : '+'}${fmt(amount)} ${resLabel} · ${st ? st.name : ''}`
+  summary.textContent = total
+    ? `${Object.entries(parsed).map(([k, q]) => `${sign}${fmt(q)} ${(STATION_RESOURCES.find(r => r.key === k) || {}).label || k}`).join(' · ')}`
+      + ` · ${st ? st.name : ''}`
     : 'Enter an amount';
-  summary.style.color = !amount
+  summary.style.color = !total
     ? 'color-mix(in srgb, var(--color-text) 40%, transparent)'
     : mv.dir === 'withdraw' ? 'var(--color-danger)' : 'var(--color-success)';
 
   const confirm = byId('st-mv-confirm');
   confirm.textContent = mv.dir === 'withdraw' ? 'Confirm withdrawal' : 'Confirm deposit';
-  confirm.classList.toggle('st-disabled', !amount || over || blocked);
-  confirm.onclick = () => { if (amount && !over && !blocked) dispatchMove(st, amount); };
+  confirm.classList.toggle('st-disabled', !total || over.length > 0 || blocked);
+  confirm.onclick = () => { if (total && !over.length && !blocked) dispatchMove(st, parsed); };
 }
 
 // Cargo capacity of a picked fleet, so an impossible haul is caught here
@@ -975,7 +1032,7 @@ export function fleetCapacity(ships, defs) {
   }, 0);
 }
 
-async function dispatchMove(st, amount) {
+async function dispatchMove(st, amounts) {
   const planetId = Number(byId('st-planet').value);
   if (!planetId) { toast('Pick a source planet first.', false); return; }
 
@@ -986,17 +1043,21 @@ async function dispatchMove(st, amount) {
   if (avail.error) { toast(avail.error, false); return; }
   if (!defs.error) stShipDefs = defs.ships || stShipDefs;
 
-  const resLabel = (STATION_RESOURCES.find(r => r.key === mv.resource) || {}).label || mv.resource;
+  const total = totalAmount(amounts);
+  const manifest = Object.entries(amounts)
+    .map(([k, q]) => `${fmt(q)} ${(STATION_RESOURCES.find(r => r.key === k) || {}).label || k}`)
+    .join(' · ');
   const ships = await editFleetDialog({
     title: `${mv.dir === 'withdraw' ? 'Collect from' : 'Supply'} ${st.name}`,
-    subtitle: `${fmt(amount)} ${resLabel} · ${st.systemName}`,
+    subtitle: `${manifest} · ${st.systemName}`,
     avail: avail.available || {},
   });
   if (!ships || !ships.length) return;
 
+  // Every resource shares the one cargo hold, so the check is on the total.
   const capacity = fleetCapacity(ships, stShipDefs);
-  if (capacity && capacity < amount) {
-    toast(`That fleet carries ${fmt(capacity)} — ${fmt(amount)} ${resLabel} needs more cargo space.`, false);
+  if (capacity && capacity < total) {
+    toast(`That fleet carries ${fmt(capacity)} — ${manifest} needs ${fmt(total)} of cargo space.`, false);
     return;
   }
 
@@ -1007,8 +1068,7 @@ async function dispatchMove(st, amount) {
     direction: mv.dir,
     sourcePlanetId: planetId,
     ships,
-    resource: mv.resource,
-    amount,
+    amounts,
   });
   const err = res && (res.error || (res.ok === false && res.data && res.data.error));
   toast(err ? `Dispatch failed: ${err}` : 'Fleet dispatched — the ledger updates once it arrives.', !err);

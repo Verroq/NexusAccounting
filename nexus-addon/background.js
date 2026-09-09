@@ -1328,20 +1328,33 @@ async function getStationLog(stationId, pages = 1) {
 // (the four basic resources only) for a supply.
 const STATION_BASIC = ['ore', 'silicates', 'hydrogen', 'alloys'];
 
-function sendStationTransfer({ stationId, direction, sourcePlanetId, ships, resource, amount }) {
-  const qty = Math.floor(Number(amount) || 0);
-  if (!stationId || !sourcePlanetId) return Promise.resolve({ error: 'Pick a station and a source planet.' });
-  if (qty <= 0) return Promise.resolve({ error: 'Enter an amount above zero.' });
-  if (direction === 'deposit' && !STATION_BASIC.includes(resource)) {
-    return Promise.resolve({ error: `Only ${STATION_BASIC.join(', ')} can be shipped to a station.` });
+// One mission can carry several resources at once — `amounts` is
+// { resourceKey: quantity }, whole units, zero/blank entries dropped.
+// Returns the request body, or { error } when the ask is not sendable.
+function stationTransferBody(direction, sourcePlanetId, ships, amounts) {
+  const cargo = {};
+  for (const [key, raw] of Object.entries(amounts || {})) {
+    const qty = Math.floor(Number(raw) || 0);
+    if (qty <= 0) continue;
+    if (direction === 'deposit' && !STATION_BASIC.includes(key)) {
+      return { error: `Only ${STATION_BASIC.join(', ')} can be shipped to a station.` };
+    }
+    cargo[key] = qty;
   }
-  const cargoKey = direction === 'withdraw' ? 'collectCargo' : 'cargo';
-  return gamePost(`/api/stations/${stationId}/send`, {
+  if (!Object.keys(cargo).length) return { error: 'Enter an amount above zero.' };
+  return {
     sourcePlanetId,
     missionType: direction === 'withdraw' ? 'collect_station' : 'supply_station',
     ships,
-    [cargoKey]: { [resource]: qty },
-  });
+    [direction === 'withdraw' ? 'collectCargo' : 'cargo']: cargo,
+  };
+}
+
+function sendStationTransfer({ stationId, direction, sourcePlanetId, ships, amounts }) {
+  if (!stationId || !sourcePlanetId) return Promise.resolve({ error: 'Pick a station and a source planet.' });
+  const body = stationTransferBody(direction, sourcePlanetId, ships, amounts);
+  if (body.error) return Promise.resolve(body);
+  return gamePost(`/api/stations/${stationId}/send`, body);
 }
 
 // ── Fuel ─────────────────────────────────────────────────────────────────────
@@ -3636,6 +3649,6 @@ export {
   systemFromLocation, resolveZone, backfillZones, processMissions,
   fieldMatches, purgeOldData, freshestToken, resolveRecordsCap, mergeSpyReports, selectReportsToShare, WEBHOOK_RE,
   formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, sharedIntelReject, discordFetch,
-  nsGet, nsSet, nsRemove, gameUrlFor, sendStationTransfer, setCurrentUniverse, getCurrentUniverse, hostUniverse, getToken, getTokens,
+  nsGet, nsSet, nsRemove, gameUrlFor, sendStationTransfer, stationTransferBody, setCurrentUniverse, getCurrentUniverse, hostUniverse, getToken, getTokens,
   processSpyReports, processCampScoutReports,
 };

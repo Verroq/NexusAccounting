@@ -2,9 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert';
 import {
   ALL_ROLES, DEPOSITABLE, aggregateMembers, buildAlerts, fillStats, filterStations, fleetCapacity,
-  ledgerCsv, ledgerRows, moveLimit, roleOptions, sectorCode, sortStations, stationResources,
-  stationState, stationValue,
+  ledgerCsv, ledgerRows, moveLimit, overLimit, parsedAmounts, roleOptions, sectorCode, sortStations,
+  stationResources, stationState, stationValue, totalAmount,
 } from '../nexus-addon/tabs/stations.js';
+import { makeBrowserStub, loadBackground } from './helpers.js';
+
+makeBrowserStub();
+const { stationTransferBody } = await loadBackground();
 
 // Shaped like /api/alliances/station-storage: ABSOLUTE amounts plus the two caps.
 const station = (over = {}) => ({
@@ -181,4 +185,42 @@ test('fleetCapacity sums the picked ships cargo holds', () => {
   assert.equal(fleetCapacity([{ shipDefId: 7, quantity: 3 }], defs), 30000);
   assert.equal(fleetCapacity([{ shipDefId: 9, quantity: 5 }], defs), 0);
   assert.equal(fleetCapacity([{ shipDefId: 42, quantity: 5 }], defs), 0, 'unknown ships contribute nothing');
+});
+
+test('parsedAmounts keeps whole units and drops blanks and zeroes', () => {
+  assert.deepEqual(parsedAmounts({ ore: '4200', alloys: '', hydrogen: '0', cryo_ice: '1 200' }),
+    { ore: 4200, cryo_ice: 1200 }, 'digits only, and a resource with no amount is not shipped');
+  assert.deepEqual(parsedAmounts({}), {});
+  assert.equal(totalAmount({ ore: '4200', alloys: '800' }), 5000, 'one cargo hold, so amounts add up');
+});
+
+test('overLimit names every resource asked for beyond its limit', () => {
+  const st = station({ ore: 60000, cryoIce: 4000 });
+  assert.deepEqual(overLimit(st, 'withdraw', { ore: '60000', cryo_ice: '4000' }), []);
+  assert.deepEqual(overLimit(st, 'withdraw', { ore: '60001', cryo_ice: '9999' }), ['ore', 'cryo_ice']);
+  // depositing is bounded by free space, not by what is already there
+  assert.deepEqual(overLimit(st, 'deposit', { ore: '40000' }), []);
+  assert.deepEqual(overLimit(st, 'deposit', { ore: '40001' }), ['ore']);
+});
+
+test('stationTransferBody carries several resources in one mission', () => {
+  const ships = [{ shipDefId: 7, quantity: 12 }];
+  assert.deepEqual(stationTransferBody('withdraw', 4021, ships, { ore: 40000, plasma_core: '500', alloys: 0 }), {
+    sourcePlanetId: 4021,
+    missionType: 'collect_station',
+    ships,
+    collectCargo: { ore: 40000, plasma_core: 500 },
+  }, 'a collect takes any resource, and empty entries are left out');
+
+  assert.deepEqual(stationTransferBody('deposit', 4021, ships, { ore: 21000, silicates: 5000 }), {
+    sourcePlanetId: 4021,
+    missionType: 'supply_station',
+    ships,
+    cargo: { ore: 21000, silicates: 5000 },
+  });
+
+  assert.match(stationTransferBody('deposit', 4021, ships, { cryo_ice: 100 }).error, /Only ore/,
+    'a supply mission has no rare slots');
+  assert.match(stationTransferBody('withdraw', 4021, ships, { ore: 0 }).error, /above zero/);
+  assert.match(stationTransferBody('withdraw', 4021, ships, {}).error, /above zero/);
 });

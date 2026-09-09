@@ -12,7 +12,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   station as a sortable table or card grid with sector / withdraw-rights /
   state / search filters, a
   "who took what" leaderboard, the deposit/withdrawal ledger with CSV export,
-  and a move-resources dialog that dispatches the collect/supply fleet mission.
+  and a move-resources dialog that dispatches the collect/supply fleet mission
+  with as many resources in one run as the fleet's hold allows.
 - A **Yesterday** option in the View picker, next to Daily — same one-day
   window, shifted back a day.
 

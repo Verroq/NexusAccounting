@@ -1150,10 +1150,17 @@ input.tech-input {
   display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 8px;
   font-size: 12.5px; cursor: pointer; border: 1px solid var(--color-divider);
 }
-.st-mv-amount { display: flex; gap: 8px; }
-.st-mv-amount input {
-  flex: 1; background: var(--color-bg); border: 1px solid var(--color-divider); border-radius: var(--radius-md);
-  padding: 9px 12px; font-size: 15px; font-variant-numeric: tabular-nums; color: var(--color-text);
+.st-mv-rows { display: flex; flex-direction: column; gap: 8px; }
+.st-mv-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.st-mv-row-name { width: 96px; font-size: 12.5px; }
+.st-mv-row-input {
+  flex: 1 1 90px; min-width: 80px; background: var(--color-bg); border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md); padding: 9px 12px; font-size: 15px;
+  font-variant-numeric: tabular-nums; color: var(--color-text);
+}
+.st-mv-row-limit {
+  font-size: 11.5px; min-width: 120px; text-align: right;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
 }
 .st-mv-warn { font-size: 12px; color: var(--color-danger); margin-top: 6px; }
 .st-modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--color-divider); padding-top: 15px; }
