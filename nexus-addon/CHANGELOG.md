@@ -16,6 +16,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with as many resources in one run as the fleet's hold allows. Haulers are
   picked the way Scouting picks them for debris: choose the ship types, and the
   fleet is planned from the cargo and trimmed to what the source planet has.
+  A **Defend** button on each station sends a garrison fleet — the pool the
+  station's orbital defence is rostered from.
 - A **Yesterday** option in the View picker, next to Daily — same one-day
   window, shifted back a day.
 

@@ -312,6 +312,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_STATION_DETAIL') return apiGet(`/api/stations/${msg.stationId}`);
   if (msg.type === 'GET_STATION_LOG') return getStationLog(msg.stationId, msg.pages);
   if (msg.type === 'SEND_STATION_TRANSFER') return sendStationTransfer(msg);
+  if (msg.type === 'SEND_STATION_DEFENSE') return sendStationDefense(msg);
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
   if (msg.type === 'PURGE_OLD') return enqueue(() => purgeOldData(msg.days ?? 3)).then(() => ({ ok: true }));
   if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
@@ -1348,6 +1349,21 @@ function stationTransferBody(direction, sourcePlanetId, ships, amounts) {
     ships,
     [direction === 'withdraw' ? 'collectCargo' : 'cargo']: cargo,
   };
+}
+
+// Reinforcing a station you own is the same endpoint with a deploy mission:
+// `garrison_station`. The ships dock at the station, and the alliance then
+// picks which of them stand as active (orbital) defence through
+// PUT /api/stations/{id}/defense-roster — a separate step this addon does not
+// drive, so what lands here is the garrison the roster draws from.
+function sendStationDefense({ stationId, sourcePlanetId, ships, attachLeader }) {
+  if (!stationId || !sourcePlanetId) return Promise.resolve({ error: 'Pick a station and a source planet.' });
+  return gamePost(`/api/stations/${stationId}/send`, {
+    sourcePlanetId,
+    missionType: 'garrison_station',
+    ships,
+    ...(attachLeader ? { attachLeader: true } : {}),
+  });
 }
 
 function sendStationTransfer({ stationId, direction, sourcePlanetId, ships, amounts }) {

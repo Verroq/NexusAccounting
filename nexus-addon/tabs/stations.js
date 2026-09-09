@@ -15,7 +15,7 @@
 // is built on the absolute ones; anything read from a station detail is only
 // used for state/garrison/buildings, never for amounts.
 
-import { RARE_WEIGHT, RESOURCE_WEIGHTS, capPlanToStock, cargoShipsFrom, fmt, nsGet, planFleet, rememberSelection, rememberedSelections } from '../common.js';
+import { RARE_WEIGHT, RESOURCE_WEIGHTS, capPlanToStock, cargoShipsFrom, editFleetDialog, fmt, nsGet, planFleet, rememberSelection, rememberedSelections } from '../common.js';
 
 // key = the API's snake_case log/cargo key, field = its camelCase station
 // field, storage = which cap applies.
@@ -666,6 +666,7 @@ function renderTable(rows) {
     const actions = el('td', 'st-right');
     actions.appendChild(actionButton('Withdraw', 'primary', st, 'withdraw'));
     actions.appendChild(actionButton('Deposit', 'ghost', st, 'deposit'));
+    actions.appendChild(defendButton(st));
     tr.appendChild(actions);
     tbody.appendChild(tr);
   }
@@ -678,6 +679,44 @@ function actionButton(label, kind, st, direction) {
     openMove(direction, st.id);
   });
   return b;
+}
+
+// Reinforce: a garrison_station deploy, which is where the station's orbital
+// defence is drawn from. Warships, not haulers, so this uses the shared fleet
+// editor rather than the cargo planner.
+function defendButton(st) {
+  const b = el('button', 'st-act st-act-ghost', '⛨ Defend');
+  b.title = `Send ships to ${st.name}'s garrison — the pool its orbital defence is rostered from.`;
+  b.addEventListener('click', ev => {
+    ev.stopPropagation();
+    sendDefense(st);
+  });
+  return b;
+}
+
+async function sendDefense(st) {
+  const planetId = Number(byId('st-planet').value);
+  if (!planetId) { toast('Pick a source planet first.', false); return; }
+
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  if (av.error) { toast(av.error, false); return; }
+
+  const ships = await editFleetDialog({
+    title: `Defend ${st.name}`,
+    subtitle: `Garrison at ${st.systemName}\nShips stay stationed until recalled; the alliance rosters them into orbital defence.`,
+    avail: av.available || {},
+  });
+  if (!ships || !ships.length) return;
+
+  const res = await browser.runtime.sendMessage({
+    type: 'SEND_STATION_DEFENSE', stationId: st.id, sourcePlanetId: planetId, ships,
+  });
+  const err = res && (res.error || (res.ok === false && res.data && res.data.error));
+  toast(err ? `Dispatch failed: ${err}` : `Defence fleet sent to ${st.name}.`, !err);
+  if (!err) {
+    stDetails.delete(st.id);   // garrison count is stale until it arrives
+    loadStations(false);
+  }
 }
 
 function renderCards(rows) {
@@ -762,6 +801,7 @@ function renderCards(rows) {
     const actions = el('div', 'st-card-actions');
     actions.appendChild(actionButton('Withdraw', 'primary', st, 'withdraw'));
     actions.appendChild(actionButton('Deposit', 'ghost', st, 'deposit'));
+    actions.appendChild(defendButton(st));
     card.appendChild(actions);
 
     grid.appendChild(card);
