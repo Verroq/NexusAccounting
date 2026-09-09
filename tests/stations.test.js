@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import {
-  DEPOSITABLE, aggregateMembers, buildAlerts, fillStats, filterStations, fleetCapacity,
-  ledgerCsv, ledgerRows, moveLimit, sectorCode, sortStations, stationResources, stationState, stationValue,
+  ALL_ROLES, DEPOSITABLE, aggregateMembers, buildAlerts, fillStats, filterStations, fleetCapacity,
+  ledgerCsv, ledgerRows, moveLimit, roleOptions, sectorCode, sortStations, stationResources,
+  stationState, stationValue,
 } from '../nexus-addon/tabs/stations.js';
 
 // Shaped like /api/alliances/station-storage: ABSOLUTE amounts plus the two caps.
@@ -64,6 +65,39 @@ test('filterStations composes sector, search, state and near-full', () => {
   assert.deepEqual(filterStations(list, { nearFull: true }).map(s => s.id), [1]);
   assert.deepEqual(filterStations(list, { sector: 'G21', nearFull: true }).map(s => s.id), [1]);
   assert.equal(filterStations(list, {}).length, 3, 'no filters keeps everything');
+});
+
+test('roleOptions lists the withdraw rights in use, least privileged first', () => {
+  const list = [
+    station({ id: 1, withdrawAccessRole: 'leader' }),
+    station({ id: 2, withdrawAccessRole: 'member' }),
+    station({ id: 3, withdrawAccessRole: 'officer' }),
+    station({ id: 4, withdrawAccessRole: 'member' }),
+    station({ id: 5, withdrawAccessRole: 'archon' }),   // a rank the game adds later
+    station({ id: 6, withdrawAccessRole: null }),
+  ];
+  assert.deepEqual(roleOptions(list), ['member', 'officer', 'leader', 'archon', 'unknown'],
+    'known ranks in game order, anything unrecognised appended');
+  assert.deepEqual(roleOptions([]), []);
+});
+
+test('filterStations narrows by withdraw rights', () => {
+  const list = [
+    station({ id: 1, withdrawAccessRole: 'leader' }),
+    station({ id: 2, withdrawAccessRole: 'member' }),
+    station({ id: 3, withdrawAccessRole: null }),
+  ];
+  assert.deepEqual(filterStations(list, { role: 'leader' }).map(s => s.id), [1]);
+  assert.deepEqual(filterStations(list, { role: 'unknown' }).map(s => s.id), [3],
+    'a station with no stated rank is filterable as unknown');
+  assert.equal(filterStations(list, { role: ALL_ROLES }).length, 3);
+  assert.equal(filterStations(list, {}).length, 3, 'the rights filter defaults to off');
+  // composes with the rest
+  const mixed = [
+    station({ id: 1, systemName: 'G21-15', withdrawAccessRole: 'leader', ore: 95000 }),
+    station({ id: 2, systemName: 'G21-25', withdrawAccessRole: 'leader', ore: 1000 }),
+  ];
+  assert.deepEqual(filterStations(mixed, { role: 'leader', nearFull: true }).map(s => s.id), [1]);
 });
 
 test('sortStations orders by fill, value, coordinates and distance', () => {

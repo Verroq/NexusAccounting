@@ -41,6 +41,11 @@ const CARD_LIMIT = 12;          // cards are tall; the table is the "show me all
 const LEDGER_STATIONS = 12;     // stations to pull logs for when nothing is selected
 const LEDGER_MAX = 250;         // merged rows kept for the ledger table
 const STATE_OPTS = ['All', 'Secure', 'Under capture', 'Vulnerable'];
+// Alliance ranks, least to most privileged — the order the game's own client
+// uses. `withdrawAccessRole` is the rank a station demands before anyone may
+// withdraw from it; the dropdown lists only the ranks actually in use.
+export const WITHDRAW_ROLES = ['member', 'commander', 'officer', 'deputy', 'leader'];
+export const ALL_ROLES = 'All rights';
 const SORT_OPTS = ['Fullest first', 'Emptiest first', 'Highest value', 'Nearest', 'Coordinates'];
 
 const resVar = key => `var(--res-${key.replace(/_/g, '-')})`;
@@ -53,6 +58,20 @@ const pctColor = f => (f >= NEAR_FULL ? 'var(--color-danger)' : f >= WARN_FULL ?
 export function sectorCode(systemName) {
   const m = /^([A-Za-z]+\d+)-\d+$/.exec(String(systemName || ''));
   return m ? m[1] : '';
+}
+
+export const roleLabel = role => (role ? role[0].toUpperCase() + role.slice(1) : 'Unknown');
+
+// Withdraw-rights present in the current station set, ordered by rank so the
+// dropdown reads member → leader. A rank the game adds later still shows up,
+// appended after the ones we know.
+export function roleOptions(list) {
+  const seen = [...new Set(list.map(st => st.withdrawAccessRole || 'unknown'))];
+  const rank = r => {
+    const i = WITHDRAW_ROLES.indexOf(r);
+    return i === -1 ? WITHDRAW_ROLES.length : i;
+  };
+  return seen.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
 export function capFor(st, res) {
@@ -101,10 +120,11 @@ export function stationState(st) {
   return 'Secure';
 }
 
-export function filterStations(list, { sector = 'All sectors', query = '', state = 'All', nearFull = false } = {}) {
+export function filterStations(list, { sector = 'All sectors', query = '', state = 'All', nearFull = false, role = ALL_ROLES } = {}) {
   const q = query.trim().toLowerCase();
   return list.filter(st => {
     if (sector !== 'All sectors' && sectorCode(st.systemName) !== sector) return false;
+    if (role !== ALL_ROLES && (st.withdrawAccessRole || 'unknown') !== role) return false;
     if (state !== 'All' && stationState(st) !== state) return false;
     if (nearFull && fillStats(st).peak < NEAR_FULL) return false;
     if (q && !`${st.name} ${st.systemName}`.toLowerCase().includes(q)) return false;
@@ -218,7 +238,7 @@ const stLogs = new Map();             // stationId → logs
 let stSelected = null;                // selected station id, filters the ledger
 let stCollapsed = false;
 let stView = 'Table';
-const stFilters = { sector: 'All sectors', query: '', state: 'All', nearFull: false };
+const stFilters = { sector: 'All sectors', query: '', state: 'All', nearFull: false, role: ALL_ROLES };
 let stRefCoords = null;               // source planet's system coords, for Distance
 
 const byId = id => document.getElementById(id);
@@ -244,6 +264,11 @@ export async function initStationsTab() {
     renderStations();
     loadLedger();
   });
+  byId('st-role')?.addEventListener('change', function () {
+    stFilters.role = this.value;
+    renderStations();
+    loadLedger();
+  });
   byId('st-sort')?.addEventListener('change', renderStations);
   byId('st-near')?.addEventListener('click', () => {
     stFilters.nearFull = !stFilters.nearFull;
@@ -254,6 +279,7 @@ export async function initStationsTab() {
     stFilters.query = '';
     stFilters.state = 'All';
     stFilters.nearFull = false;
+    stFilters.role = ALL_ROLES;
     byId('st-search').value = '';
     renderStations();
     loadLedger();
@@ -440,7 +466,7 @@ function renderRollup() {
   const scope = stFilters.sector === 'All sectors'
     ? `all ${stStations.length} stations`
     : `sector ${stFilters.sector}`;
-  const filtersOn = stFilters.query || stFilters.state !== 'All' || stFilters.nearFull;
+  const filtersOn = stFilters.query || stFilters.state !== 'All' || stFilters.nearFull || stFilters.role !== ALL_ROLES;
   byId('st-stock-scope').textContent = `Alliance stock on hand — ${scope}${filtersOn ? ' · current filters' : ''}`;
 
   const totals = STATION_RESOURCES.map(res => ({ ...res, amount: 0, cap: 0 }));
@@ -536,6 +562,20 @@ function renderFilterBar(count) {
     }
   }
   sectorSel.value = wantSector;
+
+  const roleSel = byId('st-role');
+  const roles = roleOptions(stStations);
+  if (roleSel.dataset.sig !== roles.join(',')) {
+    roleSel.dataset.sig = roles.join(',');
+    roleSel.textContent = '';
+    for (const r of [ALL_ROLES, ...roles]) {
+      const o = document.createElement('option');
+      o.value = r;
+      o.textContent = r === ALL_ROLES ? r : `Withdraw: ${roleLabel(r)}`;
+      roleSel.appendChild(o);
+    }
+  }
+  roleSel.value = stFilters.role;
 
   const sortSel = byId('st-sort');
   if (!sortSel.options.length) {

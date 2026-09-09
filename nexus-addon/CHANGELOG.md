@@ -9,7 +9,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - A **Stations** screen (new Alliance sidebar group): alliance-wide stock
   against storage caps, near-full and under-capture alerts, every controlled
-  station as a sortable table or card grid with sector/state/search filters, a
+  station as a sortable table or card grid with sector / withdraw-rights /
+  state / search filters, a
   "who took what" leaderboard, the deposit/withdrawal ledger with CSV export,
   and a move-resources dialog that dispatches the collect/supply fleet mission.
 - A **Yesterday** option in the View picker, next to Daily — same one-day
