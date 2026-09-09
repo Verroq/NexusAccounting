@@ -40,6 +40,10 @@
         <button class="tab nx-nav-item" data-tab="intel"><span class="nx-nav-icon">◈</span><span>Shared Intel</span></button>
       </div>
       <div class="nx-nav-group">
+        <div class="nx-nav-group-title">Alliance</div>
+        <button class="tab nx-nav-item" data-tab="stations"><span class="nx-nav-icon">▣</span><span>Stations</span></button>
+      </div>
+      <div class="nx-nav-group">
         <div class="nx-nav-group-title">Explore</div>
         <button class="tab nx-nav-item" data-tab="finder"><span class="nx-nav-icon">⌕</span><span>Galaxy Scout</span></button>
         <button class="tab nx-nav-item" data-tab="asteroids"><span class="nx-nav-icon">●</span><span>Asteroid Fields</span></button>
@@ -1046,6 +1050,155 @@
         <div style="font-size:0.78rem; color:var(--color-muted); margin-bottom:6px;">Escort for zone:</div>
         <div id="ft-escort-zones" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
       </div>
+    </div>
+  </div>
+
+  <div id="stations-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Stations</h1><p>Alliance stock on hand and every deposit and withdrawal, by member</p></div>
+
+    <div class="st-screen">
+      <div id="st-alerts" class="st-alerts"></div>
+
+      <div>
+        <div id="st-stock-scope" class="st-section-label">Alliance stock on hand</div>
+        <div id="st-stock" class="st-stock"></div>
+      </div>
+
+      <div>
+        <div class="st-listing-head">
+          <div id="st-collapse-head" class="st-collapse-head">
+            <span id="st-caret" class="st-caret">▾</span>
+            <span class="st-section-label">Stations under control — five slots (5 / 15 / 25 / 35 / 45) per sector · select one to filter the ledger</span>
+          </div>
+          <div class="st-head-actions">
+            <label class="st-planet-label">From
+              <select id="st-planet" title="Source planet for withdraw/deposit missions, and the reference point for the Distance column."></select>
+            </label>
+            <span id="st-status" class="st-muted"></span>
+            <button id="st-refresh" class="st-act st-act-ghost">Refresh</button>
+            <button id="st-collapse" class="st-act st-act-ghost">Hide stations</button>
+            <button id="st-move" class="st-act st-act-primary">⇄ Move resources</button>
+          </div>
+        </div>
+
+        <div id="st-collapsed-note" class="st-collapsed-note" style="display:none;"></div>
+
+        <div id="st-listing">
+          <div class="st-filters">
+            <div class="st-search"><span>⌕</span><input id="st-search" type="search" placeholder="Search name or coordinates" /></div>
+            <select id="st-sector"></select>
+            <select id="st-sort" title="Sort order"></select>
+            <div id="st-states" class="st-chips"></div>
+            <div id="st-near" class="st-switch" title="Keep only stations whose fullest resource is at 90% or more"><span class="st-knob"></span><span class="st-switch-label">Near full only</span></div>
+            <div class="st-filters-right">
+              <span id="st-count" class="st-muted"></span>
+              <div id="st-views" class="st-segmented"></div>
+            </div>
+          </div>
+
+          <div id="st-empty" class="empty-state" style="display:none;">
+            <div>No station matches these filters.</div>
+            <button id="st-clear" class="st-act st-act-ghost">Clear filters</button>
+          </div>
+
+          <div id="st-table-wrap" class="st-card st-table-wrap">
+            <table>
+              <thead><tr>
+                <th>Station</th><th>Coords</th><th>Distance</th><th style="min-width:150px;">Storage</th>
+                <th>State</th><th>Garrison</th><th>Withdraw</th><th class="st-right">Value</th><th></th>
+              </tr></thead>
+              <tbody id="st-tbody"></tbody>
+            </table>
+          </div>
+
+          <div id="st-cards" class="st-cards" style="display:none;"></div>
+          <div id="st-cards-more" class="st-muted st-cards-more" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div class="st-card st-panel">
+        <div class="st-panel-title">Who took what</div>
+        <div id="st-members-scope" class="st-panel-sub">Withdrawn weighted value per member</div>
+        <div class="st-member st-member-head">
+          <div class="st-avatar-spacer"></div>
+          <div class="st-member-name">Member</div>
+          <div class="st-member-bar"></div>
+          <div class="st-member-out">Withdrawn</div>
+          <div class="st-member-in">Deposited</div>
+          <div class="st-member-ops">Entries</div>
+        </div>
+        <div id="st-members" class="st-members"></div>
+      </div>
+
+      <div class="st-card st-panel">
+        <div class="st-panel-head">
+          <div>
+            <div class="st-panel-title">Resource ledger</div>
+            <div id="st-ledger-scope" class="st-panel-sub">Deposits and withdrawals, newest first</div>
+          </div>
+          <div class="st-head-actions">
+            <span id="st-ledger-note" class="st-muted"></span>
+            <button id="st-export" class="st-act st-act-ghost">⭳ Export CSV</button>
+          </div>
+        </div>
+        <div class="st-table-wrap">
+          <table>
+            <thead><tr>
+              <th class="st-nowrap">Time</th><th>Member</th><th>Station</th><th>Direction</th><th>Resource</th><th class="st-right">Amount</th>
+            </tr></thead>
+            <tbody id="st-ledger-tbody"></tbody>
+          </table>
+        </div>
+        <div id="st-ledger-empty" class="st-muted st-ledger-empty">Nothing recorded for this scope yet.</div>
+      </div>
+    </div>
+
+    <div id="st-modal" class="st-modal" style="display:none;">
+      <div class="st-modal-panel">
+        <div class="st-modal-head">
+          <div>
+            <div id="st-mv-title" class="st-modal-title">Withdraw from station</div>
+            <div id="st-mv-sub" class="st-panel-sub"></div>
+          </div>
+          <button id="st-mv-close" class="st-act st-act-ghost" aria-label="Close">✕</button>
+        </div>
+
+        <div id="st-mv-dirs" class="st-segmented st-segmented-wide"></div>
+
+        <label class="st-field">Station
+          <select id="st-mv-station"></select>
+        </label>
+        <div id="st-mv-role" class="st-mv-note"></div>
+
+        <div>
+          <div class="st-section-label">Resource</div>
+          <div id="st-mv-res" class="st-mv-res"></div>
+        </div>
+
+        <div>
+          <div class="st-section-label">Amount</div>
+          <div class="st-mv-amount">
+            <input id="st-mv-amount" type="text" inputmode="numeric" placeholder="0" />
+            <button id="st-mv-max" class="st-act st-act-ghost">Max</button>
+          </div>
+          <div id="st-mv-limit" class="st-mv-note"></div>
+          <div id="st-mv-warn" class="st-mv-warn" style="display:none;"></div>
+        </div>
+
+        <div class="st-modal-foot">
+          <div id="st-mv-summary" class="st-num"></div>
+          <div class="st-head-actions">
+            <button id="st-mv-cancel" class="st-act st-act-ghost">Cancel</button>
+            <button id="st-mv-confirm" class="st-act st-act-primary">Confirm withdrawal</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="st-toast" class="st-toast" style="display:none;">
+      <span id="st-toast-icon" class="st-toast-icon">✓</span>
+      <span id="st-toast-text"></span>
+      <button id="st-toast-dismiss" class="st-act st-act-ghost">Dismiss</button>
     </div>
   </div>
 

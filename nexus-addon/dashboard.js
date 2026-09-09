@@ -21,6 +21,7 @@ import { renderGlobalTab } from './tabs/global.js';
 import { renderMiningTab, setMiningPage } from './tabs/mining.js';
 import { renderPiratesTab, setPirateCurrentPage } from './tabs/pirates.js';
 import { initSimulatorTab } from './tabs/simulator.js';
+import { initStationsTab } from './tabs/stations.js';
 import { getEventBreakdownForMode, getResourcesLostForMode, getSeriesForMode, getTotalsForMode, populateEventOptions, renderByEventChart, renderCollected, renderEventsChart, renderLost, renderResourceChart, renderTable, setCurrentPage } from './tabs/surveys.js';
 import { renderTechTreeTab } from './tabs/techtree.js';
 
@@ -172,6 +173,10 @@ export function renderAll() {
     initSimulatorTab();
     return;
   }
+  if (activeTab === 'stations') {
+    initStationsTab();
+    return;
+  }
   populateEventOptions();
   const mode = getMode();
   const t = getTotalsForMode();
@@ -210,6 +215,7 @@ export const TAB_CONTENT = {
   market: 'market-content',
   techtree: 'techtree-content',
   simulator: 'simulator-content',
+  stations: 'stations-content',
   discordsetup: 'discordsetup-content',
   faq: 'faq-content',
 };
@@ -223,7 +229,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     }
     // View mode and records cap are meaningless on the finder and debris tabs.
     document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'simulator' || activeTab === 'discordsetup' || activeTab === 'faq') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'simulator' || activeTab === 'stations' || activeTab === 'discordsetup' || activeTab === 'faq') ? 'none' : '';
     positionControls();
     renderAll();
   });

@@ -306,6 +306,12 @@ browser.runtime.onMessage.addListener(msg => {
     });
   }
   if (msg.type === 'GET_PLANETS') return getPlanets();
+  // ── Stations ──
+  if (msg.type === 'GET_ALLIANCE_STATIONS') return apiGet('/api/alliances/station-storage');
+  if (msg.type === 'GET_STATION_INDEX') return apiGet('/api/galaxy/station-index');
+  if (msg.type === 'GET_STATION_DETAIL') return apiGet(`/api/stations/${msg.stationId}`);
+  if (msg.type === 'GET_STATION_LOG') return getStationLog(msg.stationId, msg.pages);
+  if (msg.type === 'SEND_STATION_TRANSFER') return sendStationTransfer(msg);
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
   if (msg.type === 'PURGE_OLD') return enqueue(() => purgeOldData(msg.days ?? 3)).then(() => ({ ok: true }));
   if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
@@ -1285,6 +1291,57 @@ async function getHomePlanetId(token) {
   await nsSet({ planet_id: home.id });
   console.log(`[NexusAccounting] Home planet: ${home.name} (#${home.id})`);
   return home.id;
+}
+
+// ── Stations ───────────────────────────────────────────────────────────────
+// The alliance can hold up to 200 stations, and the resource log is per
+// station, 50 rows a page (`offset`; `limit`/`page` are ignored by the
+// server). The dashboard only ever asks for the stations it is showing, and
+// answers are cached briefly so switching filters or re-selecting a station
+// doesn't re-walk the same pages.
+
+const STATION_LOG_PAGE = 50;
+const STATION_LOG_TTL = 5 * 60 * 1000;
+const stationLogCache = new Map();   // stationId → { at, logs }
+
+async function getStationLog(stationId, pages = 1) {
+  const key = `${currentUniverse}:${stationId}:${pages}`;
+  const hit = stationLogCache.get(key);
+  if (hit && Date.now() - hit.at < STATION_LOG_TTL) return { logs: hit.logs };
+
+  const logs = [];
+  for (let i = 0; i < pages; i++) {
+    const page = await apiGet(`/api/stations/${stationId}/resource-log?offset=${i * STATION_LOG_PAGE}`);
+    if (page.error) return i ? { logs } : page;   // partial pages still beat nothing
+    const rows = page.logs || [];
+    logs.push(...rows);
+    if (rows.length < STATION_LOG_PAGE) break;    // last page
+  }
+  stationLogCache.set(key, { at: Date.now(), logs });
+  return { logs };
+}
+
+// Withdrawing and depositing are fleet missions, not instant transfers: the
+// game sends haulers from one of your planets to the station and back. Both
+// go through POST /api/stations/{id}/send, but the cargo field differs —
+// `collectCargo` (snake_case keys, any resource) for a collect, `cargo`
+// (the four basic resources only) for a supply.
+const STATION_BASIC = ['ore', 'silicates', 'hydrogen', 'alloys'];
+
+function sendStationTransfer({ stationId, direction, sourcePlanetId, ships, resource, amount }) {
+  const qty = Math.floor(Number(amount) || 0);
+  if (!stationId || !sourcePlanetId) return Promise.resolve({ error: 'Pick a station and a source planet.' });
+  if (qty <= 0) return Promise.resolve({ error: 'Enter an amount above zero.' });
+  if (direction === 'deposit' && !STATION_BASIC.includes(resource)) {
+    return Promise.resolve({ error: `Only ${STATION_BASIC.join(', ')} can be shipped to a station.` });
+  }
+  const cargoKey = direction === 'withdraw' ? 'collectCargo' : 'cargo';
+  return gamePost(`/api/stations/${stationId}/send`, {
+    sourcePlanetId,
+    missionType: direction === 'withdraw' ? 'collect_station' : 'supply_station',
+    ships,
+    [cargoKey]: { [resource]: qty },
+  });
 }
 
 // ── Fuel ─────────────────────────────────────────────────────────────────────
@@ -3579,6 +3636,6 @@ export {
   systemFromLocation, resolveZone, backfillZones, processMissions,
   fieldMatches, purgeOldData, freshestToken, resolveRecordsCap, mergeSpyReports, selectReportsToShare, WEBHOOK_RE,
   formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, sharedIntelReject, discordFetch,
-  nsGet, nsSet, nsRemove, gameUrlFor, setCurrentUniverse, getCurrentUniverse, hostUniverse, getToken, getTokens,
+  nsGet, nsSet, nsRemove, gameUrlFor, sendStationTransfer, setCurrentUniverse, getCurrentUniverse, hostUniverse, getToken, getTokens,
   processSpyReports, processCampScoutReports,
 };
