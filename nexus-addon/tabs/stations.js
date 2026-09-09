@@ -305,10 +305,6 @@ export async function initStationsTab() {
     refreshMvAvail();
   });
 
-  byId('st-template').addEventListener('change', function () {
-    rememberSelection('st-template', this.value);
-  });
-
   loadPlanets();
   loadCargoShips();
   await loadStations(false);
@@ -344,25 +340,13 @@ async function loadPlanets() {
   renderStations();
 }
 
-// Fleet templates seed the Defend dispatch. Same list the Fleets tab edits and
-// the asteroid sender uses — the template itself is never modified here.
+// Fleet templates offered inside the Defend dialog — the same list the Fleets
+// tab edits and the asteroid sender uses. Picked per dispatch, since the fleet
+// that suits a frontier station is not the one that suits a rear one. The
+// template itself is never modified.
 async function refreshTemplates() {
   stTemplates = (await loadFleetTemplates()).slice()
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  const sel = byId('st-template');
-  const want = (await rememberedSelections())['st-template'] || sel.value;
-  sel.textContent = '';
-  const none = document.createElement('option');
-  none.value = '';
-  none.textContent = stTemplates.length ? 'No template' : '— no templates yet —';
-  sel.appendChild(none);
-  for (const t of stTemplates) {
-    const o = document.createElement('option');
-    o.value = t.id;
-    o.textContent = t.name;
-    sel.appendChild(o);
-  }
-  if (want && stTemplates.some(t => String(t.id) === String(want))) sel.value = want;
 }
 
 // Distance is measured from the selected source planet's system, using the
@@ -729,19 +713,12 @@ async function sendDefense(st) {
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
   if (av.error) { toast(av.error, false); return; }
 
-  // The picked template only seeds the editor — it is sent as-is or edited
-  // first, and either way the saved template is left untouched.
-  const tpl = stTemplates.find(t => String(t.id) === byId('st-template').value);
-  const seed = {};
-  for (const [id, qty] of Object.entries((tpl && tpl.ships) || {})) seed[Number(id)] = Math.ceil(qty);
-
   const ships = await editFleetDialog({
     title: `Defend ${st.name}`,
     subtitle: `Garrison at ${st.systemName}`
-      + (tpl ? `\nSeeded from template "${tpl.name}"` : '')
       + '\nShips stay stationed until recalled; the alliance rosters them into orbital defence.',
     avail: av.available || {},
-    seed,
+    templates: stTemplates,
   });
   if (!ships || !ships.length) return;
 

@@ -126,7 +126,7 @@ export async function confirmDialog(message, ships) {
 // a "Mine until full" checkbox in this dialog; the dialog writes the choice back
 // into it. Left null, no checkbox is shown and the resolve value is unchanged,
 // so callers that do not mine (expeditions) are unaffected.
-export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2, escortTemplates = [], untilFullState = null }) {
+export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2, escortTemplates = [], templates = [], untilFullState = null }) {
   const defs = await shipDefs();
   const ids = [...new Set([
     ...Object.keys(seed).map(Number),
@@ -155,6 +155,49 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
       sub.textContent = subtitle;
       sub.style.cssText = 'color:#8b949e;font-size:0.85rem;margin-bottom:8px;white-space:pre-line';
       box.append(sub);
+    }
+
+    // Template picker — fills the rows below from a saved template, so the
+    // choice is made per dispatch instead of from some screen-wide dropdown.
+    // Declared here so it sits above the ship rows; its handler runs long after
+    // `state`/`inputs`/`refresh` below exist.
+    let tplNote = null;
+    if (templates.length) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:10px;font-size:0.85rem;color:#8b949e';
+      const label = document.createElement('span');
+      label.textContent = 'Template:';
+      const sel = document.createElement('select');
+      sel.style.cssText = 'flex:1;min-width:0;background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:4px 6px;border-radius:6px;font-size:0.85rem';
+      const none = document.createElement('option');
+      none.value = ''; none.textContent = 'No template';
+      sel.append(none);
+      for (const t of templates) {
+        const o = document.createElement('option');
+        o.value = String(t.id); o.textContent = t.name;
+        sel.append(o);
+      }
+      sel.addEventListener('change', () => {
+        const tpl = templates.find(t => String(t.id) === sel.value);
+        // Picking a template replaces the fleet — that is what "use this
+        // template" means; the counts stay editable afterwards.
+        for (const [id, inp] of inputs) { state.delete(id); inp.value = '0'; }
+        let short = false;
+        for (const [idStr, qty] of Object.entries((tpl && tpl.ships) || {})) {
+          const id = Number(idStr);
+          const want = Math.ceil(qty);
+          const q = Math.min(want, avail[id] || 0);
+          if (q < want) short = true;
+          if (q > 0) { state.set(id, q); const inp = inputs.get(id); if (inp) inp.value = String(q); }
+        }
+        tplNote.textContent = !tpl ? '' : short ? 'Trimmed to what is on this planet.' : '';
+        tplNote.style.color = '#d8b055';
+        refresh();
+      });
+      row.append(label, sel);
+      tplNote = document.createElement('div');
+      tplNote.style.cssText = 'font-size:0.78rem;margin-top:4px;min-height:1em';
+      box.append(row, tplNote);
     }
 
     const rows = document.createElement('div');
