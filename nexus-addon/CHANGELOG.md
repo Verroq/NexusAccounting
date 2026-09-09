@@ -6,9 +6,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [2.1.0] - 2026-08-31
 
+Since the Combat Simulator is now available ingame I was able to discard the old Combat Sim
+of the addon for a Sim with API call to the game. 
+
+I added the possibility to handle multiple attacker/defender. It's not perfect since the game
+is not build for that (The API can't handle multiples player in the sim yet, so everything is
+aggregated as if there is only one attacker on the call)
+But enough babbling, I let you read the changelog for the new stuff (if you are motivated enough to read it)
+
+There is now the possibility to share spy reports with your alliance, you just have to setup a webhook on your discord.
+Check the "Discord Setup" tab to see how to do it.
+
 ### Added
-- A **Buy Me a Coffee** button, pinned bottom-right of the dashboard. A plain
-  link, not the official widget script, which an MV3 extension page cannot load.
+- A **Buy Me a Coffee** button if you want to support me because you enjoy the addon.
 - **Shared Intel**: a new tab pooling spy reports with your alliance through a
   private Discord channel. The channel's membership is the access control —
   there is no bot account and no bot token, only a channel webhook URL plus the
