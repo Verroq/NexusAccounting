@@ -636,7 +636,7 @@ export function escapeHtml(s) {
 // ── Mode-aware data helpers ────────────────────────────────────────────────
 
 export function getMode() {
-  return document.getElementById('mode-select').value; // 'all'|'daily'|'last3'|'last7'|'last30'|'hourly'
+  return document.getElementById('mode-select').value; // 'all'|'daily'|'yesterday'|'last3'|'last7'|'last30'|'hourly'
 }
 
 // Local-time bucket keys. created_at is stored as UTC/server time; bucketing on

@@ -289,7 +289,9 @@ document.getElementById('mode-select').addEventListener('change', () => {
   if (mode === 'all') {
     from.value = ''; to.value = '';
   } else {
-    const now = Date.now();
+    // Yesterday is the one mode that doesn't end today: shift the whole
+    // 1-day window back a day.
+    const now = Date.now() - (mode === 'yesterday' ? 86400000 : 0);
     to.value = dayKey(now);
     from.value = dayKey(now - ((span || 1) - 1) * 86400000);
   }

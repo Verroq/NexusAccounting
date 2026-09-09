@@ -6,6 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- A **Yesterday** option in the View picker, next to Daily — same one-day
+  window, shifted back a day.
+
 ### Fixed
 - The universe picker is now built from the game's own universe list
   (`GET /api/universes`) instead of a hardcoded S0/New Frontier pair, so a new
