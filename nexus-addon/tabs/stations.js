@@ -15,7 +15,7 @@
 // is built on the absolute ones; anything read from a station detail is only
 // used for state/garrison/buildings, never for amounts.
 
-import { RARE_WEIGHT, RESOURCE_WEIGHTS, editFleetDialog, fmt, rememberSelection, rememberedSelections } from '../common.js';
+import { RARE_WEIGHT, RESOURCE_WEIGHTS, capPlanToStock, cargoShipsFrom, fmt, nsGet, planFleet, rememberSelection, rememberedSelections } from '../common.js';
 
 // key = the API's snake_case log/cargo key, field = its camelCase station
 // field, storage = which cap applies.
@@ -240,6 +240,9 @@ let stCollapsed = false;
 let stView = 'Table';
 const stFilters = { sector: 'All sectors', query: '', state: 'All', nearFull: false, role: ALL_ROLES };
 let stRefCoords = null;               // source planet's system coords, for Distance
+let stCargoShips = [];                // haulers with their researched capacity, largest first
+const stCargoSel = new Set();         // picked hauler types (remembered across sessions)
+let stMvAvail = {};                   // source planet's ship stock, refreshed with the dialog
 
 const byId = id => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -296,9 +299,11 @@ export async function initStationsTab() {
     await rememberSelection('st-planet', this.value);
     await updateRefCoords();
     renderStations();
+    refreshMvAvail();
   });
 
   loadPlanets();
+  loadCargoShips();
   await loadStations(false);
 }
 
@@ -844,12 +849,50 @@ function exportLedger() {
 
 // ── Move-resources dialog ──────────────────────────────────────────────────
 // A withdraw or deposit is a fleet mission, not an instant transfer: the game
-// flies haulers from one of your planets to the station and back. This dialog
-// picks direction/station/resource/amount, then hands off to the shared fleet
-// editor for the ships.
+// flies haulers from one of your planets to the station and back. Ships are
+// picked the way Scouting picks them for debris collection: you choose which
+// hauler TYPES to use, and the fleet is planned from the cargo you asked for,
+// capped to what the source planet actually has.
 
 // amounts: { resourceKey: raw input string } — a mission can carry several
 // resources at once, so the dialog tracks one amount per picked resource.
+async function loadCargoShips() {
+  const [defs, stored, me] = await Promise.all([
+    browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
+    nsGet(['research']),
+    browser.runtime.sendMessage({ type: 'GET_AUTH_ME' }),
+  ]);
+  if (defs.error) return;
+  stShipDefs = defs.ships || [];
+  stCargoShips = cargoShipsFrom(stShipDefs, stored.research, me?.user?.activeLeaderBonuses?.cargoBonus || 0);
+  const saved = (await rememberedSelections())['st-cargo-ships'];
+  if (Array.isArray(saved)) {
+    stCargoSel.clear();
+    for (const id of saved) if (stCargoShips.some(s => s.shipDefId === id)) stCargoSel.add(id);
+  }
+  if (!stCargoSel.size && stCargoShips.length) stCargoSel.add(stCargoShips[0].shipDefId);   // biggest hauler
+  if (mv.open) renderMove();
+}
+
+// The dialog shows a capped plan, so it needs the source planet's stock.
+async function refreshMvAvail() {
+  const planetId = Number(byId('st-planet').value);
+  if (!planetId) { stMvAvail = {}; return; }
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  stMvAvail = av.error ? {} : (av.available || {});
+  if (mv.open) renderMove();
+}
+
+// Fleet for the current ask: fewest picked haulers to carry it, trimmed to
+// what is parked on the source planet.
+export function planHaulers(total, cargoShips, selected, available) {
+  const picked = cargoShips.filter(s => selected.has(s.shipDefId));
+  const plan = planFleet(total, picked);
+  const capOf = id => (cargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
+  const { ships, carried } = capPlanToStock(plan, available, capOf);
+  return { plan, ships, carried, short: carried < total };
+}
+
 const mv = { open: false, dir: 'withdraw', stationId: null, amounts: {} };
 
 function openMove(direction, stationId) {
@@ -859,6 +902,7 @@ function openMove(direction, stationId) {
   mv.stationId = stationId ?? (stStations[0] && stStations[0].id);
   mv.amounts = {};
   renderMove();
+  refreshMvAvail();
 }
 
 function closeMove() {
@@ -998,6 +1042,8 @@ function renderMove() {
     rows.appendChild(row);
   }
 
+  renderHaulers(total);
+
   const warn = byId('st-mv-warn');
   warn.textContent = blocked
     ? `You do not hold ${st.withdrawAccessRole || 'the required'} rank at ${st.name} — withdrawals here are blocked.`
@@ -1020,46 +1066,63 @@ function renderMove() {
   const confirm = byId('st-mv-confirm');
   confirm.textContent = mv.dir === 'withdraw' ? 'Confirm withdrawal' : 'Confirm deposit';
   confirm.classList.toggle('st-disabled', !total || over.length > 0 || blocked);
-  confirm.onclick = () => { if (total && !over.length && !blocked) dispatchMove(st, parsed); };
+  const { ships } = planHaulers(total, stCargoShips, stCargoSel, stMvAvail);
+  confirm.classList.toggle('st-disabled', !total || over.length > 0 || blocked || !ships.length);
+  confirm.onclick = () => {
+    if (total && !over.length && !blocked && ships.length) dispatchMove(st, parsed, ships);
+  };
 }
 
-// Cargo capacity of a picked fleet, so an impossible haul is caught here
-// rather than as a 400 from the server.
-export function fleetCapacity(ships, defs) {
-  return ships.reduce((sum, s) => {
-    const def = defs.find(d => d.shipDefId === s.shipDefId);
-    return sum + (def ? (def.cargoCapacity || 0) * s.quantity : 0);
-  }, 0);
-}
+// Hauler type toggles + the fleet they add up to, mirroring Scouting's debris
+// picker: pick the TYPES, the count is planned from the cargo.
+function renderHaulers(total) {
+  const box = byId('st-mv-ships');
+  box.textContent = '';
+  for (const ship of stCargoShips) {
+    const on = stCargoSel.has(ship.shipDefId);
+    const b = el('button', `st-hauler${on ? ' on' : ''}`);
+    b.type = 'button';
+    b.title = `${ship.name} — ${fmt(ship.cap)} cargo each · ${fmt(stMvAvail[ship.shipDefId] || 0)} on this planet`;
+    if (ship.imageUrl) {
+      const img = document.createElement('img');
+      img.src = ship.imageUrl;
+      b.appendChild(img);
+    } else {
+      b.textContent = ship.name;
+    }
+    b.addEventListener('click', () => {
+      if (on) stCargoSel.delete(ship.shipDefId); else stCargoSel.add(ship.shipDefId);
+      rememberSelection('st-cargo-ships', [...stCargoSel]);
+      renderMove();
+    });
+    box.appendChild(b);
+  }
 
-async function dispatchMove(st, amounts) {
-  const planetId = Number(byId('st-planet').value);
-  if (!planetId) { toast('Pick a source planet first.', false); return; }
+  const note = byId('st-mv-plan');
+  const nameOf = id => (stCargoShips.find(x => x.shipDefId === id) || {}).name || `#${id}`;
+  if (!stCargoShips.length) { note.textContent = 'Loading haulers…'; return; }
+  if (!stCargoSel.size) { note.textContent = 'Pick at least one hauler type.'; return; }
+  if (!total) { note.textContent = 'Enter an amount to see the fleet it needs.'; return; }
 
-  const [avail, defs] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId }),
-    stShipDefs.length ? Promise.resolve({ ships: stShipDefs }) : browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
-  ]);
-  if (avail.error) { toast(avail.error, false); return; }
-  if (!defs.error) stShipDefs = defs.ships || stShipDefs;
-
-  const total = totalAmount(amounts);
-  const manifest = Object.entries(amounts)
-    .map(([k, q]) => `${fmt(q)} ${(STATION_RESOURCES.find(r => r.key === k) || {}).label || k}`)
-    .join(' · ');
-  const ships = await editFleetDialog({
-    title: `${mv.dir === 'withdraw' ? 'Collect from' : 'Supply'} ${st.name}`,
-    subtitle: `${manifest} · ${st.systemName}`,
-    avail: avail.available || {},
-  });
-  if (!ships || !ships.length) return;
-
-  // Every resource shares the one cargo hold, so the check is on the total.
-  const capacity = fleetCapacity(ships, stShipDefs);
-  if (capacity && capacity < total) {
-    toast(`That fleet carries ${fmt(capacity)} — ${manifest} needs ${fmt(total)} of cargo space.`, false);
+  const { plan, ships, carried, short } = planHaulers(total, stCargoShips, stCargoSel, stMvAvail);
+  if (!ships.length) {
+    note.textContent = plan.length
+      ? 'None of the picked haulers are on this planet.'
+      : 'The picked haulers have no cargo capacity.';
+    note.style.color = 'var(--color-danger)';
     return;
   }
+  const named = ships.map(s => `${fmt(s.quantity)}× ${nameOf(s.shipDefId)}`).join(', ');
+  note.textContent = short
+    ? `${named} — carries ${fmt(carried)} of ${fmt(total)}; the rest stays put.`
+    : `${named} — carries ${fmt(carried)}.`;
+  note.style.color = short ? 'var(--color-warning)' : '';
+}
+
+async function dispatchMove(st, amounts, ships) {
+  const planetId = Number(byId('st-planet').value);
+  if (!planetId) { toast('Pick a source planet first.', false); return; }
+  if (!ships.length) { toast('None of the picked haulers are on this planet.', false); return; }
 
   closeMove();
   const res = await browser.runtime.sendMessage({

@@ -547,6 +547,79 @@ export function renderAvailStrip(box, ships, available, emptyMsg) {
   }
 }
 
+// ── Cargo haulers ──────────────────────────────────────────────────────────
+// Shared by every screen that fills a hold and sends it somewhere (Scouting's
+// debris/salvage collection, the Stations withdraw/deposit): the same hauler
+// list, the same researched-capacity maths, the same "fewest ships that carry
+// this" plan, and the same cap to what the source planet actually has.
+
+export const CARGO_SHIP_KEYS = ['ore_freighter', 'bulk_carrier', 'freighter', 'transport_shuttle'];
+
+// Sum researched cargo bonuses (value × level) by effect type.
+export function cargoBonuses(research) {
+  let general = 0, shuttle = 0;
+  for (const r of research || []) {
+    const lvl = r.level || 0;
+    if (!lvl) continue;
+    for (const e of (r.effects || [])) {
+      if (e.type === 'cargo_bonus') general += (e.value || 0) * lvl;
+      else if (e.type === 'shuttle_cargo_bonus') shuttle += (e.value || 0) * lvl;
+    }
+  }
+  return { general, shuttle };
+}
+
+// Hauler defs with their real per-ship capacity, largest first.
+// `commander` is the active leader's cargo bonus (a fraction).
+export function cargoShipsFrom(shipDefs, research, commander = 0) {
+  const bonus = cargoBonuses(research);
+  return (shipDefs || [])
+    .filter(s => CARGO_SHIP_KEYS.includes(s.key) && s.cargoCapacity > 0)
+    .map(s => {
+      // cargo_bonus + commander lift every hauler; shuttle_cargo_bonus adds on top.
+      const b = bonus.general + commander + (s.key === 'transport_shuttle' ? bonus.shuttle : 0);
+      return { shipDefId: s.shipDefId, key: s.key, name: s.name, imageUrl: s.imageUrl, cap: Math.floor(s.cargoCapacity * (1 + b)) };
+    })
+    .sort((a, b) => b.cap - a.cap);
+}
+
+// Fewest selected haulers (largest-first, smallest fills the tail) to carry
+// `total` cargo. Returns [{ shipDefId, quantity }].
+export function planFleet(total, ships) {
+  const sorted = ships.filter(s => s.cap > 0).sort((a, b) => b.cap - a.cap);
+  if (!sorted.length || total <= 0) return [];
+  let rem = total;
+  const out = [];
+  for (let i = 0; i < sorted.length && rem > 0; i++) {
+    const { shipDefId, cap } = sorted[i];
+    const n = i === sorted.length - 1 ? Math.ceil(rem / cap) : Math.floor(rem / cap);
+    if (n > 0) { out.push({ shipDefId, quantity: n }); rem -= n * cap; }
+  }
+  return out;
+}
+
+// Trim a plan to a planet's actual stock. Returns the sendable fleet and what
+// it carries, so a caller can warn when that is short of the intended haul.
+export function capPlanToStock(plan, available, capOf) {
+  const ships = plan
+    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, (available || {})[s.shipDefId] || 0) }))
+    .filter(s => s.quantity > 0);
+  return { ships, carried: ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0) };
+}
+
+// capPlanToStock against a planet fetched on demand — shared by the estimate
+// and the real send, so the two can't drift apart. `availCache` (optional,
+// across a loop over many rows) avoids re-fetching the same planet per row.
+export async function capCargoFleet(plan, planetId, capOf, availCache) {
+  let av = availCache?.get(planetId);
+  if (!av) {
+    av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+    if (availCache) availCache.set(planetId, av);
+  }
+  if (av.error) return { error: av.error };
+  return capPlanToStock(plan, av.available, capOf);
+}
+
 // Remember template-dropdown choices (by element id) across tabs and sessions.
 export async function rememberedSelections() {
   const { template_selections } = await browser.storage.local.get('template_selections');

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import {
-  ALL_ROLES, DEPOSITABLE, aggregateMembers, buildAlerts, fillStats, filterStations, fleetCapacity,
-  ledgerCsv, ledgerRows, moveLimit, overLimit, parsedAmounts, roleOptions, sectorCode, sortStations,
-  stationResources, stationState, stationValue, totalAmount,
+  ALL_ROLES, DEPOSITABLE, aggregateMembers, buildAlerts, fillStats, filterStations,
+  ledgerCsv, ledgerRows, moveLimit, overLimit, parsedAmounts, planHaulers, roleOptions, sectorCode,
+  sortStations, stationResources, stationState, stationValue, totalAmount,
 } from '../nexus-addon/tabs/stations.js';
 import { makeBrowserStub, loadBackground } from './helpers.js';
 
@@ -177,14 +177,34 @@ test('moveLimit is the stock when withdrawing and the free space when depositing
   assert.ok(!DEPOSITABLE.has('cryo_ice'), 'a supply mission carries basics only');
 });
 
-test('fleetCapacity sums the picked ships cargo holds', () => {
-  const defs = [
-    { shipDefId: 7, cargoCapacity: 10000 },
-    { shipDefId: 9, cargoCapacity: 0 },
-  ];
-  assert.equal(fleetCapacity([{ shipDefId: 7, quantity: 3 }], defs), 30000);
-  assert.equal(fleetCapacity([{ shipDefId: 9, quantity: 5 }], defs), 0);
-  assert.equal(fleetCapacity([{ shipDefId: 42, quantity: 5 }], defs), 0, 'unknown ships contribute nothing');
+const haulers = [
+  { shipDefId: 1, name: 'Ore Freighter', cap: 100000 },
+  { shipDefId: 2, name: 'Freighter', cap: 25000 },
+];
+
+test('planHaulers plans the fewest picked haulers and trims to what is parked', () => {
+  const all = new Set([1, 2]);
+  const stocked = { 1: 10, 2: 10 };
+
+  const full = planHaulers(240000, haulers, all, stocked);
+  assert.deepEqual(full.plan, [{ shipDefId: 1, quantity: 2 }, { shipDefId: 2, quantity: 2 }],
+    'big haulers first, the small one fills the tail');
+  assert.equal(full.carried, 250000);
+  assert.equal(full.short, false);
+
+  // Only one Ore Freighter on the planet: the plan is trimmed and falls short.
+  const thin = planHaulers(240000, haulers, all, { 1: 1, 2: 1 });
+  assert.deepEqual(thin.ships, [{ shipDefId: 1, quantity: 1 }, { shipDefId: 2, quantity: 1 }]);
+  assert.equal(thin.carried, 125000);
+  assert.equal(thin.short, true, 'a short fleet must be flagged, not silently sent');
+
+  // Unpicked types are never planned, even when they are sitting there.
+  const oneType = planHaulers(240000, haulers, new Set([2]), stocked);
+  assert.deepEqual(oneType.plan, [{ shipDefId: 2, quantity: 10 }]);
+
+  assert.deepEqual(planHaulers(0, haulers, all, stocked).ships, [], 'nothing to carry, nothing to send');
+  assert.deepEqual(planHaulers(240000, haulers, new Set(), stocked).ships, [], 'no hauler type picked');
+  assert.deepEqual(planHaulers(240000, haulers, all, {}).ships, [], 'none parked on this planet');
 });
 
 test('parsedAmounts keeps whole units and drops blanks and zeroes', () => {
