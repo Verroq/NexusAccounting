@@ -4,11 +4,43 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.1.0] - 2026-08-31
+## [Unreleased]
 
 ### Added
-- A **Buy Me a Coffee** button, pinned bottom-right of the dashboard. A plain
-  link, not the official widget script, which an MV3 extension page cannot load.
+- A **Yesterday** option in the View picker, next to Daily — same one-day
+  window, shifted back a day.
+
+### Fixed
+- The universe picker is now built from the game's own universe list
+  (`GET /api/universes`) instead of a hardcoded S0/New Frontier pair, so a new
+  universe — Beta — is selectable without an addon update.
+- A game session token that carries no `universeKey` claim now takes its
+  universe from the host its cookie came from instead of defaulting to `s0`,
+  so a new universe's reports can no longer land in the S0 namespace.
+
+### Changed
+- A scrape cycle now covers **every universe you are logged into**, one pass
+  each, instead of only whichever universe you logged into last. Ship
+  definitions, research and the home planet are stored per universe as a
+  result (schema 13 copies the existing ones to S0).
+- Re-fetches triggered by the game itself now use the session of the universe
+  that made the call, so two universes open in two tabs no longer cross.
+
+## [2.1.0] - 2026-08-31
+
+Since the Combat Simulator is now available ingame I was able to discard the old Combat Sim
+of the addon for a Sim with API call to the game. 
+
+I added the possibility to handle multiple attacker/defender. It's not perfect since the game
+is not build for that (The API can't handle multiples player in the sim yet, so everything is
+aggregated as if there is only one attacker on the call)
+But enough babbling, I let you read the changelog for the new stuff (if you are motivated enough to read it)
+
+There is now the possibility to share spy reports with your alliance, you just have to setup a webhook on your discord.
+Check the "Discord Setup" tab to see how to do it.
+
+### Added
+- A **Buy Me a Coffee** button if you want to support me because you enjoy the addon.
 - **Shared Intel**: a new tab pooling spy reports with your alliance through a
   private Discord channel. The channel's membership is the access control —
   there is no bot account and no bot token, only a channel webhook URL plus the
