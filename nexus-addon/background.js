@@ -306,6 +306,13 @@ browser.runtime.onMessage.addListener(msg => {
     });
   }
   if (msg.type === 'GET_PLANETS') return getPlanets();
+  // ── Stations ──
+  if (msg.type === 'GET_ALLIANCE_STATIONS') return apiGet('/api/alliances/station-storage');
+  if (msg.type === 'GET_STATION_INDEX') return apiGet('/api/galaxy/station-index');
+  if (msg.type === 'GET_STATION_DETAIL') return apiGet(`/api/stations/${msg.stationId}`);
+  if (msg.type === 'GET_STATION_LOG') return getStationLog(msg.stationId, msg.pages);
+  if (msg.type === 'SEND_STATION_TRANSFER') return sendStationTransfer(msg);
+  if (msg.type === 'SEND_STATION_DEFENSE') return sendStationDefense(msg);
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
   if (msg.type === 'PURGE_OLD') return enqueue(() => purgeOldData(msg.days ?? 3)).then(() => ({ ok: true }));
   if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
@@ -1285,6 +1292,85 @@ async function getHomePlanetId(token) {
   await nsSet({ planet_id: home.id });
   console.log(`[NexusAccounting] Home planet: ${home.name} (#${home.id})`);
   return home.id;
+}
+
+// ── Stations ───────────────────────────────────────────────────────────────
+// The alliance can hold up to 200 stations, and the resource log is per
+// station, 50 rows a page (`offset`; `limit`/`page` are ignored by the
+// server). The dashboard only ever asks for the stations it is showing, and
+// answers are cached briefly so switching filters or re-selecting a station
+// doesn't re-walk the same pages.
+
+const STATION_LOG_PAGE = 50;
+const STATION_LOG_TTL = 5 * 60 * 1000;
+const stationLogCache = new Map();   // stationId → { at, logs }
+
+async function getStationLog(stationId, pages = 1) {
+  const key = `${currentUniverse}:${stationId}:${pages}`;
+  const hit = stationLogCache.get(key);
+  if (hit && Date.now() - hit.at < STATION_LOG_TTL) return { logs: hit.logs };
+
+  const logs = [];
+  for (let i = 0; i < pages; i++) {
+    const page = await apiGet(`/api/stations/${stationId}/resource-log?offset=${i * STATION_LOG_PAGE}`);
+    if (page.error) return i ? { logs } : page;   // partial pages still beat nothing
+    const rows = page.logs || [];
+    logs.push(...rows);
+    if (rows.length < STATION_LOG_PAGE) break;    // last page
+  }
+  stationLogCache.set(key, { at: Date.now(), logs });
+  return { logs };
+}
+
+// Withdrawing and depositing are fleet missions, not instant transfers: the
+// game sends haulers from one of your planets to the station and back. Both
+// go through POST /api/stations/{id}/send, but the cargo field differs —
+// `collectCargo` (snake_case keys, any resource) for a collect, `cargo`
+// (the four basic resources only) for a supply.
+const STATION_BASIC = ['ore', 'silicates', 'hydrogen', 'alloys'];
+
+// One mission can carry several resources at once — `amounts` is
+// { resourceKey: quantity }, whole units, zero/blank entries dropped.
+// Returns the request body, or { error } when the ask is not sendable.
+function stationTransferBody(direction, sourcePlanetId, ships, amounts) {
+  const cargo = {};
+  for (const [key, raw] of Object.entries(amounts || {})) {
+    const qty = Math.floor(Number(raw) || 0);
+    if (qty <= 0) continue;
+    if (direction === 'deposit' && !STATION_BASIC.includes(key)) {
+      return { error: `Only ${STATION_BASIC.join(', ')} can be shipped to a station.` };
+    }
+    cargo[key] = qty;
+  }
+  if (!Object.keys(cargo).length) return { error: 'Enter an amount above zero.' };
+  return {
+    sourcePlanetId,
+    missionType: direction === 'withdraw' ? 'collect_station' : 'supply_station',
+    ships,
+    [direction === 'withdraw' ? 'collectCargo' : 'cargo']: cargo,
+  };
+}
+
+// Reinforcing a station you own is the same endpoint with a deploy mission:
+// `garrison_station`. The ships dock at the station, and the alliance then
+// picks which of them stand as active (orbital) defence through
+// PUT /api/stations/{id}/defense-roster — a separate step this addon does not
+// drive, so what lands here is the garrison the roster draws from.
+function sendStationDefense({ stationId, sourcePlanetId, ships, attachLeader }) {
+  if (!stationId || !sourcePlanetId) return Promise.resolve({ error: 'Pick a station and a source planet.' });
+  return gamePost(`/api/stations/${stationId}/send`, {
+    sourcePlanetId,
+    missionType: 'garrison_station',
+    ships,
+    ...(attachLeader ? { attachLeader: true } : {}),
+  });
+}
+
+function sendStationTransfer({ stationId, direction, sourcePlanetId, ships, amounts }) {
+  if (!stationId || !sourcePlanetId) return Promise.resolve({ error: 'Pick a station and a source planet.' });
+  const body = stationTransferBody(direction, sourcePlanetId, ships, amounts);
+  if (body.error) return Promise.resolve(body);
+  return gamePost(`/api/stations/${stationId}/send`, body);
 }
 
 // ── Fuel ─────────────────────────────────────────────────────────────────────
@@ -3579,6 +3665,6 @@ export {
   systemFromLocation, resolveZone, backfillZones, processMissions,
   fieldMatches, purgeOldData, freshestToken, resolveRecordsCap, mergeSpyReports, selectReportsToShare, WEBHOOK_RE,
   formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, sharedIntelReject, discordFetch,
-  nsGet, nsSet, nsRemove, gameUrlFor, setCurrentUniverse, getCurrentUniverse, hostUniverse, getToken, getTokens,
+  nsGet, nsSet, nsRemove, gameUrlFor, sendStationTransfer, stationTransferBody, setCurrentUniverse, getCurrentUniverse, hostUniverse, getToken, getTokens,
   processSpyReports, processCampScoutReports,
 };

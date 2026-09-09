@@ -120,6 +120,10 @@ The index below stays grouped by game area, so the folder in each link tells you
 - [galaxy_system_planets.md](./get/galaxy_system_planets.md)
 - [stations_sector.md](./get/stations_sector.md)
 - [stations_detail.md](./get/stations_detail.md)
+- [alliances_station_storage.md](./get/alliances_station_storage.md)
+- [galaxy_station_index.md](./get/galaxy_station_index.md)
+- [stations_resource_log.md](./get/stations_resource_log.md)
+- [stations_send.md](./post/stations_send.md)
 - [galaxy_colony_status.md](./get/galaxy_colony_status.md)
 
 ### Market and Trade

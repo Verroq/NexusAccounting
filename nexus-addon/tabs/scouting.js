@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, nsGet, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
+import { applySort, attachSortable, capCargoFleet, cargoShipsFrom, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, nsGet, planFleet, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -590,7 +590,6 @@ function saveSurveyZone() {
 
 // Cargo haulers the user can pick to collect debris. Loaded from the shipyard
 // (real cargoCapacity, scales with race/tech), filtered to these keys.
-const CARGO_KEYS = ['ore_freighter', 'bulk_carrier', 'freighter', 'transport_shuttle'];
 let scCargoShips = [];               // [{ shipDefId, name, imageUrl, cap }]
 let scAllShips = [];                 // every ship def: [{ shipDefId, name, imageUrl }]
 const scCargoSel = new Set();        // selected shipDefIds
@@ -601,17 +600,9 @@ async function loadCargoShips() {
     nsGet(['research']),
     browser.runtime.sendMessage({ type: 'GET_AUTH_ME' }),
   ]);
-  const bonus = cargoBonuses(stored.research || []);
   const commander = me?.user?.activeLeaderBonuses?.cargoBonus || 0;   // leader cargo bonus
   scAllShips = (res.ships || []).map(s => ({ shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl }));
-  scCargoShips = (res.ships || [])
-    .filter(s => CARGO_KEYS.includes(s.key) && s.cargoCapacity > 0)
-    .map(s => {
-      // cargo_bonus + commander lift every hauler; shuttle_cargo_bonus adds on top.
-      const b = bonus.general + commander + (s.key === 'transport_shuttle' ? bonus.shuttle : 0);
-      return { shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl, cap: Math.floor(s.cargoCapacity * (1 + b)) };
-    })
-    .sort((a, b) => b.cap - a.cap);
+  scCargoShips = cargoShipsFrom(res.ships, stored.research, commander);
   // Restore the remembered cargo-type selection (survives tabs/sessions).
   const saved = (await rememberedSelections())['sc-cargo-ships'];
   if (Array.isArray(saved)) {
@@ -619,20 +610,6 @@ async function loadCargoShips() {
     for (const id of saved) if (scCargoShips.some(s => s.shipDefId === id)) scCargoSel.add(id);
   }
   renderCargoToggles();
-}
-
-// Sum researched cargo bonuses (value × level) by effect type.
-function cargoBonuses(research) {
-  let general = 0, shuttle = 0;
-  for (const r of research) {
-    const lvl = r.level || 0;
-    if (!lvl) continue;
-    for (const e of (r.effects || [])) {
-      if (e.type === 'cargo_bonus') general += (e.value || 0) * lvl;
-      else if (e.type === 'shuttle_cargo_bonus') shuttle += (e.value || 0) * lvl;
-    }
-  }
-  return { general, shuttle };
 }
 
 function renderCargoToggles() {
@@ -664,6 +641,8 @@ function renderCargoToggles() {
     box.appendChild(b);
   }
 }
+
+const cargoCapOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
 
 // Selected haulers as [{ shipDefId, cap }].
 function selectedCargo() {
@@ -702,41 +681,6 @@ async function updateAvail() {
   if (av.error) { clearAvailStrip(debrisBox, av.error); clearAvailStrip(invBox, av.error); return; }
   renderAvailStrip(debrisBox, scCargoShips, av.available, 'No cargo ships on this planet.');
   renderAvailStrip(invBox, scAllShips, av.available, 'No ships on this planet.');
-}
-
-// Fewest selected haulers (largest-first, smallest fills the tail) to carry
-// `total` cargo. Returns [{ shipDefId, quantity }].
-function planFleet(total, ships) {
-  const sorted = ships.filter(s => s.cap > 0).sort((a, b) => b.cap - a.cap);
-  if (!sorted.length || total <= 0) return [];
-  let rem = total;
-  const out = [];
-  for (let i = 0; i < sorted.length && rem > 0; i++) {
-    const { shipDefId, cap } = sorted[i];
-    const n = i === sorted.length - 1 ? Math.ceil(rem / cap) : Math.floor(rem / cap);
-    if (n > 0) { out.push({ shipDefId, quantity: n }); rem -= n * cap; }
-  }
-  return out;
-}
-
-// Cap a planFleet() plan to what `planetId` actually has in stock — shared by
-// both the fuel/time estimate and the real send, so they can't drift apart
-// the way Investigate's uncapped-estimate/capped-send split used to.
-// `availCache` (optional, shared across a loop over many rows) avoids
-// re-fetching the same planet's stock once per row.
-async function capCargoFleet(plan, planetId, availCache) {
-  let av = availCache?.get(planetId);
-  if (!av) {
-    av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-    if (availCache) availCache.set(planetId, av);
-  }
-  if (av.error) return { error: av.error };
-  const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
-  const ships = plan
-    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
-    .filter(s => s.quantity > 0);
-  const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
-  return { ships, carried };
 }
 
 async function loadDebris() {
@@ -885,7 +829,7 @@ async function computeDebrisFuel() {
       continue;
     }
     // Capped to the source planet's actual stock — matches what collectDebris() will really send.
-    const capped = await capCargoFleet(plan, srcId, availCache);
+    const capped = await capCargoFleet(plan, srcId, cargoCapOf, availCache);
     if (gen !== debrisFuelGen) return;
     if (capped.error) {
       if (nCell) nCell.textContent = '—';
@@ -918,7 +862,7 @@ async function collectDebris(field) {
   if (!plan.length) { status.textContent = 'Select cargo ships above first.'; return; }
 
   // Cap to what the source planet actually has; warn if that can't carry it all.
-  const capped = await capCargoFleet(plan, planetId);
+  const capped = await capCargoFleet(plan, planetId, cargoCapOf);
   if (capped.error) { status.textContent = `Error: ${capped.error}`; return; }
   const { ships, carried } = capped;
   if (!ships.length) { status.textContent = 'None of the selected cargo ships are on this planet.'; return; }
@@ -1049,7 +993,7 @@ async function computeSalvageFuel() {
       continue;
     }
     // Capped to the source planet's actual stock — matches what collectSalvage() will really send.
-    const capped = await capCargoFleet(plan, planetId, availCache);
+    const capped = await capCargoFleet(plan, planetId, cargoCapOf, availCache);
     if (gen !== salvageFuelGen) return;
     if (capped.error) {
       if (nCell) nCell.textContent = '—';
@@ -1081,7 +1025,7 @@ async function collectSalvage(salvage) {
   if (!plan.length) { status.textContent = 'Select cargo ships above first.'; return; }
 
   // Cap to what the source planet has; warn if that can't carry it all.
-  const capped = await capCargoFleet(plan, planetId);
+  const capped = await capCargoFleet(plan, planetId, cargoCapOf);
   if (capped.error) { status.textContent = `Error: ${capped.error}`; return; }
   const { ships, carried } = capped;
   if (!ships.length) { status.textContent = 'None of the selected cargo ships are on this planet.'; return; }

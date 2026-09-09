@@ -126,7 +126,7 @@ export async function confirmDialog(message, ships) {
 // a "Mine until full" checkbox in this dialog; the dialog writes the choice back
 // into it. Left null, no checkbox is shown and the resolve value is unchanged,
 // so callers that do not mine (expeditions) are unaffected.
-export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2, escortTemplates = [], untilFullState = null }) {
+export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2, escortTemplates = [], templates = [], untilFullState = null }) {
   const defs = await shipDefs();
   const ids = [...new Set([
     ...Object.keys(seed).map(Number),
@@ -155,6 +155,49 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
       sub.textContent = subtitle;
       sub.style.cssText = 'color:#8b949e;font-size:0.85rem;margin-bottom:8px;white-space:pre-line';
       box.append(sub);
+    }
+
+    // Template picker — fills the rows below from a saved template, so the
+    // choice is made per dispatch instead of from some screen-wide dropdown.
+    // Declared here so it sits above the ship rows; its handler runs long after
+    // `state`/`inputs`/`refresh` below exist.
+    let tplNote = null;
+    if (templates.length) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:10px;font-size:0.85rem;color:#8b949e';
+      const label = document.createElement('span');
+      label.textContent = 'Template:';
+      const sel = document.createElement('select');
+      sel.style.cssText = 'flex:1;min-width:0;background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:4px 6px;border-radius:6px;font-size:0.85rem';
+      const none = document.createElement('option');
+      none.value = ''; none.textContent = 'No template';
+      sel.append(none);
+      for (const t of templates) {
+        const o = document.createElement('option');
+        o.value = String(t.id); o.textContent = t.name;
+        sel.append(o);
+      }
+      sel.addEventListener('change', () => {
+        const tpl = templates.find(t => String(t.id) === sel.value);
+        // Picking a template replaces the fleet — that is what "use this
+        // template" means; the counts stay editable afterwards.
+        for (const [id, inp] of inputs) { state.delete(id); inp.value = '0'; }
+        let short = false;
+        for (const [idStr, qty] of Object.entries((tpl && tpl.ships) || {})) {
+          const id = Number(idStr);
+          const want = Math.ceil(qty);
+          const q = Math.min(want, avail[id] || 0);
+          if (q < want) short = true;
+          if (q > 0) { state.set(id, q); const inp = inputs.get(id); if (inp) inp.value = String(q); }
+        }
+        tplNote.textContent = !tpl ? '' : short ? 'Trimmed to what is on this planet.' : '';
+        tplNote.style.color = '#d8b055';
+        refresh();
+      });
+      row.append(label, sel);
+      tplNote = document.createElement('div');
+      tplNote.style.cssText = 'font-size:0.78rem;margin-top:4px;min-height:1em';
+      box.append(row, tplNote);
     }
 
     const rows = document.createElement('div');
@@ -545,6 +588,79 @@ export function renderAvailStrip(box, ships, available, emptyMsg) {
     chip.append(document.createTextNode(`${(available[s.shipDefId] || 0).toLocaleString()}× ${s.name}`));
     box.appendChild(chip);
   }
+}
+
+// ── Cargo haulers ──────────────────────────────────────────────────────────
+// Shared by every screen that fills a hold and sends it somewhere (Scouting's
+// debris/salvage collection, the Stations withdraw/deposit): the same hauler
+// list, the same researched-capacity maths, the same "fewest ships that carry
+// this" plan, and the same cap to what the source planet actually has.
+
+export const CARGO_SHIP_KEYS = ['ore_freighter', 'bulk_carrier', 'freighter', 'transport_shuttle'];
+
+// Sum researched cargo bonuses (value × level) by effect type.
+export function cargoBonuses(research) {
+  let general = 0, shuttle = 0;
+  for (const r of research || []) {
+    const lvl = r.level || 0;
+    if (!lvl) continue;
+    for (const e of (r.effects || [])) {
+      if (e.type === 'cargo_bonus') general += (e.value || 0) * lvl;
+      else if (e.type === 'shuttle_cargo_bonus') shuttle += (e.value || 0) * lvl;
+    }
+  }
+  return { general, shuttle };
+}
+
+// Hauler defs with their real per-ship capacity, largest first.
+// `commander` is the active leader's cargo bonus (a fraction).
+export function cargoShipsFrom(shipDefs, research, commander = 0) {
+  const bonus = cargoBonuses(research);
+  return (shipDefs || [])
+    .filter(s => CARGO_SHIP_KEYS.includes(s.key) && s.cargoCapacity > 0)
+    .map(s => {
+      // cargo_bonus + commander lift every hauler; shuttle_cargo_bonus adds on top.
+      const b = bonus.general + commander + (s.key === 'transport_shuttle' ? bonus.shuttle : 0);
+      return { shipDefId: s.shipDefId, key: s.key, name: s.name, imageUrl: s.imageUrl, cap: Math.floor(s.cargoCapacity * (1 + b)) };
+    })
+    .sort((a, b) => b.cap - a.cap);
+}
+
+// Fewest selected haulers (largest-first, smallest fills the tail) to carry
+// `total` cargo. Returns [{ shipDefId, quantity }].
+export function planFleet(total, ships) {
+  const sorted = ships.filter(s => s.cap > 0).sort((a, b) => b.cap - a.cap);
+  if (!sorted.length || total <= 0) return [];
+  let rem = total;
+  const out = [];
+  for (let i = 0; i < sorted.length && rem > 0; i++) {
+    const { shipDefId, cap } = sorted[i];
+    const n = i === sorted.length - 1 ? Math.ceil(rem / cap) : Math.floor(rem / cap);
+    if (n > 0) { out.push({ shipDefId, quantity: n }); rem -= n * cap; }
+  }
+  return out;
+}
+
+// Trim a plan to a planet's actual stock. Returns the sendable fleet and what
+// it carries, so a caller can warn when that is short of the intended haul.
+export function capPlanToStock(plan, available, capOf) {
+  const ships = plan
+    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, (available || {})[s.shipDefId] || 0) }))
+    .filter(s => s.quantity > 0);
+  return { ships, carried: ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0) };
+}
+
+// capPlanToStock against a planet fetched on demand — shared by the estimate
+// and the real send, so the two can't drift apart. `availCache` (optional,
+// across a loop over many rows) avoids re-fetching the same planet per row.
+export async function capCargoFleet(plan, planetId, capOf, availCache) {
+  let av = availCache?.get(planetId);
+  if (!av) {
+    av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+    if (availCache) availCache.set(planetId, av);
+  }
+  if (av.error) return { error: av.error };
+  return capPlanToStock(plan, av.available, capOf);
 }
 
 // Remember template-dropdown choices (by element id) across tabs and sessions.
