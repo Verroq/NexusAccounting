@@ -27,15 +27,14 @@ import { renderTechTreeTab } from './tabs/techtree.js';
 export async function loadAll() {
   const { selected_universe } = await browser.storage.local.get('selected_universe');
   setSelectedUniverse(selected_universe || 's0');
-  const universeSelect = document.getElementById('universe-select');
-  if (universeSelect) universeSelect.value = selectedUniverse;
+  await populateUniverses();
 
   // SCOPED_KEYS (shared with background.js — see storage-keys.js) covers the
   // namespaced scraped-data keys; everything else here is a plain global
   // setting/cache that isn't scoped to a universe.
   const [scoped, globalKeys] = await Promise.all([
     nsGet(SCOPED_KEYS),
-    browser.storage.local.get(['ships', 'records_cap', 'research', 'research_speed_mult', 'active_research', 'resource_weights']),
+    browser.storage.local.get(['records_cap', 'resource_weights']),
   ]);
   setStore({ ...scoped, ...globalKeys });
 
@@ -46,6 +45,21 @@ export async function loadAll() {
   updateStatus(store.last_scrape, store.last_error);
   renderAll();
   updateStorageFooter();
+}
+
+// Fill the universe picker from the server's catalog (GET /api/universes via
+// background) so a new universe — beta, a future season — needs no addon
+// release. The catalog also lists ended universes, so old data stays browsable.
+async function populateUniverses() {
+  const sel = document.getElementById('universe-select');
+  if (!sel) return;
+  const list = await browser.runtime.sendMessage({ type: 'GET_UNIVERSES' }).catch(() => null) || [];
+  const names = new Map(list.map(u => [u.key, u.name || u.key]));
+  // Never drop the current selection, even if the catalog call failed.
+  if (!names.has(selectedUniverse)) names.set(selectedUniverse, selectedUniverse.toUpperCase());
+  sel.innerHTML = '';
+  for (const [key, name] of names) sel.add(new Option(name, key));
+  sel.value = selectedUniverse;
 }
 
 // Archived record counts + rough storage size, shown in the footer.

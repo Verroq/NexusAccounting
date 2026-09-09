@@ -598,7 +598,7 @@ const scCargoSel = new Set();        // selected shipDefIds
 async function loadCargoShips() {
   const [res, stored, me] = await Promise.all([
     browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
-    browser.storage.local.get('research'),
+    nsGet(['research']),
     browser.runtime.sendMessage({ type: 'GET_AUTH_ME' }),
   ]);
   const bonus = cargoBonuses(stored.research || []);

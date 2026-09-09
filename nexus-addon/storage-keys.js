@@ -7,9 +7,11 @@
 // what's namespaced — see ARCHITECTURE.md / the multi-universe migration.
 //
 // NOT listed here (deliberately left as plain global keys): settings
-// (records_cap, selected_universe), ship/shipyard defs (ships, fleet_templates),
-// research (research, research_speed_mult, active_research — per-universe
-// research is a follow-up, out of scope for now).
+// (records_cap, selected_universe, resource_weights), user-authored fleet
+// templates (fleet_templates), and the universe catalog itself (universes).
+// Ship defs, research and the home planet id ARE scoped — a scrape cycle
+// walks every logged-in universe, so a global copy would only ever hold
+// whichever universe ran last.
 //
 // Archive shard keys (e.g. `survey_archive_2026-06`) are dynamic — namespaced
 // directly by appendToArchive/loadArchive/purgeOldData, not listed here.
@@ -58,4 +60,7 @@ export const SCOPED_KEYS = [
   'spy_reports', 'camp_scout_reports',
   // Fuel counting (per-mission fuel log + dedup ids)
   'fuel_log', 'fuel_counted_ids',
+  // Per-universe account state: home planet, the shipyard-derived ship
+  // catalog (race/tech and image host differ per universe) and research
+  'planet_id', 'ships', 'research', 'research_speed_mult', 'active_research',
 ];

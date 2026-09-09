@@ -255,7 +255,9 @@ async function renderTargetIntel(r) {
     const options = [];
     // Cargo capacities come from the scraped ship defs in storage — the game's
     // simulator bootstrap only carries combat-relevant fields.
-    const { ships } = await browser.storage.local.get('ships');
+    const { selected_universe } = await browser.storage.local.get('selected_universe');
+    const shipsKey = `${selected_universe || 's0'}__ships`;
+    const { [shipsKey]: ships } = await browser.storage.local.get(shipsKey);
     for (const key of ['freighter', 'bulk_carrier', 'ore_freighter']) {
       const d = (ships || {})[key];
       if (d?.cargoCapacity) options.push(`${Math.ceil(loot / d.cargoCapacity)}× ${d.name}`);

@@ -61,7 +61,7 @@ const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes; add a MIGRATIONS entry for it.
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 
 const DEFAULT_RECORDS_CAP = 5000;
 // Resolve the stored records_cap into a slice length. A stored 0 means
@@ -256,6 +256,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SCRAPE_NOW') return scrape().then(() => ({ ok: true }));
   if (msg.type === 'GET_FLEET') return getFleet(msg.planetId);
   if (msg.type === 'GET_SHIP_DEFS') return getShipDefs();
+  if (msg.type === 'GET_UNIVERSES') return getUniverses();
   if (msg.type === 'GET_PLANET_SHIPS') return getPlanetShips(msg.planetId);
   if (msg.type === 'GET_MISSIONS') return apiGet('/api/fleet/missions');
   if (msg.type === 'GET_FUEL_ESTIMATE') {
@@ -1034,14 +1035,46 @@ function jwtExp(token) {
 // `kind` claim is not treated as disqualifying — only a *known-wrong* kind
 // is excluded, so tokens from a future/older shape without the claim still
 // work.
+function isGameToken(t) {
+  if (!t) return false;
+  const kind = jwtPayload(t).kind;
+  return kind == null || kind === 'game';
+}
+
 function freshestToken(tokens) {
-  const candidates = [...tokens].filter(t => {
-    if (!t) return false;
-    const kind = jwtPayload(t).kind;
-    return kind == null || kind === 'game';
-  });
+  const candidates = [...tokens].filter(isGameToken);
   if (!candidates.length) return null;
   return candidates.sort((a, b) => jwtExp(b) - jwtExp(a))[0];
+}
+
+// Universe catalog. Public (no auth) on the lobby host, so a new universe —
+// beta, a future season — shows up without an addon release. Cached in
+// storage.local so getToken() and the dashboard dropdown keep working offline.
+const UNIVERSE_FALLBACK = [{ key: 's0', name: 'S0' }, { key: 'nf', name: 'New Frontier' }];
+
+async function getUniverses() {
+  try {
+    const r = await fetch('https://nexuslegacy.space/api/universes');
+    if (!r.ok) throw new NexusAPIError(r.status, 'universes');
+    const list = (await r.json()).map(u => ({ key: u.key, name: u.name }));
+    if (list.length) {
+      await browser.storage.local.set({ universes: list });
+      return list;
+    }
+  } catch (err) {
+    console.warn('[NexusAccounting] Universe list fetch failed:', err.message);
+  }
+  const { universes } = await browser.storage.local.get('universes');
+  return universes || UNIVERSE_FALLBACK;
+}
+
+// Universe key of a cookie's host ('s0.nexuslegacy.space' → 's0'), or null for
+// the bare/lobby domain. Fallback for a game token whose payload carries no
+// universeKey claim — without it such a token defaults to s0 and its reports
+// land in the s0 namespace.
+function hostUniverse(host) {
+  const m = /^([a-z0-9-]+)\.nexuslegacy\.space$/.exec(String(host || '').replace(/^\./, ''));
+  return m ? m[1] : null;
 }
 
 // Find the game-session cookie. The server moved the per-universe session
@@ -1059,10 +1092,12 @@ function freshestToken(tokens) {
 // universeKey comes from the winning token's `universeKey` JWT claim,
 // defaulting to 's0' when missing/unparseable — preserves single-universe
 // behavior for any token shape that predates multi-universe support.
-async function getToken() {
+async function collectTokens() {
   const NAMES = ['__Host-nexus-game', 'nexus_token'];
-  const urls = [gameUrlFor('s0'), gameUrlFor('nf'), 'https://nexuslegacy.space'];
-  const found = new Set();
+  const { universes } = await browser.storage.local.get('universes');
+  const urls = [...(universes || UNIVERSE_FALLBACK).map(u => gameUrlFor(u.key)), 'https://nexuslegacy.space'];
+  const found = new Map();   // token value → universe key of the host it came from (null = bare domain)
+  const note = (value, hint) => found.set(value, found.get(value) || hint);
 
   const collect = async (storeId) => {
     const store = storeId ? { storeId } : {};
@@ -1070,12 +1105,12 @@ async function getToken() {
       for (const url of urls) {
         try {
           const c = await browser.cookies.get({ url, name, ...store });
-          if (c?.value) found.add(c.value);
+          if (c?.value) note(c.value, hostUniverse(new URL(url).hostname));
         } catch { /* store may not support get */ }
       }
       try {
         const all = await browser.cookies.getAll({ domain: 'nexuslegacy.space', name, ...store });
-        for (const c of (all || [])) if (c.value) found.add(c.value);
+        for (const c of (all || [])) if (c.value) note(c.value, hostUniverse(c.domain));
       } catch { /* ignore */ }
     }
   };
@@ -1091,13 +1126,41 @@ async function getToken() {
     console.warn('[NexusAccounting] getAllCookieStores failed:', e.message);
   }
 
-  const token = freshestToken(found);
-  if (token) return { token, universeKey: jwtPayload(token).universeKey || 's0' };
+  if (!found.size) {
+    console.warn(`[NexusAccounting] Game session token not found (checked cookies: ${NAMES.join(', ')}; ` +
+      `default + stores: [${storeIds.join(', ')}]). Open the game (logged in) in a normal tab, or check the ` +
+      `cookie exists on s0.nexuslegacy.space.`);
+  }
+  return found;
+}
 
-  console.warn(`[NexusAccounting] Game session token not found (checked cookies: ${NAMES.join(', ')}; ` +
-    `default + stores: [${storeIds.join(', ')}]). Open the game (logged in) in a normal tab, or check the ` +
-    `cookie exists on s0.nexuslegacy.space.`);
-  return null;
+// Universe a token belongs to: its own claim, else the host its cookie came
+// from, else s0 (pre-multi-universe token shape).
+function universeOf(token, hints) {
+  return jwtPayload(token).universeKey || hints.get(token) || 's0';
+}
+
+// The single active session — freshest token across every universe. Used by
+// everything the UI triggers, which follows the live game session.
+// Returns { token, universeKey } or null.
+async function getToken() {
+  const found = await collectTokens();
+  const token = freshestToken(found.keys());
+  return token ? { token, universeKey: universeOf(token, found) } : null;
+}
+
+// One session per universe you are logged into (freshest token each), so a
+// scrape cycle covers all of them instead of only the last universe logged
+// into. Ordered by universe key for a stable cycle order.
+async function getTokens() {
+  const found = await collectTokens();
+  const best = new Map();
+  for (const t of found.keys()) {
+    if (!isGameToken(t)) continue;
+    const u = universeOf(t, found);
+    if (!best.has(u) || jwtExp(t) > jwtExp(best.get(u))) best.set(u, t);
+  }
+  return [...best].sort(([a], [b]) => a.localeCompare(b)).map(([universeKey, token]) => ({ token, universeKey }));
 }
 
 // ── API ────────────────────────────────────────────────────────────────────
@@ -1143,7 +1206,11 @@ async function apiFetch(path, token, options = {}) {
     await rateLimitGate(polite);
     let r;
     try {
-      r = await fetch(`${gameUrlFor(currentUniverse)}${path}`, {
+      // Host comes off the token itself, not currentUniverse: a scrape cycle
+      // walks several universes and a UI call can flip currentUniverse in
+      // between, which would otherwise send a universe's token to another
+      // universe's host (401). Falls back for tokens with no claim.
+      r = await fetch(`${gameUrlFor(jwtPayload(token).universeKey || currentUniverse)}${path}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch (e) {
@@ -1209,13 +1276,13 @@ async function apiFetch(path, token, options = {}) {
 
 // Home planet id, discovered once via /api/planets and cached.
 async function getHomePlanetId(token) {
-  const { planet_id } = await browser.storage.local.get('planet_id');
+  const { planet_id } = await nsGet(['planet_id']);
   if (planet_id) return planet_id;
   const data = await apiFetch('/api/planets', token);
   const planets = data.planets || [];
   const home = planets.find(p => p.isHomeworld) || planets[0];
   if (!home) throw new Error('No planets found for this account');
-  await browser.storage.local.set({ planet_id: home.id });
+  await nsSet({ planet_id: home.id });
   console.log(`[NexusAccounting] Home planet: ${home.name} (#${home.id})`);
   return home.id;
 }
@@ -2826,7 +2893,7 @@ async function rebuildAggregates() {
     'recent_reports', 'pirate_recent_reports', 'mining_recent_reports',
     'exp_recent_reports', 'xeno_recent_reports',
   ]);
-  const ships = (await browser.storage.local.get('ships')).ships || {};
+  const ships = (await nsGet(['ships'])).ships || {};
   const out = {};
   // Archives hold every report ever seen; capped recents are the fallback
   // for data collected before archives existed.
@@ -3245,6 +3312,18 @@ const MIGRATIONS = {
     }
     if (Object.keys(patch).length) await browser.storage.local.set(patch);
   },
+  // v13: per-universe scraping (a cycle now walks every logged-in universe)
+  // forced planet_id, ships and the research keys into SCOPED_KEYS — with the
+  // loop writing them once per universe, a global copy would just be whichever
+  // universe ran last. Same gap-fill copy as v12.
+  13: async () => {
+    const all = await browser.storage.local.get(null);
+    const patch = {};
+    for (const k of SCOPED_KEYS) {
+      if (k in all && !(`s0__${k}` in all)) patch[`s0__${k}`] = all[k];
+    }
+    if (Object.keys(patch).length) await browser.storage.local.set(patch);
+  },
 };
 
 async function ensureSchema() {
@@ -3276,19 +3355,28 @@ async function ensureSchema() {
 // ── Full scrape (15-min alarm fallback + manual button) ────────────────────
 
 async function scrape() {
-  // Primary entry point for the whole namespacing scheme: this sets
-  // currentUniverse for the entire scrape cycle (all processor/storage calls
-  // below run inside its enqueue()'d chain).
-  const { token, universeKey } = await getToken() || {};
-  if (!token) {
+  await getUniverses();   // refresh the catalog before collectTokens() reads it
+  const sessions = await getTokens();
+  if (!sessions.length) {
     console.warn('[NexusAccounting] No token — log in to the game first.');
     await nsSet({ last_error: 'Not logged in to Nexus Legacy.' });
     return;
   }
-  currentUniverse = universeKey;
 
   await ensureSchema();
+  // One pass per universe, sequentially — parallel passes would race on
+  // currentUniverse, which every nsGet/nsSet below resolves at call time.
+  for (const { token, universeKey } of sessions) {
+    await scrapeUniverse(token, universeKey);
+  }
+  await maybeAutoBackup();
+}
 
+// One universe's pass. Primary entry point for the whole namespacing scheme:
+// this sets currentUniverse for the pass (all processor/storage calls below
+// run inside its enqueue()'d chain).
+async function scrapeUniverse(token, universeKey) {
+  currentUniverse = universeKey;
   try {
     const planetId = await getHomePlanetId(token);
     const [shipyardData, reportData, pirateData, spyData, campScoutData,
@@ -3322,9 +3410,9 @@ async function scrape() {
       let ships;
       if (shipyardData) {
         ships = buildShipCatalog(shipyardData, jwtRace(token), currentUniverse);
-        await browser.storage.local.set({ ships });
+        await nsSet({ ships });
       } else {
-        ships = (await browser.storage.local.get('ships')).ships || {};
+        ships = (await nsGet(['ships'])).ships || {};
       }
       await backfillZones(zones, campZones, wormholeZones);
       const nSurveys = await processSurveyReports(reportData.reports || [], ships, zones);
@@ -3334,7 +3422,7 @@ async function scrape() {
       await processXenoReports(xenoMessagesData.notifications || []);
       await processSystemDebris(systemDebrisData.debris || [], zones);
       await processMissions(missionsData.missions || [], zoneById || {}, ships);
-      await browser.storage.local.set({
+      await nsSet({
         research: researchData.research || [],
         research_speed_mult: researchData.researchSpeedMult || 1,
         active_research: researchData.activeResearches || (researchData.activeResearch ? [researchData.activeResearch] : []),
@@ -3343,13 +3431,12 @@ async function scrape() {
       await processCampScoutReports(campScoutData.reports || []);
       await processPvpReports(pvpData.reports || []);
       await checkDrift();
-      console.log(`[NexusAccounting] Scraped ${nSurveys} surveys, ${nPirates} pirate, ${nMining} mining reports.`);
+      console.log(`[NexusAccounting] [${universeKey}] Scraped ${nSurveys} surveys, ${nPirates} pirate, ${nMining} mining reports.`);
     });
-    await maybeAutoBackup();
   } catch (err) {
-    console.error('[NexusAccounting] Scrape failed:', err);
+    console.error(`[NexusAccounting] Scrape failed (${universeKey}):`, err);
     // Cached planet may be gone (recolonized) — rediscover on next scrape.
-    if (err.message.includes('→ 404')) await browser.storage.local.remove('planet_id');
+    if (err.message.includes('→ 404')) await nsRemove(['planet_id']);
     await nsSet({ last_error: err.message });
   }
 }
@@ -3392,18 +3479,23 @@ browser.webRequest.onCompleted.addListener(
   details => {
     if (details.tabId === -1) return;                       // our own re-fetches
     if (details.statusCode < 200 || details.statusCode >= 300) return;
-    const path = new URL(details.url).pathname;
-    if (refetchPending.has(path)) return;
-    refetchPending.add(path);
-    setTimeout(() => refetchPending.delete(path), 3000);
-    refetchEndpoint(path);
+    const { pathname: path, hostname } = new URL(details.url);
+    const key = `${hostname}${path}`;
+    if (refetchPending.has(key)) return;
+    refetchPending.add(key);
+    setTimeout(() => refetchPending.delete(key), 3000);
+    refetchEndpoint(path, hostUniverse(hostname));
   },
   { urls: WATCHED_URLS }
 );
 
-async function refetchEndpoint(path) {
-  const { token, universeKey } = await getToken() || {};
-  if (!token) return;
+// `universe` is the host the game itself called, so an open tab in one
+// universe never re-fetches with another universe's session.
+async function refetchEndpoint(path, universe) {
+  const sessions = await getTokens();
+  const session = sessions.find(s => s.universeKey === universe) || sessions[0];
+  if (!session) return;
+  const { token, universeKey } = session;
   currentUniverse = universeKey;
   let json;
   try {
@@ -3417,7 +3509,7 @@ async function refetchEndpoint(path) {
 function routeIntercepted(url, json, token) {
   enqueue(async () => {
     if (url.includes('/shipyard')) {
-      await browser.storage.local.set({ ships: buildShipCatalog(json, jwtRace(token), currentUniverse) });
+      await nsSet({ ships: buildShipCatalog(json, jwtRace(token), currentUniverse) });
       return;
     }
     if (url.includes('/spy-reports')) {
@@ -3443,19 +3535,19 @@ function routeIntercepted(url, json, token) {
     }
     if (url.includes('/missions')) {
       const { system_zone_by_id } = await nsGet(['system_zone_by_id']);
-      const { ships } = await browser.storage.local.get('ships');
+      const { ships } = await nsGet(['ships']);
       await processMissions(json.missions || [], system_zone_by_id || {}, ships || {});
       return;
     }
     if (url.includes('/api/research')) {
-      await browser.storage.local.set({
+      await nsSet({
         research: json.research || [],
         research_speed_mult: json.researchSpeedMult || 1,
         active_research: json.activeResearches || (json.activeResearch ? [json.activeResearch] : []),
       });
       return;
     }
-    const { ships } = await browser.storage.local.get('ships');
+    const { ships } = await nsGet(['ships']);
     const { system_zones, camp_zones, wormhole_zones, wormhole_classes } =
       await nsGet(['system_zones', 'camp_zones', 'wormhole_zones', 'wormhole_classes']);
     if (!ships) return; // no catalog yet — the next full scrape bootstraps it
@@ -3487,6 +3579,6 @@ export {
   systemFromLocation, resolveZone, backfillZones, processMissions,
   fieldMatches, purgeOldData, freshestToken, resolveRecordsCap, mergeSpyReports, selectReportsToShare, WEBHOOK_RE,
   formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, sharedIntelReject, discordFetch,
-  nsGet, nsSet, nsRemove, gameUrlFor, setCurrentUniverse, getCurrentUniverse,
+  nsGet, nsSet, nsRemove, gameUrlFor, setCurrentUniverse, getCurrentUniverse, hostUniverse, getToken, getTokens,
   processSpyReports, processCampScoutReports,
 };

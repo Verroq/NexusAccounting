@@ -551,7 +551,8 @@ test('migration v11 copies flat legacy keys to s0__-prefixed keys without deleti
       exp: { months: [], count: 0 }, xeno: { months: [], count: 0 },
     },
     'survey_archive_2026-06': [{ id: 1, created_at: '2026-06-01T00:00:00Z', ore: 500 }],
-    ships: { 1: { key: 'scout' } },   // out-of-scope key: must NOT get an s0__ copy
+    ships: { 1: { key: 'scout' } },   // scoped since v13 (per-universe ship defs)
+    fleet_templates: [{ name: 'raid' }],   // out-of-scope key: must NOT get an s0__ copy
     // Zone/coords caches and simulator intel — added to SCOPED_KEYS alongside
     // the rest; must migrate the same way as any other in-scope key.
     system_zones: { A1: 'safe' },
@@ -587,8 +588,9 @@ test('migration v11 copies flat legacy keys to s0__-prefixed keys without deleti
   assert.deepEqual(raw.system_zones, { A1: 'safe' });
   assert.deepEqual(raw.spy_reports, [{ id: 1, created_at: '2026-06-01T00:00:00Z' }]);
   assert.deepEqual(raw.fuel_log, [{ created_at: '2026-06-01T00:00:00Z', type: 'survey', zone: 'safe', fuel: 12 }]);
+  assert.deepEqual(raw.s0__ships, { 1: { key: 'scout' } });
   // out-of-scope keys are never copied
-  assert.equal(raw.s0__ships, undefined);
+  assert.equal(raw.s0__fleet_templates, undefined);
   assert.ok(raw.schema_version >= 11);
 
   // functionally readable through the new namespaced path, not just present on disk

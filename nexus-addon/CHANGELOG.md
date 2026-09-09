@@ -4,6 +4,24 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- The universe picker is now built from the game's own universe list
+  (`GET /api/universes`) instead of a hardcoded S0/New Frontier pair, so a new
+  universe — Beta — is selectable without an addon update.
+- A game session token that carries no `universeKey` claim now takes its
+  universe from the host its cookie came from instead of defaulting to `s0`,
+  so a new universe's reports can no longer land in the S0 namespace.
+
+### Changed
+- A scrape cycle now covers **every universe you are logged into**, one pass
+  each, instead of only whichever universe you logged into last. Ship
+  definitions, research and the home planet are stored per universe as a
+  result (schema 13 copies the existing ones to S0).
+- Re-fetches triggered by the game itself now use the session of the universe
+  that made the call, so two universes open in two tabs no longer cross.
+
 ## [2.1.0] - 2026-08-31
 
 Since the Combat Simulator is now available ingame I was able to discard the old Combat Sim
