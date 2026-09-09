@@ -4,22 +4,35 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.2.0] - 2026-09-09
+
+Two things in this one: a **Stations** screen for everything the alliance is
+holding out there, and the scraper finally covering every universe you play in
+instead of only the last one you logged into — which is also what makes the new
+Beta universe show up at all.
 
 ### Added
-- A **Stations** screen (new Alliance sidebar group): alliance-wide stock
-  against storage caps, near-full and under-capture alerts, every controlled
-  station as a sortable table or card grid with sector / withdraw-rights /
-  state / search filters, a
-  "who took what" leaderboard, the deposit/withdrawal ledger with CSV export,
-  and a move-resources dialog that dispatches the collect/supply fleet mission
-  with as many resources in one run as the fleet's hold allows. Haulers are
-  picked the way Scouting picks them for debris: choose the ship types, and the
-  fleet is planned from the cargo and trimmed to what the source planet has.
-  A **Defend** button on each station sends a garrison fleet — the pool the
-  station's orbital defence is rostered from. The fleet editor now carries a
-  template picker, so each station can be reinforced from a different saved
-  template, edited before it flies.
+- A **Stations** screen, in a new **Alliance** sidebar group:
+  - Alliance-wide stock against storage caps, per resource, for whatever the
+    filters currently select.
+  - Alerts raised from live data: a resource sitting at 90%+ of its cap (named,
+    with the station, and honest about what overall storage is at), and any
+    station someone has started capturing.
+  - Every controlled station as a sortable table or a card grid, filtered by
+    sector, withdraw rights, capture state, near-full and a name/coordinate
+    search. Picking a station scopes the ledger below to it.
+  - A **who took what** leaderboard — withdrawn weighted value per member — and
+    the full deposit/withdrawal ledger, newest first, with CSV export.
+  - **Withdraw** and **Deposit**: several resources in one mission, each with
+    its own amount, limit and Max. Haulers are picked the way Scouting picks
+    them for debris — choose the ship types, and the fleet is planned from the
+    cargo and trimmed to what is actually parked on the source planet, telling
+    you when that falls short.
+  - **Defend**: sends a garrison fleet, the pool a station's orbital defence is
+    rostered from. Promoting garrisoned ships into that defence stays in the
+    game's own UI — it needs the ships to have arrived first.
+- The fleet editor now carries a **template picker**, so a dispatch can be
+  seeded from any saved template and edited before it flies.
 - A **Yesterday** option in the View picker, next to Daily — same one-day
   window, shifted back a day.
 
