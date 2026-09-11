@@ -91,6 +91,12 @@ browser.runtime.onInstalled.addListener(async details => {
   await scrape();
 });
 
+// Firefox does not reliably persist alarms across restarts; onInstalled alone
+// left the addon with no scheduled scrape until the next update.
+browser.runtime.onStartup.addListener(() => {
+  browser.alarms.create(ALARM, { periodInMinutes: INTERVAL_MIN });
+});
+
 browser.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) scrape();
   if (alarm.name === LS_ALARM) liveSearchScan();
@@ -259,6 +265,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_UNIVERSES') return getUniverses();
   if (msg.type === 'GET_PLANET_SHIPS') return getPlanetShips(msg.planetId);
   if (msg.type === 'GET_MISSIONS') return apiGet('/api/fleet/missions');
+  if (msg.type === 'REFRESH_DEBRIS') return refreshDebris();
   if (msg.type === 'GET_FUEL_ESTIMATE') {
     // POST: routed through the game tab (same-origin) — a Bearer POST from the
     // extension carries an Origin header the server 500s on.
@@ -2853,6 +2860,16 @@ async function processSystemDebris(debrisArr, zones = {}) {
   });
 }
 
+// Live re-fetch for the Scouting tab's Refresh button / poll. Routes through
+// the same processor as the scrape so the stored shape stays identical.
+async function refreshDebris() {
+  const json = await apiGet(SYSTEM_DEBRIS_PATH);
+  if (json.error) return json;
+  const { system_zones } = await nsGet(['system_zones']);
+  await enqueue(() => processSystemDebris(json.debris || [], system_zones || {}));
+  return { ok: true };
+}
+
 // Active fleet missions → precise debris collection. A returning
 // `collect_debris` fleet's cargo is exactly what it salvaged, so we record
 // each such mission once (deduped by mission id) as a real collection, plus
@@ -3476,7 +3493,7 @@ async function scrapeUniverse(token, universeKey) {
       apiFetch(EXPEDITION_PATH, token).catch(() => ({ reports: [] })),
       apiFetch(WORMHOLE_PATH, token).catch(() => ({ runs: [] })),
       apiFetch(`${XENO_MESSAGES_PATH}?page=1`, token).catch(() => ({ notifications: [] })),
-      apiFetch(SYSTEM_DEBRIS_PATH, token).catch(() => ({ debris: [] })),
+      apiFetch(SYSTEM_DEBRIS_PATH, token).catch(() => null),   // null → keep the last-known fields
       apiFetch(MISSIONS_PATH, token).catch(() => ({ missions: [] })),
       apiFetch(RESEARCH_PATH, token).catch(() => ({ research: [] })),
       apiFetch(PVP_PATH, token).catch(() => ({ reports: [] })),
@@ -3506,7 +3523,7 @@ async function scrapeUniverse(token, universeKey) {
       const nMining = await processMiningReports(miningData.reports || [], ships, zones);
       await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships, zones, wormholeZones, wormholeClasses || {});
       await processXenoReports(xenoMessagesData.notifications || []);
-      await processSystemDebris(systemDebrisData.debris || [], zones);
+      if (systemDebrisData) await processSystemDebris(systemDebrisData.debris || [], zones);
       await processMissions(missionsData.missions || [], zoneById || {}, ships);
       await nsSet({
         research: researchData.research || [],
