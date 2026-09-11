@@ -2845,7 +2845,7 @@ async function processSystemDebris(debrisArr, zones = {}) {
       debrisId: d.id ?? null,         // numeric id for collect-debris
       systemId: d.systemId ?? null,   // for the fuel estimate
       system: d.systemName || d.locationName || (d.systemId != null ? `System #${d.systemId}` : 'unknown'),
-      zone: resolveZone(d.systemName, zones),
+      zone: d.securityZone || resolveZone(d.systemName, zones),   // API carries it; name lookup only as fallback
       ore: d.ore || 0,
       silicates: d.silicates || 0,
       alloys: d.alloys || 0,
