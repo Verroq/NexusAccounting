@@ -1794,9 +1794,10 @@ function addShipCost(detail, ships, into, factor) {
 const ZONE_REFRESH_MS = 24 * 3600 * 1000;
 
 async function getSystemZones(token) {
-  const { system_zones, system_zones_at, system_coords_by_id } =
-    await nsGet(['system_zones', 'system_zones_at', 'system_coords_by_id']);
-  if (system_zones && system_zones_at && system_coords_by_id && Date.now() - system_zones_at < ZONE_REFRESH_MS) {
+  const { system_zones, system_zones_at, system_coords_by_id, sector_zones } =
+    await nsGet(['system_zones', 'system_zones_at', 'system_coords_by_id', 'sector_zones']);
+  if (system_zones && system_zones_at && system_coords_by_id && sector_zones
+      && Date.now() - system_zones_at < ZONE_REFRESH_MS) {
     return system_zones;
   }
   try {
@@ -1805,10 +1806,12 @@ async function getSystemZones(token) {
     const byId = {};       // systemId → zone
     const coordsById = {}; // systemId → {x, y}  (AU — galaxy map units = AU, verified 2026-06-22)
     const coordsByName = {};
+    const sectorZones = {}; // sectorId → zone (sectors are zone-homogeneous; expeditions only carry sectorId)
     for (const s of (data.systems || [])) {
       if (s.securityZone) {
         if (s.name) map[s.name] = s.securityZone;
         if (s.id != null) byId[s.id] = s.securityZone;
+        if (s.sectorId != null) sectorZones[s.sectorId] = s.securityZone;
       }
       if (s.id != null && s.x != null) {
         coordsById[s.id] = { x: s.x, y: s.y, name: s.name || null };
@@ -1818,6 +1821,7 @@ async function getSystemZones(token) {
     await nsSet({
       system_zones: map, system_zone_by_id: byId, system_zones_at: Date.now(),
       system_coords_by_id: coordsById, system_coords_by_name: coordsByName,
+      sector_zones: sectorZones,
     });
     return map;
   } catch {
@@ -2117,8 +2121,9 @@ async function processSurveyReports(reports, ships, zones = {}) {
 async function processPirateReports(pirateReports, ships, campZones = {}) {
   const pstored = await nsGet([
     'pirate_seen_ids', 'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
-    'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports',
+    'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports', 'mission_zones',
   ]);
+  const missionZones = pstored.mission_zones || {};
   const { records_cap } = await browser.storage.local.get('records_cap');
   const recordsCap = resolveRecordsCap(records_cap);
 
@@ -2206,7 +2211,7 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
       id: r.id,
       created_at: r.createdAt,
       camp_id: r.campId,
-      zone: r.securityZone || campZones[r.campId] || 'unknown',
+      zone: r.securityZone || campZones[r.campId] || missionZones[r.missionId] || 'unknown',
       outcome,
       ore, hydrogen, silicates, ...extrasOf(loot),
       ships_lost: nDestroyed,
@@ -2653,8 +2658,10 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
 
   const stored = await nsGet([
     'exp_seen_ids', 'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
-    'expedition_resources_lost', 'wormhole_resources_lost',
+    'expedition_resources_lost', 'wormhole_resources_lost', 'mission_zones', 'sector_zones',
   ]);
+  const missionZones = stored.mission_zones || {};
+  const sectorZones = stored.sector_zones || {};
   const { records_cap } = await browser.storage.local.get('records_cap');
   const recordsCap = resolveRecordsCap(records_cap);
 
@@ -2708,8 +2715,9 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
       wclass: r.wormholeClass || wormholeClasses[r.wormholeId] || null,
       event: r.eventType || r.outcome || r.result || r.status || null,
       location: r.systemName || r.locationName || r.targetName ||
-        (r.wormholeId != null ? `Wormhole #${r.wormholeId}` : '—'),
-      zone: wormholeZones[r.wormholeId] || resolveZone(r.systemName || systemFromLocation(r.locationName), zones),
+        (r.wormholeId != null ? `Wormhole #${r.wormholeId}` : r.sectorId != null ? `Sector #${r.sectorId}` : '—'),
+      zone: wormholeZones[r.wormholeId] || sectorZones[r.sectorId] || missionZones[r.missionId]
+        || resolveZone(r.systemName || systemFromLocation(r.locationName), zones),
       loot,
       ships_lost: nLost,
       ships_destroyed_raw: destroyedArr,
@@ -2879,8 +2887,18 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
   // missions — a scout then a heavy collection fleet — so per-report joins
   // miss the second; counting per mission catches every trip).
   if (missions && missions.length) {
-    const { fuel_log, fuel_counted_ids } =
-      await nsGet(['fuel_log', 'fuel_counted_ids']);
+    const { fuel_log, fuel_counted_ids, mission_zones, sector_zones } =
+      await nsGet(['fuel_log', 'fuel_counted_ids', 'mission_zones', 'sector_zones']);
+    // missionId → zone, remembered while the mission is in flight so a report
+    // whose camp/wormhole has since despawned can still be zoned.
+    const mz = { ...(mission_zones || {}) };
+    for (const m of missions) {
+      const z = zoneById[m.targetSystemId] || (sector_zones || {})[m.targetSectorId];
+      if (m.id != null && z) mz[m.id] = z;
+    }
+    const mzKeys = Object.keys(mz);
+    for (const k of mzKeys.slice(0, Math.max(0, mzKeys.length - 3000))) delete mz[k];   // integer keys iterate ascending = oldest missions first
+    await nsSet({ mission_zones: mz });
     const counted = new Set(fuel_counted_ids || []);
     const flog = [...(fuel_log || [])];
     for (const m of missions) {
@@ -3518,13 +3536,13 @@ async function scrapeUniverse(token, universeKey) {
         ships = (await nsGet(['ships'])).ships || {};
       }
       await backfillZones(zones, campZones, wormholeZones);
+      await processMissions(missionsData.missions || [], zoneById || {}, ships);   // first: fills mission_zones for the report processors
       const nSurveys = await processSurveyReports(reportData.reports || [], ships, zones);
       const nPirates = await processPirateReports(pirateData.reports || [], ships, campZones);
       const nMining = await processMiningReports(miningData.reports || [], ships, zones);
       await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships, zones, wormholeZones, wormholeClasses || {});
       await processXenoReports(xenoMessagesData.notifications || []);
       if (systemDebrisData) await processSystemDebris(systemDebrisData.debris || [], zones);
-      await processMissions(missionsData.missions || [], zoneById || {}, ships);
       await nsSet({
         research: researchData.research || [],
         research_speed_mult: researchData.researchSpeedMult || 1,
