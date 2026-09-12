@@ -16,6 +16,13 @@ const gameUrlFor = (universeKey) => `https://${universeKey}.nexuslegacy.space`;
 // var is safe and avoids a huge signature-threading refactor. Set from the
 // winning token's universeKey claim wherever getToken() is called.
 let currentUniverse = 's0';
+// Universe of the enqueue()'d function currently running. The storage helpers
+// prefer it over currentUniverse so a UI call or a game-tab intercept from
+// another universe that flips currentUniverse mid-run cannot redirect a
+// processor's writes to the wrong `${universe}__` keys — with two game tabs
+// open (s0 + beta) that happened every few seconds.
+let queueUniverse = null;
+const nsPrefix = universe => `${universe ?? queueUniverse ?? currentUniverse}__`;
 
 // Namespaced storage helpers: every scraped report/aggregate/dedup/archive key
 // (the canonical list lives in storage-keys.js, shared with the dashboard side)
@@ -23,20 +30,22 @@ let currentUniverse = 's0';
 // never mixes in flat storage.local keys. Business logic (processors, rebuild,
 // etc.) is unchanged — it still reads/writes plain key names like
 // `stored.totals`; only the get/set call sites swap to go through these.
-async function nsGet(keys) {
-  const prefixed = keys.map(k => `${currentUniverse}__${k}`);
-  const raw = await browser.storage.local.get(prefixed);
+async function nsGet(keys, universe) {
+  const p = nsPrefix(universe);
+  const raw = await browser.storage.local.get(keys.map(k => p + k));
   const out = {};
-  for (const k of keys) out[k] = raw[`${currentUniverse}__${k}`];
+  for (const k of keys) out[k] = raw[p + k];
   return out;
 }
-async function nsSet(obj) {
+async function nsSet(obj, universe) {
+  const p = nsPrefix(universe);
   const prefixed = {};
-  for (const [k, v] of Object.entries(obj)) prefixed[`${currentUniverse}__${k}`] = v;
+  for (const [k, v] of Object.entries(obj)) prefixed[p + k] = v;
   return browser.storage.local.set(prefixed);
 }
-async function nsRemove(keys) {
-  return browser.storage.local.remove(keys.map(k => `${currentUniverse}__${k}`));
+async function nsRemove(keys, universe) {
+  const p = nsPrefix(universe);
+  return browser.storage.local.remove(keys.map(k => p + k));
 }
 
 const REPORTS_PATH = '/api/fleet/survey-reports';
@@ -1289,14 +1298,14 @@ async function apiFetch(path, token, options = {}) {
 }
 
 // Home planet id, discovered once via /api/planets and cached.
-async function getHomePlanetId(token) {
-  const { planet_id } = await nsGet(['planet_id']);
+async function getHomePlanetId(token, universe) {
+  const { planet_id } = await nsGet(['planet_id'], universe);
   if (planet_id) return planet_id;
   const data = await apiFetch('/api/planets', token);
   const planets = data.planets || [];
   const home = planets.find(p => p.isHomeworld) || planets[0];
   if (!home) throw new Error('No planets found for this account');
-  await nsSet({ planet_id: home.id });
+  await nsSet({ planet_id: home.id }, universe);
   console.log(`[NexusAccounting] Home planet: ${home.name} (#${home.id})`);
   return home.id;
 }
@@ -1635,10 +1644,19 @@ async function gamePost(path, body) {
 
 let processing = Promise.resolve();
 
-function enqueue(fn) {
-  processing = processing.then(fn).catch(async err => {
-    console.error('[NexusAccounting] Processing failed:', err);
-    await nsSet({ last_error: err.message });
+// `universe` is captured at enqueue time (the caller's intent) and re-asserted
+// when the function actually runs, since currentUniverse may have moved on.
+function enqueue(fn, universe = currentUniverse) {
+  processing = processing.then(async () => {
+    queueUniverse = universe;
+    try {
+      await fn();
+    } catch (err) {
+      console.error('[NexusAccounting] Processing failed:', err);
+      await nsSet({ last_error: err.message });
+    } finally {
+      queueUniverse = null;
+    }
   });
   return processing;
 }
@@ -1793,9 +1811,9 @@ function addShipCost(detail, ships, into, factor) {
 
 const ZONE_REFRESH_MS = 24 * 3600 * 1000;
 
-async function getSystemZones(token) {
+async function getSystemZones(token, universe) {
   const { system_zones, system_zones_at, system_coords_by_id, sector_zones } =
-    await nsGet(['system_zones', 'system_zones_at', 'system_coords_by_id', 'sector_zones']);
+    await nsGet(['system_zones', 'system_zones_at', 'system_coords_by_id', 'sector_zones'], universe);
   if (system_zones && system_zones_at && system_coords_by_id && sector_zones
       && Date.now() - system_zones_at < ZONE_REFRESH_MS) {
     return system_zones;
@@ -1822,7 +1840,7 @@ async function getSystemZones(token) {
       system_zones: map, system_zone_by_id: byId, system_zones_at: Date.now(),
       system_coords_by_id: coordsById, system_coords_by_name: coordsByName,
       sector_zones: sectorZones,
-    });
+    }, universe);
     return map;
   } catch {
     return system_zones || {};   // keep the stale map on failure
@@ -1855,34 +1873,34 @@ function resolveZone(systemName, zones) {
 // Pirate reports reference only a campId; pirate-camps maps that to a system,
 // which the galaxy map maps to a zone. Cached so completed-raid reports (and
 // the back-fill) can resolve their zone.
-async function getCampZones(token, zones) {
+async function getCampZones(token, zones, universe) {
   let camps;
   try {
     camps = (await apiFetch(PIRATE_CAMPS_PATH, token)).camps || [];
   } catch {
-    const { camp_zones } = await nsGet(['camp_zones']);
+    const { camp_zones } = await nsGet(['camp_zones'], universe);
     return camp_zones || {};
   }
-  const { camp_zones } = await nsGet(['camp_zones']);
+  const { camp_zones } = await nsGet(['camp_zones'], universe);
   const map = { ...(camp_zones || {}) };   // keep camps that have since despawned
   for (const c of camps) {
     if (c.id != null) map[c.id] = resolveZone(c.systemName, zones);
   }
-  await nsSet({ camp_zones: map });
+  await nsSet({ camp_zones: map }, universe);
   return map;
 }
 
 // Wormhole runs reference only a wormholeId; the wormholes endpoint maps that
 // to a system → zone. Cached so completed runs (and the back-fill) resolve.
-async function getWormholeZones(token, zones) {
+async function getWormholeZones(token, zones, universe) {
   let holes;
   try {
     holes = (await apiFetch(WORMHOLES_PATH, token)).wormholes || [];
   } catch {
-    const { wormhole_zones } = await nsGet(['wormhole_zones']);
+    const { wormhole_zones } = await nsGet(['wormhole_zones'], universe);
     return wormhole_zones || {};
   }
-  const got = await nsGet(['wormhole_zones', 'wormhole_classes']);
+  const got = await nsGet(['wormhole_zones', 'wormhole_classes'], universe);
   const map = { ...(got.wormhole_zones || {}) };       // keep wormholes that have closed
   const classes = { ...(got.wormhole_classes || {}) };
   for (const w of holes) {
@@ -1890,7 +1908,7 @@ async function getWormholeZones(token, zones) {
     map[w.id] = resolveZone(w.systemName, zones);
     if (w.wormholeClass) classes[w.id] = w.wormholeClass;
   }
-  await nsSet({ wormhole_zones: map, wormhole_classes: classes });
+  await nsSet({ wormhole_zones: map, wormhole_classes: classes }, universe);
   return map;
 }
 
@@ -2437,7 +2455,7 @@ function addResources(target, res) {
 // fought on, win/loss, our real-ship losses (defense buildings have negative
 // shipDefId + no build cost → excluded), opponent, both fleets, the round log, the
 // debris field, and the loot (gained if we attacked, lost if we defended).
-async function processPvpReports(reports) {
+async function processPvpReports(reports, token) {
   const stored = await nsGet(['pvp_seen_ids', 'pvp_recent_reports']);
   const { records_cap } = await browser.storage.local.get('records_cap');
   const cap = resolveRecordsCap(records_cap);
@@ -2446,8 +2464,6 @@ async function processPvpReports(reports) {
   const CORE = ['ore', 'silicates', 'hydrogen', 'alloys'];
   const fresh = reports.filter(r => !seen.has(r.id));
   if (!fresh.length) return 0;
-  const { token, universeKey } = await getToken() || {};
-  if (universeKey) currentUniverse = universeKey;
   let n = 0;
   for (const lite of fresh) {
     seen.add(lite.id);   // mark seen even if we skip it, so it's not reconsidered
@@ -2873,8 +2889,9 @@ async function processSystemDebris(debrisArr, zones = {}) {
 async function refreshDebris() {
   const json = await apiGet(SYSTEM_DEBRIS_PATH);
   if (json.error) return json;
-  const { system_zones } = await nsGet(['system_zones']);
-  await enqueue(() => processSystemDebris(json.debris || [], system_zones || {}));
+  const universe = currentUniverse;   // set by apiGet() from the token it used
+  const { system_zones } = await nsGet(['system_zones'], universe);
+  await enqueue(() => processSystemDebris(json.debris || [], system_zones || {}), universe);
   return { ok: true };
 }
 
@@ -3499,7 +3516,7 @@ async function scrape() {
 async function scrapeUniverse(token, universeKey) {
   currentUniverse = universeKey;
   try {
-    const planetId = await getHomePlanetId(token);
+    const planetId = await getHomePlanetId(token, universeKey);
     const [shipyardData, reportData, pirateData, spyData, campScoutData,
            miningData, expeditionData, wormholeData, xenoMessagesData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
       apiFetch(`/api/planets/${planetId}/shipyard`, token).catch(() => null),   // 403s while ships are on patrol — fall back to cached catalog
@@ -3515,15 +3532,15 @@ async function scrapeUniverse(token, universeKey) {
       apiFetch(MISSIONS_PATH, token).catch(() => ({ missions: [] })),
       apiFetch(RESEARCH_PATH, token).catch(() => ({ research: [] })),
       apiFetch(PVP_PATH, token).catch(() => ({ reports: [] })),
-      getSystemZones(token),
+      getSystemZones(token, universeKey),
     ]);
 
     const [campZones, wormholeZones] = await Promise.all([
-      getCampZones(token, zones),
-      getWormholeZones(token, zones),
+      getCampZones(token, zones, universeKey),
+      getWormholeZones(token, zones, universeKey),
     ]);
     const { wormhole_classes: wormholeClasses, system_zone_by_id: zoneById } =
-      await nsGet(['wormhole_classes', 'system_zone_by_id']);
+      await nsGet(['wormhole_classes', 'system_zone_by_id'], universeKey);
 
     await enqueue(async () => {
       // Shipyard can 403 (e.g. ships on patrol) — reuse the last-known catalog so
@@ -3550,14 +3567,14 @@ async function scrapeUniverse(token, universeKey) {
       });
       await processSpyReports(spyData.reports || []);
       await processCampScoutReports(campScoutData.reports || []);
-      await processPvpReports(pvpData.reports || []);
+      await processPvpReports(pvpData.reports || [], token);
       await checkDrift();
       console.log(`[NexusAccounting] [${universeKey}] Scraped ${nSurveys} surveys, ${nPirates} pirate, ${nMining} mining reports.`);
-    });
+    }, universeKey);
   } catch (err) {
     console.error(`[NexusAccounting] Scrape failed (${universeKey}):`, err);
     // Cached planet may be gone (recolonized) — rediscover on next scrape.
-    if (err.message.includes('→ 404')) await nsRemove(['planet_id']);
+    if (err.message.includes('→ 404')) await nsRemove(['planet_id'], universeKey);
     await nsSet({ last_error: err.message });
   }
 }
@@ -3617,20 +3634,19 @@ async function refetchEndpoint(path, universe) {
   const session = sessions.find(s => s.universeKey === universe) || sessions[0];
   if (!session) return;
   const { token, universeKey } = session;
-  currentUniverse = universeKey;
   let json;
   try {
-    json = await apiFetch(path, token);
+    json = await apiFetch(path, token);   // host comes from the token's own claim
   } catch {
     return;
   }
-  routeIntercepted(gameUrlFor(currentUniverse) + path, json, token);
+  routeIntercepted(gameUrlFor(universeKey) + path, json, token, universeKey);
 }
 
-function routeIntercepted(url, json, token) {
+function routeIntercepted(url, json, token, universeKey) {
   enqueue(async () => {
     if (url.includes('/shipyard')) {
-      await nsSet({ ships: buildShipCatalog(json, jwtRace(token), currentUniverse) });
+      await nsSet({ ships: buildShipCatalog(json, jwtRace(token), universeKey) });
       return;
     }
     if (url.includes('/spy-reports')) {
@@ -3646,7 +3662,7 @@ function routeIntercepted(url, json, token) {
       return;
     }
     if (url.includes('/api/fleet/reports')) {   // PvP (distinct from *-reports)
-      await processPvpReports(json.reports || []);
+      await processPvpReports(json.reports || [], token);
       return;
     }
     if (url.includes('/system-debris')) {
@@ -3682,7 +3698,7 @@ function routeIntercepted(url, json, token) {
     else if (url.includes('/expedition-reports')) n = await processExpeditionReports(json.reports || [], [], ships, zones, wz, wc);
     else if (url.includes('/wormhole-runs')) n = await processExpeditionReports([], json.runs || [], ships, zones, wz, wc);
     if (n) console.log(`[NexusAccounting] Realtime: ${n} new reports from ${url}`);
-  });
+  }, universeKey);
 }
 
 // Test-only: lets tests exercise nsGet/nsSet/migration under a non-default
@@ -3700,6 +3716,6 @@ export {
   systemFromLocation, resolveZone, backfillZones, processMissions,
   fieldMatches, purgeOldData, freshestToken, resolveRecordsCap, mergeSpyReports, selectReportsToShare, WEBHOOK_RE,
   formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, sharedIntelReject, discordFetch,
-  nsGet, nsSet, nsRemove, gameUrlFor, sendStationTransfer, stationTransferBody, setCurrentUniverse, getCurrentUniverse, hostUniverse, getToken, getTokens,
+  nsGet, nsSet, nsRemove, enqueue, gameUrlFor, sendStationTransfer, stationTransferBody, setCurrentUniverse, getCurrentUniverse, hostUniverse, getToken, getTokens,
   processSpyReports, processCampScoutReports,
 };
