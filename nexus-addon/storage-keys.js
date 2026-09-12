@@ -55,7 +55,7 @@ export const SCOPED_KEYS = [
   // galaxy)
   'system_zones', 'system_zone_by_id', 'system_zones_at',
   'system_coords_by_id', 'system_coords_by_name',
-  'camp_zones', 'wormhole_zones', 'wormhole_classes',
+  'camp_zones', 'wormhole_zones', 'wormhole_classes', 'sector_zones', 'mission_zones',
   // Intel (consumed by the standalone simulator page, not dashboard.js)
   'spy_reports', 'camp_scout_reports',
   // Fuel counting (per-mission fuel log + dedup ids)
