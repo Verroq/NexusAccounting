@@ -1,47 +1,75 @@
 # Nexus Accounting
 
-Firefox addon that tracks survey mission data from [Nexus Legacy](https://s0.nexuslegacy.space).
+Companion for [Nexus Legacy](https://nexuslegacy.space): a browser addon (Firefox, Chrome) and a
+desktop companion for the Steam client. It reads the reports you have already earned through the
+game's own API, keeps them on your machine, and turns them into a dashboard — plus a few tools
+injected straight into the game.
 
 <img width="1889" height="726" alt="image" src="https://github.com/user-attachments/assets/62757e1c-d4c6-422d-9889-4ad0144b8801" />
 
+## Install
+
+| Platform | How |
+|---|---|
+| Firefox | `nexus-accounting-<version>.xpi` from [Releases](../../releases) → drag into Firefox, or *about:addons → Install Add-on From File* |
+| Chrome / Edge | `nexus-accounting-<version>.zip` → unzip → *chrome://extensions → Developer mode → Load unpacked* |
+| Steam client | `nexus-companion-<version>-win-x64.zip` — see [Steam support](#steam-support) |
+
+Then log in to the game. There are no credentials to enter: the addon reads your session cookie
+from the browser. Every universe you are logged into (S0, New Frontier, Beta, …) is scraped, and
+the dashboard has a picker to browse each one's data.
+
 ## What it does
 
-- Scrapes survey reports from the game API every 15 minutes (or on demand)
-- Aggregates resources collected: ore, hydrogen, silicates
-- Tracks ship losses and computes their rebuild cost (ore, silicates, hydrogen, alloys, rare resources)
-- Breaks down results by event type
-- Displays all-time, daily, and hourly views
-- Stores up to 500 survey reports locally (configurable, 0 = unlimited)
+**Collects, every 15 minutes or on demand**
 
-## How it works
+- Survey, pirate, mining, expedition, wormhole, xeno and PvP combat reports
+- Debris fields, pirate camps, wormholes and asteroid fields with their zones
+- Spy reports, and the alliance's station stock
 
-The addon reads your `nexus_token` JWT directly from the browser cookies, no credentials to enter. You just need to be logged in to Nexus Legacy.
+**Dashboard** (opens from the toolbar icon or the in-game sidebar link)
 
-All data is stored locally in `browser.storage.local`. Nothing is sent anywhere, except spy intel you explicitly share to your alliance's Discord channel (see [Sharing spy intel](#sharing-spy-intel-with-your-alliance-discord)).
-
-## Usage
-
-1. Log in to [Nexus Legacy](https://s0.nexuslegacy.space)
-2. Click the Nexus Accounting toolbar icon to open the dashboard
-3. Click **Scrape Now** to fetch data immediately, or wait for the automatic 15-minute scrape
-
-## Dashboard
-
-| Section | Description |
+| Group | Screens |
 |---|---|
-| Resources collected | Ore, hydrogen, silicates, mission count, ships lost |
-| Resources lost | Build cost of destroyed ships per resource type |
-| Resources per period | Line chart over time |
-| Event type breakdown | Doughnut chart of mission types |
-| Resources by event type | Bar chart of yields per mission type |
-| Recent reports | Paginated table of individual survey reports |
+| Overview | Global — resources collected, ships lost and their rebuild cost, per period |
+| Operations | Surveys · Pirates · Mining · Battles · Debris · Expeditions · Wormhole · Xeno · Shared Intel |
+| Alliance | Stations — stock vs. caps, alerts, withdraw/deposit ledger, dispatch haulers |
+| Explore | Galaxy Scout · Asteroid Fields (with live search) · Scouting — collect debris, survey, investigate |
+| Market & R&D | Market · Fleet Templates · Tech Tree · Combat Simulator (the game's own engine, with your intel as the defender) |
 
-Use the **View** selector (All time / Daily / Hourly) to filter all stats and charts to the latest day or hour.
+Every screen follows the top bar: universe, View (all time / daily / hourly), zone, and the
+resource weights used for "weighted" totals.
 
-## Settings
+**In the game itself**
 
-- **Records cap**: max survey reports kept locally. Oldest are dropped when limit is reached. Set to `0` for unlimited.
-- **Reset all data**: drops all stored reports (keeps your cap setting).
+- Sidebar link to the dashboard, plus **Empire View** (per-planet workforce, buildings,
+  production) and **Logistics** (ships and resources across all planets) overlays
+- **⬆ upgrade** on every building and technology card, **🚀 build** on every ship card: a planner
+  that totals the cost to a target level and queues it
+- Asteroid field cards get an "optimal ships to clear" calculator
+
+## Your data
+
+Everything lives in the browser's extension storage (or `~/.nexus-accounting/` for the desktop
+companion). Nothing leaves your machine except spy intel you explicitly share with your alliance
+(below). A backup is written to `Downloads/NexusAccounting/` weekly and before anything
+destructive; **Export JSON** makes one on demand and **Import** restores it — that is also how
+you move history between the browser addon and the Steam companion.
+
+## Steam support
+
+The Steam version of the game is an Electron wrapper around the same web game, with no room for
+extensions. `nexus-companion.exe` attaches to it over its debugging port and does what the
+browser does for the addon: scraping, the in-game sidebar and overlays, and the dashboard.
+
+1. In Steam, right-click the game → **Properties** → **Launch Options**:
+   `--remote-debugging-port=9222`
+2. Unzip `nexus-companion-<version>-win-x64.zip` anywhere and run `nexus-companion.exe`
+   (before or after starting the game — it waits). Nothing to install.
+3. The in-game sidebar link opens the dashboard in your default browser.
+
+The exe is unsigned, so Windows SmartScreen warns the first time: *More info → Run anyway*.
+Details, environment variables and the build in [`nexus-desktop/`](nexus-desktop/README.md).
 
 ## Sharing spy intel with your alliance (Discord)
 
@@ -120,13 +148,13 @@ Known limits:
 <img width="1901" height="883" alt="nexus_accounting_graph_bar" src="https://github.com/user-attachments/assets/723bf0e3-8251-4fe3-bc6b-57f1bb54629f" />
 
 
-## Disclaimer
+## Building
 
-Web UI made with Claude Opus 4.8
+```
+python3 nexus-addon/build.py        # .xpi + .zip
+python3 nexus-desktop/build-exe.py  # Steam companion zip (Windows / WSL)
+```
 
 ## License
 
 [Mozilla Public License](https://www.mozilla.org/en-US/MPL/2.0/)
-
-
-
