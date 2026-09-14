@@ -1599,6 +1599,32 @@
     </div>
 
     <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Steam support</span></div>
+      <details class="faq-item">
+        <summary>Does it work with the Steam version of the game?</summary>
+        <p>Yes, through a small companion instead of the browser addon. The Steam client is a
+        wrapper around the same web game with no room for extensions, so the companion attaches
+        to it over its debugging port and does the rest: scraping, the in-game sidebar and
+        overlays, and this dashboard. Setup: in Steam, right-click the game → <em>Properties</em>
+        → <em>Launch Options</em> and enter <code>--remote-debugging-port=9222</code>; unzip the
+        <code>nexus-companion-…-win-x64.zip</code> from the GitHub releases anywhere; start the
+        game, then run <code>nexus-companion.exe</code>. Nothing to install. The sidebar link opens
+        the dashboard in your default browser.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Is the Steam data shared with the browser addon?</summary>
+        <p>No. The companion keeps its own store in <code>~/.nexus-accounting/storage.json</code>.
+        To move history across, <em>Export JSON</em> on one side and import it on the other.</p>
+      </details>
+      <details class="faq-item">
+        <summary>The companion says "Game not attached".</summary>
+        <p>The game is not running, or was started without the launch option — check that Steam
+        shows exactly <code>--remote-debugging-port=9222</code> with nothing after it. The
+        companion retries every few seconds, so just start the game and wait.</p>
+      </details>
+    </div>
+
+    <div class="intel-panel">
       <div class="intel-panel-head"><span class="intel-panel-title">Combat simulator</span></div>
       <details class="faq-item">
         <summary>How accurate is it?</summary>

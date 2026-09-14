@@ -291,7 +291,12 @@ http.createServer(async (req, res) => {
 }).listen(PORT, '127.0.0.1', () => log(`dashboard at ${BASE}/dashboard.html`));
 
 // ── Boot ───────────────────────────────────────────────────────────────────
-await retry();
-await import(pathToFileURL(path.join(ADDON, 'background.js')));
-if (freshInstall) for (const fn of installedListeners) fn({ reason: 'install' });
-else { for (const fn of startupListeners) fn(); dispatchMessage({ type: 'SCRAPE_NOW' }).catch(e => log('scrape:', e.message)); }
+// No top-level await: the single-executable build loads this file with
+// require(esm), which refuses async modules.
+async function main() {
+  await retry();
+  await import(pathToFileURL(path.join(ADDON, 'background.js')));
+  if (freshInstall) for (const fn of installedListeners) fn({ reason: 'install' });
+  else { for (const fn of startupListeners) fn(); dispatchMessage({ type: 'SCRAPE_NOW' }).catch(e => log('scrape:', e.message)); }
+}
+main().catch(e => { console.error(e); process.exit(1); });
