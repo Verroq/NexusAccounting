@@ -22,6 +22,7 @@ import { renderMiningTab, setMiningPage } from './tabs/mining.js';
 import { renderPiratesTab, setPirateCurrentPage } from './tabs/pirates.js';
 import { initSimulatorTab } from './tabs/simulator.js';
 import { initStationsTab } from './tabs/stations.js';
+import { initCompanionTab } from './tabs/companion.js';
 import { getEventBreakdownForMode, getResourcesLostForMode, getSeriesForMode, getTotalsForMode, populateEventOptions, renderByEventChart, renderCollected, renderEventsChart, renderLost, renderResourceChart, renderTable, setCurrentPage } from './tabs/surveys.js';
 import { renderTechTreeTab } from './tabs/techtree.js';
 
@@ -177,6 +178,10 @@ export function renderAll() {
     initStationsTab();
     return;
   }
+  if (activeTab === 'companion') {
+    initCompanionTab();
+    return;
+  }
   populateEventOptions();
   const mode = getMode();
   const t = getTotalsForMode();
@@ -216,6 +221,7 @@ export const TAB_CONTENT = {
   techtree: 'techtree-content',
   simulator: 'simulator-content',
   stations: 'stations-content',
+  companion: 'companion-content',
   discordsetup: 'discordsetup-content',
   faq: 'faq-content',
 };
@@ -229,7 +235,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     }
     // View mode and records cap are meaningless on the finder and debris tabs.
     document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'simulator' || activeTab === 'stations' || activeTab === 'discordsetup' || activeTab === 'faq') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'simulator' || activeTab === 'stations' || activeTab === 'companion' || activeTab === 'discordsetup' || activeTab === 'faq') ? 'none' : '';
     positionControls();
     renderAll();
   });

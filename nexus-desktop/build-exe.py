@@ -59,6 +59,21 @@ def win_stage():
     return stage
 
 
+def set_gui_subsystem(exe):
+    """Flip the PE subsystem from console (3) to GUI (2) so the exe opens no
+    console window. Output goes to DATA/companion.log and the dashboard's
+    Companion screen instead."""
+    with open(exe, 'r+b') as f:
+        f.seek(0x3C)
+        pe = int.from_bytes(f.read(4), 'little')
+        f.seek(pe)
+        assert f.read(4) == b'PE\0\0', 'not a PE file'
+        f.seek(pe + 0x5C)
+        assert int.from_bytes(f.read(2), 'little') == 3, 'unexpected subsystem'
+        f.seek(pe + 0x5C)
+        f.write((2).to_bytes(2, 'little'))
+
+
 def build(version):
     stage = win_stage()
     for name in ('sea-entry.cjs', 'sea-config.json'):
@@ -69,6 +84,7 @@ def build(version):
     shutil.copyfile(node_exe(), exe)
     subprocess.run(['npx', '--yes', 'postject', exe, 'NODE_SEA_BLOB', blob, '--sentinel-fuse', FUSE], check=True)
     os.remove(blob)
+    set_gui_subsystem(exe)
 
     target = os.path.join(ROOT, f'nexus-companion-{version}-win-x64.zip')
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:

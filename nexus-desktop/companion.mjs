@@ -15,7 +15,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -28,7 +28,26 @@ const STORAGE_FILE = path.join(DATA, 'storage.json');
 const WORLD = 'nexus-accounting';
 const TAB_ID = 1;
 const manifest = JSON.parse(fs.readFileSync(path.join(ADDON, 'manifest.json'), 'utf8'));
-const log = (...a) => console.log(new Date().toISOString().slice(11, 19), '[companion]', ...a);
+
+// Every console line (ours and background.js's) goes to a ring buffer the
+// dashboard's Companion screen shows, and to DATA/companion.log. The exe has
+// no console window, so this is the only place output lands.
+const LOG_KEEP = 200;
+const logLines = [];
+fs.mkdirSync(DATA, { recursive: true });
+const logFile = fs.createWriteStream(path.join(DATA, 'companion.log'), { flags: 'a' });
+for (const level of ['log', 'warn', 'error']) {
+  const orig = console[level].bind(console);
+  console[level] = (...a) => {
+    const text = a.map(x => x instanceof Error ? x.message : typeof x === 'string' ? x : JSON.stringify(x)).join(' ');
+    const line = { t: new Date().toISOString(), level, text };
+    logLines.push(line);
+    if (logLines.length > LOG_KEEP) logLines.shift();
+    logFile.write(`${line.t} ${level} ${text}\n`);
+    orig(...a);
+  };
+}
+const log = (...a) => console.log('[companion]', ...a);
 
 const globToRe = g => new RegExp('^' + g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
 const matchesAny = (url, globs) => globs.some(g => globToRe(g).test(url));
@@ -80,7 +99,7 @@ const storageLocal = {
 };
 
 // ── CDP client ─────────────────────────────────────────────────────────────
-let ws = null, nextId = 1, pageUrl = '', frameId = null, worldCtx = null;
+let ws = null, nextId = 1, pageUrl = '', frameId = null, worldCtx = null, attachedAt = 0;
 const pending = new Map();
 const cdpEvents = new Map();   // method → [fn]
 const onCdp = (m, fn) => cdpEvents.set(m, [...(cdpEvents.get(m) || []), fn]);
@@ -94,11 +113,26 @@ async function findPage() {
   const targets = await (await fetch(`${CDP}/json`)).json();
   return targets.find(t => t.type === 'page' && /nexuslegacy\.space/.test(t.url)) || targets.find(t => t.type === 'page');
 }
+let gameRunning = false;   // Nexus Legacy.exe seen while unattached → launch option missing
+let waitLogged = false;
+function checkGameProcess() {
+  if (process.platform !== 'win32') return;
+  execFile('tasklist', ['/FI', 'IMAGENAME eq Nexus Legacy.exe', '/NH'], { windowsHide: true }, (err, out) => {
+    const running = !err && /Nexus Legacy\.exe/i.test(out);
+    if (running && !gameRunning) log('Nexus Legacy.exe is running but nothing listens on', CDP, '— check the launch option');
+    gameRunning = running;
+  });
+}
 const retry = () => attach().catch(e => log('attach:', e.message));
 async function attach() {
   let target;
   try { target = await findPage(); } catch { target = null; }
-  if (!target) { setTimeout(retry, 5000); return; }
+  if (!target) {
+    if (!waitLogged) { log('game not found on', CDP, '— retrying every 5 s'); waitLogged = true; }
+    checkGameProcess(); setTimeout(retry, 5000); return;
+  }
+  waitLogged = false;
+  gameRunning = true;
   ws = new WebSocket(target.webSocketDebuggerUrl);
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
@@ -112,6 +146,7 @@ async function attach() {
   await new Promise((res, rej) => { ws.onopen = res; ws.addEventListener('close', () => rej(new Error('connect failed')), { once: true }); });
   pageUrl = target.url;
   log('attached to', pageUrl);
+  attachedAt = Date.now();
   await cdp('Runtime.enable');
   await cdp('Network.enable');
   await cdp('Page.enable');
@@ -124,6 +159,7 @@ async function attach() {
   const { executionContextId } = await cdp('Page.createIsolatedWorld', { frameId, worldName: WORLD });
   worldCtx = executionContextId;
   await cdp('Runtime.evaluate', { expression: isolatedWorldScript(), contextId: worldCtx }).catch(e => log('isolated inject:', e.message));
+  if (booted) dispatchMessage({ type: 'SCRAPE_NOW' }).catch(e => log('scrape:', e.message));
 }
 onCdp('Runtime.executionContextCreated', ({ context }) => { if (context.name === WORLD) worldCtx = context.id; });
 onCdp('Runtime.executionContextsCleared', () => { worldCtx = null; });
@@ -173,7 +209,7 @@ async function evalInWorld(expression) {
 function openExternal(url) {
   const cmd = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
     : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
-  spawn(...cmd, { detached: true, stdio: 'ignore' }).on('error', () => log('open in browser:', url)).unref();
+  spawn(...cmd, { detached: true, stdio: 'ignore', windowsHide: true }).on('error', () => log('open in browser:', url)).unref();
 }
 
 globalThis.browser = {
@@ -238,7 +274,7 @@ globalThis.browser = {
 };
 onCdp('Network.responseReceived', ({ response }) => {
   for (const { fn, urls } of webRequestListeners) {
-    if (matchesAny(response.url, urls)) { log('live-refresh', new URL(response.url).pathname); fn({ tabId: TAB_ID, statusCode: response.status, url: response.url }); }
+    if (matchesAny(response.url, urls)) fn({ tabId: TAB_ID, statusCode: response.status, url: response.url });
   }
 });
 
@@ -250,14 +286,26 @@ async function dispatchMessage(msg) {
     if (r !== undefined && r !== false) return await r;
   }
 }
+const DOWNLOADS = path.join(os.homedir(), 'Downloads', 'NexusAccounting');
+function openFolder(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  openExternal(dir);
+}
 const RPC = {
   '/message': dispatchMessage,
+  '/companion/status': async () => ({
+    version: manifest.version, port: PORT, cdp: CDP, data: DATA, downloads: DOWNLOADS,
+    attached: !!(ws && ws.readyState === WebSocket.OPEN), attachedAt, pageUrl, gameRunning,
+    log: logLines,
+  }),
+  '/companion/open': ({ what }) => openFolder(what === 'downloads' ? DOWNLOADS : DATA),
+  '/companion/quit': () => { log('quit requested from the dashboard'); setTimeout(() => process.exit(0), 100); },
   '/storage/get': k => storageLocal.get(k),
   '/storage/set': v => storageLocal.set(v),
   '/storage/remove': k => storageLocal.remove(k),
   '/storage/clear': () => storageLocal.clear(),
 };
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, BASE);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'content-type');
@@ -288,15 +336,28 @@ http.createServer(async (req, res) => {
   if (!file.startsWith(ADDON) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.statusCode = 404; return res.end('not found'); }
   res.setHeader('content-type', MIME[path.extname(file)] || 'application/octet-stream');
   fs.createReadStream(file).pipe(res);
-}).listen(PORT, '127.0.0.1', () => log(`dashboard at ${BASE}/dashboard.html`));
+});
+const DASH_URL = `${BASE}/dashboard.html#companion`;
+server.on('error', e => {
+  if (e.code !== 'EADDRINUSE') throw e;
+  // Second launch (double-clicked the exe again): the running one owns the port — just show it.
+  openExternal(DASH_URL);
+  process.exit(0);
+});
+server.listen(PORT, '127.0.0.1', () => {
+  log(`dashboard at ${BASE}/dashboard.html`);
+  if (process.env.NEXUS_OPEN !== '0') openExternal(DASH_URL);
+});
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 // No top-level await: the single-executable build loads this file with
 // require(esm), which refuses async modules.
+let booted = false;
 async function main() {
-  await retry();
   await import(pathToFileURL(path.join(ADDON, 'background.js')));
   if (freshInstall) for (const fn of installedListeners) fn({ reason: 'install' });
-  else { for (const fn of startupListeners) fn(); dispatchMessage({ type: 'SCRAPE_NOW' }).catch(e => log('scrape:', e.message)); }
+  else for (const fn of startupListeners) fn();
+  booted = true;
+  await retry();   // scrapes as soon as the game is attached (now or later)
 }
 main().catch(e => { console.error(e); process.exit(1); });

@@ -58,6 +58,7 @@
       </div>
       <div class="nx-nav-group">
         <div class="nx-nav-group-title">Help</div>
+        <button class="tab nx-nav-item" data-tab="companion" hidden><span class="nx-nav-icon">⎔</span><span>Companion</span></button>
         <button class="tab nx-nav-item" data-tab="discordsetup"><span class="nx-nav-icon">✉</span><span>Discord Setup</span></button>
         <button class="tab nx-nav-item" data-tab="faq"><span class="nx-nav-icon">?</span><span>FAQ</span></button>
       </div>
@@ -1505,6 +1506,57 @@
         universe is dropped. If Sync reports <em>N skipped</em>, hover that button — it names the
         reason, usually an ally on an older build or a Discord rate limit worth retrying in a minute.
       </p>
+    </div>
+  </div>
+
+  <!-- Desktop companion (Steam client) status. Only reachable from the companion's
+       own dashboard: the sidebar entry stays hidden in the browser addon. -->
+  <div id="companion-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Companion</h1><p>The desktop companion attached to the Steam client</p></div>
+
+    <div class="stats" id="cp-cards">
+      <div class="stat-card" id="cp-card-game"><div class="label">Game</div><div class="value">—</div><div class="sub"></div></div>
+      <div class="stat-card" id="cp-card-session"><div class="label">Session</div><div class="value">—</div><div class="sub"></div></div>
+      <div class="stat-card" id="cp-card-scrape"><div class="label">Last scrape</div><div class="value">—</div><div class="sub"></div></div>
+      <div class="stat-card" id="cp-card-today"><div class="label">Collected today</div><div class="value">—</div><div class="sub">survey · pirate · mining reports</div></div>
+    </div>
+
+    <div class="intel-panel cp-notice cp-warn" id="cp-waiting" style="display:none;">
+      <div class="intel-panel-head"><span class="intel-panel-title">Waiting for the game</span><span class="intel-panel-summary">Nexus Legacy is not running, or its debugging port is closed</span></div>
+      <div class="cp-steps">
+        <div class="cp-step"><span class="cp-step-n done">✓</span><span>Unzip the companion anywhere and run <code>nexus-companion.exe</code> — done, that is this page.</span></div>
+        <div class="cp-step"><span class="cp-step-n">2</span><span>In Steam, right-click <em>Nexus Legacy</em> → Properties → Launch Options and paste
+          <code>--remote-debugging-port=9222</code> <button class="cp-copy-launch">Copy</button></span></div>
+        <div class="cp-step"><span class="cp-step-n">3</span><span>Start the game. This page attaches on its own — nothing to click.</span></div>
+      </div>
+    </div>
+
+    <div class="intel-panel cp-notice cp-danger" id="cp-portclosed" style="display:none;">
+      <div class="intel-panel-head"><span class="intel-panel-title">The game is running, but its debugging port is closed</span></div>
+      <p class="intel-panel-hint">The Steam launch option is missing or has a typo. It must read exactly <code>--remote-debugging-port=9222</code> — nothing before, nothing after. Fix it, then restart the game; this page attaches on its own.</p>
+      <div class="intel-panel-actions"><button class="cp-copy-launch cp-accent">Copy launch option</button><button id="cp-open-faq">Open setup guide</button></div>
+    </div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Activity</span><span class="intel-panel-summary" id="cp-log-summary">live · last 200 lines</span></div>
+      <div class="cp-log" id="cp-log"></div>
+    </div>
+
+    <div class="intel-panel" style="margin-bottom:0;">
+      <div class="intel-panel-head"><span class="intel-panel-title">Companion</span><span class="intel-panel-summary" id="cp-version">nexus-companion.exe</span></div>
+      <p class="intel-panel-hint">Keeps running whether this page is open or not. Closing this tab keeps it scraping; Quit stops it.</p>
+      <dl class="cp-kv">
+        <dt>Debugging port</dt><dd><code id="cp-cdp"></code></dd>
+        <dt>Dashboard</dt><dd><code id="cp-dash"></code></dd>
+        <dt>Data folder</dt><dd><code id="cp-data"></code></dd>
+        <dt>Backups</dt><dd><code id="cp-downloads"></code></dd>
+      </dl>
+      <div class="intel-panel-actions" style="margin-top:14px;">
+        <button id="cp-open-data">Open data folder</button>
+        <button id="cp-backup">Backup now</button>
+        <button id="cp-copy-log">Copy log</button>
+        <button id="cp-quit" class="cp-danger-btn" style="margin-left:14px;">Quit companion</button>
+      </div>
     </div>
   </div>
 
