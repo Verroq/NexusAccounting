@@ -33,3 +33,6 @@ Dispatches an investigation mission against an anomaly or report that supports i
 
 - Confirmed from the API client wrapper.
 - Commonly paired with survey reports that have `investigated: false`.
+- `attachLeader` — optional boolean, accepted by every fleet mission endpoint. `true` sends the
+  leadership vessel with the fleet (list its hull in `ships` with `quantity: 1`). See
+  `fleet_mine.md` for a confirmed live example.

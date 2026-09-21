@@ -53,11 +53,50 @@ export async function shipName(id) {
   return (await shipDefs())[id]?.name || `#${id}`;
 }
 
+// Mission-option checkbox row (mine until full, attach leader). `state` is a
+// caller-owned object; the checkbox writes `state[key]` back so the choice
+// survives the dialog. `state.disabled` greys the row and `state.reason`
+// replaces the tooltip. Mission options, not fleet rows, so they sit above
+// the buttons.
+function optionRow(box, state, key, label, title) {
+  if (!state) return;
+  const row = document.createElement('label');
+  row.title = state.disabled ? state.reason : title;
+  row.style.cssText = `display:flex;align-items:center;gap:6px;margin-top:12px;color:#8b949e;font-size:0.85rem;white-space:normal;${state.disabled ? 'opacity:.5;cursor:not-allowed' : 'cursor:pointer'}`;
+  const chk = document.createElement('input');
+  chk.type = 'checkbox';
+  chk.disabled = !!state.disabled;
+  chk.checked = !state.disabled && !!state[key];
+  chk.addEventListener('change', () => { state[key] = chk.checked; });
+  row.append(chk, document.createTextNode(label));
+  if (state.disabled && state.reason) row.append(document.createTextNode(` — ${state.reason}`));
+  box.append(row);
+}
+const UNTIL_FULL_TIP = 'Keep mining past the usual 10 cycles until the mining hold is full or the field is depleted';
+const ATTACH_LEADER_TIP = 'Send the leadership vessel along with this fleet';
+
+// "Attach leader" state for a dialog: the remembered preference, greyed out
+// when the leader cannot leave `sourcePlanetId` right now. `attachLeader` is
+// false whenever disabled, so callers can pass it straight to the send.
+export async function attachLeaderStateFor(sourcePlanetId) {
+  const av = await browser.runtime.sendMessage({ type: 'GET_LEADER_AVAILABILITY', sourcePlanetId });
+  const ok = !!(av && av.ok);
+  const wanted = localStorage.getItem('nx-attach-leader') === '1';
+  return { attachLeader: ok && wanted, disabled: !ok, reason: ok ? '' : (av && av.reason) || 'Leader unavailable' };
+}
+// Persist the choice — only when it was actually offered, so a greyed dialog
+// does not wipe the preference.
+export function rememberAttachLeader(state) {
+  if (!state.disabled) localStorage.setItem('nx-attach-leader', state.attachLeader ? '1' : '0');
+}
+
 // In-page replacement for window.confirm(). Native confirm() is silently
 // suppressed once a user ticks Firefox's "prevent additional dialogs" box,
 // which permanently blocks fleet/research launches. This never triggers that.
 // Optional `ships` = [{ shipDefId, quantity }] renders an image+name chip row.
-export async function confirmDialog(message, ships) {
+// `attachLeaderState`, when passed, is a caller-owned { attachLeader: bool }
+// rendered as an "Attach leader" checkbox.
+export async function confirmDialog(message, ships, attachLeaderState = null) {
   const defs = ships?.length ? await shipDefs() : null;
   return new Promise((resolve) => {
     const ov = document.createElement('div');
@@ -106,6 +145,7 @@ export async function confirmDialog(message, ships) {
       }
       box.append(row);
     }
+    optionRow(box, attachLeaderState, 'attachLeader', 'Attach leader', ATTACH_LEADER_TIP);
     btns.append(cancel, ok);
     box.append(btns);
     ov.append(box);
@@ -125,8 +165,9 @@ export async function confirmDialog(message, ships) {
 // `untilFullState`, when passed, is a caller-owned { untilFull: bool } that gets
 // a "Mine until full" checkbox in this dialog; the dialog writes the choice back
 // into it. Left null, no checkbox is shown and the resolve value is unchanged,
-// so callers that do not mine (expeditions) are unaffected.
-export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2, escortTemplates = [], templates = [], untilFullState = null }) {
+// so callers that do not mine (expeditions) are unaffected. `attachLeaderState`
+// is the same shape ({ attachLeader: bool }) for the "Attach leader" checkbox.
+export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2, escortTemplates = [], templates = [], untilFullState = null, attachLeaderState = null }) {
   const defs = await shipDefs();
   const ids = [...new Set([
     ...Object.keys(seed).map(Number),
@@ -378,19 +419,8 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
       b.style.cssText = `padding:7px 16px;border-radius:6px;border:1px solid #39405a;cursor:pointer;${primary ? 'background:#238636;color:#fff;border-color:#2ea043' : 'background:#2a3146;color:#e6e8ee'}`;
       return b;
     };
-    // Mine-until-full toggle — a mission option, not part of the fleet, so it
-    // sits above the buttons rather than in the ship rows.
-    if (untilFullState) {
-      const fullRow = document.createElement('label');
-      fullRow.title = 'Keep mining past the usual 10 cycles until the mining hold is full or the field is depleted';
-      fullRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:12px;color:#8b949e;font-size:0.85rem;cursor:pointer';
-      const fullChk = document.createElement('input');
-      fullChk.type = 'checkbox';
-      fullChk.checked = !!untilFullState.untilFull;
-      fullChk.addEventListener('change', () => { untilFullState.untilFull = fullChk.checked; });
-      fullRow.append(fullChk, document.createTextNode('Mine until full'));
-      box.append(fullRow);
-    }
+    optionRow(box, untilFullState, 'untilFull', 'Mine until full', UNTIL_FULL_TIP);
+    optionRow(box, attachLeaderState, 'attachLeader', 'Attach leader', ATTACH_LEADER_TIP);
 
     const cancel = mk(document.createElement('button'), 'Cancel', false);
     mk(ok, 'Send', true);

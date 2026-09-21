@@ -8,7 +8,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { clearAvailStrip, editFleetDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { attachLeaderStateFor, clearAvailStrip, editFleetDialog, fuelEstimate, rememberAttachLeader, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // asteroid fieldType → resource icon + label
@@ -481,6 +481,7 @@ async function sendMineMission(f) {
   // Caller-owned so the dialog can write the choice back; seeded from the last
   // send so the toggle sticks between missions.
   const untilFullState = { untilFull: localStorage.getItem('nx-af-until-full') === '1' };
+  const attachLeaderState = await attachLeaderStateFor(planetId);
 
   const ships = await editFleetDialog({
     title: `Mine ${f.name}`,
@@ -489,10 +490,11 @@ async function sendMineMission(f) {
     excavatorShipDefId: exc ? exc.shipDefId : null,
     excavatorBonus: EXCAVATOR_BONUS,
     escortTemplates,
-    untilFullState,
+    untilFullState, attachLeaderState,
   });
   if (!ships || !ships.length) return;   // cancelled or emptied
   localStorage.setItem('nx-af-until-full', untilFullState.untilFull ? '1' : '0');
+  rememberAttachLeader(attachLeaderState);
 
   status.textContent = `Sending to ${f.name}…`;
   const res = await browser.runtime.sendMessage({
@@ -502,6 +504,7 @@ async function sendMineMission(f) {
     ships,
     miningDuration: MINING_DURATION,
     mineUntilFull: untilFullState.untilFull,
+    attachLeader: attachLeaderState.attachLeader,
   });
   status.textContent = res.error ? `Send failed: ${res.error}` : `Fleet sent to ${f.name} ✓`;
   if (!res.error) {

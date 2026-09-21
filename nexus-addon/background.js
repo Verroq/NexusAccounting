@@ -289,6 +289,7 @@ browser.runtime.onMessage.addListener(msg => {
       sourcePlanetId: msg.sourcePlanetId, targetFieldId: msg.targetFieldId,
       ships: msg.ships, miningDuration: msg.miningDuration,
       mineUntilFull: !!msg.mineUntilFull,
+      ...(msg.attachLeader ? { attachLeader: true } : {}),
     });
   }
   if (msg.type === 'SEND_SURVEY') {
@@ -299,6 +300,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SEND_INVESTIGATE') {
     return gamePost('/api/fleet/investigate', {
       sourcePlanetId: msg.sourcePlanetId, reportId: msg.reportId, ships: msg.ships,
+      ...(msg.attachLeader ? { attachLeader: true } : {}),
     });
   }
   if (msg.type === 'COLLECT_DEBRIS') {
@@ -314,6 +316,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SEND_EXPEDITION') {
     return gamePost('/api/fleet/expedition', {
       sourcePlanetId: msg.sourcePlanetId, ships: msg.ships, zone: msg.zone, depth: msg.depth,
+      ...(msg.attachLeader ? { attachLeader: true } : {}),
     });
   }
   if (msg.type === 'SEND_XENO_SURVEY') {
@@ -322,6 +325,7 @@ browser.runtime.onMessage.addListener(msg => {
     });
   }
   if (msg.type === 'GET_PLANETS') return getPlanets();
+  if (msg.type === 'GET_LEADER_AVAILABILITY') return leaderAvailability(msg.sourcePlanetId);
   // ── Stations ──
   if (msg.type === 'GET_ALLIANCE_STATIONS') return apiGet('/api/alliances/station-storage');
   if (msg.type === 'GET_STATION_INDEX') return apiGet('/api/galaxy/station-index');
@@ -1365,6 +1369,25 @@ function stationTransferBody(direction, sourcePlanetId, ships, amounts) {
     ships,
     [direction === 'withdraw' ? 'collectCargo' : 'cargo']: cargo,
   };
+}
+
+// Can the leadership vessel ride along with a fleet leaving `sourcePlanetId`?
+// The dialogs grey the "Attach leader" checkbox on a `false`. One GET per
+// dialog open, no cache — the leader's state changes with every send.
+// ponytail: status strings beyond "attached" are unverified, so the check is
+// positional (docked on this planet, no mission/travel/recovery) rather than
+// reading `vessel.status`.
+async function leaderAvailability(sourcePlanetId) {
+  const r = await apiGet('/api/leadership');
+  if (!r || r.error) return { ok: false, reason: `Leader state unavailable: ${r ? r.error : 'no response'}` };
+  const v = r.vessel;
+  if (!r.enabled || !r.unlocked || !v) return { ok: false, reason: 'No leadership vessel' };
+  const where = r.location && r.location.label ? r.location.label : null;
+  if (v.assignedMissionId) return { ok: false, reason: `Leader is on a mission${where ? ` (${where})` : ''}` };
+  if (v.travelEndsAt && new Date(v.travelEndsAt) > new Date()) return { ok: false, reason: `Leader is travelling${where ? ` to ${where}` : ''}` };
+  if (v.recoveryEndsAt && new Date(v.recoveryEndsAt) > new Date()) return { ok: false, reason: 'Leader is recovering' };
+  if (Number(v.currentPlanetId) !== Number(sourcePlanetId)) return { ok: false, reason: `Leader is not on this planet${where ? ` (at ${where})` : ''}` };
+  return { ok: true, reason: '' };
 }
 
 // Reinforcing a station you own is the same endpoint with a deploy mission:

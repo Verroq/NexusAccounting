@@ -139,7 +139,8 @@ function recommend(m, excavator) {
 // confirmDialog so a send from this window looks like one from the dashboard.
 // `untilFullState`, when passed, is a caller-owned { untilFull: bool } rendered
 // as a "Mine until full" checkbox; the dialog writes the choice back into it.
-function lsConfirm(message, ships, defs, altLabel, untilFullState = null) {
+// `attachLeaderState` ({ attachLeader: bool }) does the same for "Attach leader".
+function lsConfirm(message, ships, defs, altLabel, untilFullState = null, attachLeaderState = null) {
   return new Promise(resolve => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483647;display:flex;align-items:center;justify-content:center';
@@ -172,18 +173,23 @@ function lsConfirm(message, ships, defs, altLabel, untilFullState = null) {
       }
       box.append(row);
     }
-    // Mine-until-full toggle — a mission option, not part of the fleet.
-    if (untilFullState) {
-      const fullRow = document.createElement('label');
-      fullRow.title = 'Keep mining past the usual 10 cycles until the mining hold is full or the field is depleted';
-      fullRow.style.cssText = 'margin-top:12px;display:flex;align-items:center;gap:6px;color:#8b949e;font-size:0.85rem;cursor:pointer;white-space:normal';
-      const fullChk = document.createElement('input');
-      fullChk.type = 'checkbox';
-      fullChk.checked = !!untilFullState.untilFull;
-      fullChk.addEventListener('change', () => { untilFullState.untilFull = fullChk.checked; });
-      fullRow.append(fullChk, document.createTextNode('Mine until full'));
-      box.append(fullRow);
-    }
+    // Mission-option toggles — not part of the fleet, so they sit above the buttons.
+    const optionRow = (state, key, label, title) => {
+      if (!state) return;
+      const row = document.createElement('label');
+      row.title = state.disabled ? state.reason : title;
+      row.style.cssText = `margin-top:12px;display:flex;align-items:center;gap:6px;color:#8b949e;font-size:0.85rem;white-space:normal;${state.disabled ? 'opacity:.5;cursor:not-allowed' : 'cursor:pointer'}`;
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.disabled = !!state.disabled;
+      chk.checked = !state.disabled && !!state[key];
+      chk.addEventListener('change', () => { state[key] = chk.checked; });
+      row.append(chk, document.createTextNode(label));
+      if (state.disabled && state.reason) row.append(document.createTextNode(` — ${state.reason}`));
+      box.append(row);
+    };
+    optionRow(untilFullState, 'untilFull', 'Mine until full', 'Keep mining past the usual 10 cycles until the mining hold is full or the field is depleted');
+    optionRow(attachLeaderState, 'attachLeader', 'Attach leader', 'Send the leadership vessel along with this fleet');
 
     const btns = document.createElement('div');
     btns.style.cssText = 'margin-top:18px;display:flex;gap:10px;justify-content:flex-end;white-space:normal';
@@ -276,6 +282,7 @@ async function openFieldsPanel() {
   let tpl = templates.find(t => String(t.id) === String((template_selections || {})['af-template-select'])) || templates[0] || null;
   let excavator = localStorage.getItem('nx-ls-excavator') === '1';   // +20% capacity toggle
   let untilFull = localStorage.getItem('nx-ls-until-full') === '1';   // mine until the hold is full
+  let attachLeader = localStorage.getItem('nx-ls-attach-leader') === '1';   // send the leadership vessel along
 
   // "Already mining" row highlight: fields we already control, or with an
   // active mine mission en route. Mirrors the Asteroids tab's criteria.
@@ -487,13 +494,20 @@ async function openFieldsPanel() {
         if (!canMine) return;
         const short = ships.some(s => (avail[s.shipDefId] || 0) < s.quantity);
         const untilFullState = { untilFull };
+        const av = await ext.runtime.sendMessage({ type: 'GET_LEADER_AVAILABILITY', sourcePlanetId: planetId });
+        const leaderOk = !!(av && av.ok);
+        const attachLeaderState = { attachLeader: leaderOk && attachLeader, disabled: !leaderOk, reason: leaderOk ? '' : (av && av.reason) || 'Leader unavailable' };
         const r = await lsConfirm(
           `Send fleet?\nTo: ${m.name} (${m.system})\nFrom: ${planetName}` +
           (short ? '\n\n⚠ Some ships are short on this planet; sending what is available.' : ''),
-          ships, shipDefs, null, untilFullState);
+          ships, shipDefs, null, untilFullState, attachLeaderState);
         if (!r) return;
         untilFull = untilFullState.untilFull;   // sticks for the next send
         localStorage.setItem('nx-ls-until-full', untilFull ? '1' : '0');
+        if (leaderOk) {   // only remember a choice that was actually offered
+          attachLeader = attachLeaderState.attachLeader;
+          localStorage.setItem('nx-ls-attach-leader', attachLeader ? '1' : '0');
+        }
         const sendShips = ships;
         // Reflect the sent fleet in the shared editor (escorts kept, miners swapped).
         shipsState.clear();
@@ -502,7 +516,7 @@ async function openFieldsPanel() {
         mineBtn.disabled = true; mineBtn.textContent = '…';
         const res = await ext.runtime.sendMessage({
           type: 'SEND_MINE', sourcePlanetId: planetId, targetFieldId: m.id, ships: sendShips, miningDuration: 600,
-          mineUntilFull: untilFull,
+          mineUntilFull: untilFull, attachLeader: attachLeaderState.attachLeader,
         });
         if (res && res.error) { mineBtn.textContent = '⛏'; mineBtn.disabled = false; window.alert(`Send failed: ${res.error}`); }
         else {

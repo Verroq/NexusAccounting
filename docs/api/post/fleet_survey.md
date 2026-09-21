@@ -33,3 +33,6 @@ Dispatches a survey mission to a target system.
 
 - Confirmed from the API client wrapper and the interception logic.
 - The addon records the `targetSystemId` locally when this request is seen.
+- `attachLeader` — optional boolean, accepted by every fleet mission endpoint. `true` sends the
+  leadership vessel with the fleet (list its hull in `ships` with `quantity: 1`). See
+  `fleet_mine.md` for a confirmed live example.

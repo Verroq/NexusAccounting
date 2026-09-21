@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, capCargoFleet, cargoShipsFrom, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, nsGet, planFleet, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
+import { applySort, attachLeaderStateFor, attachSortable, capCargoFleet, cargoShipsFrom, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, nsGet, planFleet, rememberAttachLeader, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -504,13 +504,16 @@ async function investigate(report) {
 
   const r = await templateShips(document.getElementById('sc-inv-template').value, planetId);
   if (r.error) { status.textContent = r.error; return; }
+  const attachLeaderState = await attachLeaderStateFor(planetId);
   if (!await confirmDialog(`Investigate ${report.systemName} (${report.eventTitle || report.eventType})?\n\n` +
     `From: ${planet ? planet.name : planetId}\nTemplate: ${r.name}` +
-    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships)) return;
+    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships, attachLeaderState)) return;
+  rememberAttachLeader(attachLeaderState);
 
   status.textContent = `Investigating ${report.systemName}…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships: r.ships,
+    attachLeader: attachLeaderState.attachLeader,
   });
   if (res.error) { status.textContent = `Investigate failed: ${res.error}`; return; }
   scJustInvestigated.add(report.systemId);

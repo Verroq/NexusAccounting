@@ -30,3 +30,6 @@ Dispatches a xeno/ancient moon survey mission.
 
 - Request fields confirmed from addon `SEND_XENO_SURVEY` code path.
 - Safe invalid probe on `s0` returned `400 VALIDATION_ERROR`.
+- `attachLeader` — optional boolean, accepted by every fleet mission endpoint. `true` sends the
+  leadership vessel with the fleet (list its hull in `ships` with `quantity: 1`). See
+  `fleet_mine.md` for a confirmed live example.
