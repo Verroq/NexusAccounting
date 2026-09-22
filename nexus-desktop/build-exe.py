@@ -82,7 +82,9 @@ def build(version):
     exe = os.path.join(stage, 'nexus-companion.exe')
     subprocess.run([node_exe(), '--experimental-sea-config', 'sea-config.json'], cwd=stage, check=True)
     shutil.copyfile(node_exe(), exe)
-    subprocess.run(['npx', '--yes', 'postject', exe, 'NODE_SEA_BLOB', blob, '--sentinel-fuse', FUSE], check=True)
+    # which() resolves npx.cmd on Windows, where CreateProcess won't.
+    npx = shutil.which('npx') or 'npx'
+    subprocess.run([npx, '--yes', 'postject', exe, 'NODE_SEA_BLOB', blob, '--sentinel-fuse', FUSE], check=True)
     os.remove(blob)
     set_gui_subsystem(exe)
 
