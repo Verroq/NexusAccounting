@@ -15,6 +15,25 @@ export default [
     },
   },
   {
+    // Steam companion: Node (process, timers, fetch, WebSocket, …). `.cjs` is
+    // the single-exe entry point, so it is CommonJS.
+    files: ['nexus-desktop/**/*.mjs', 'nexus-desktop/**/*.cjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+  },
+  {
+    files: ['nexus-desktop/**/*.cjs'],
+    languageOptions: { sourceType: 'commonjs' },
+  },
+  {
+    // Injected into the game's page over CDP, so it runs with browser globals.
+    files: ['nexus-desktop/page-shim.js'],
+    languageOptions: { ecmaVersion: 'latest', sourceType: 'script', globals: { ...globals.browser } },
+  },
+  {
     files: ['tests/**/*.js', 'eslint.config.js'],
     languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: { ...globals.node, browser: 'readonly' } },
   },
