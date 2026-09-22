@@ -26,7 +26,7 @@ CACHE = os.path.join(HERE, '.cache')
 NODE_ZIP = 'node-v24.21.0-win-x64.zip'
 NODE_URL = f'https://nodejs.org/dist/v24.21.0/{NODE_ZIP}'
 FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2'
-COMPANION_FILES = ['companion.mjs', 'page-shim.js', 'README.md']
+COMPANION_FILES = ['companion.mjs', 'version.mjs', 'page-shim.js', 'README.md']
 
 sys.path.insert(0, ADDON)
 from build import FILES as ADDON_FILES  # noqa: E402  — same whitelist as the xpi

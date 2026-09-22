@@ -17,6 +17,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isNewer } from './version.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ADDON = path.join(HERE, '..', 'nexus-addon');
@@ -278,6 +279,64 @@ onCdp('Network.responseReceived', ({ response }) => {
   }
 });
 
+// ── Updates ────────────────────────────────────────────────────────────────
+// The exe carries no runtime code — nexus-addon/ and nexus-desktop/ sit next
+// to it — so an update is those two folders replaced from the release zip, and
+// a restart. The exe itself is only rebuilt when Node moves on; a release that
+// needs a new one says so in its notes.
+const REPO = process.env.NEXUS_REPO || 'Verroq/NexusAccounting';
+const INSTALL = path.join(HERE, '..');
+const UPDATE_ASSET = /^nexus-companion-.*-win-x64\.zip$/;
+let update = { current: manifest.version, latest: null, available: false, url: null, checkedAt: 0, state: 'idle', error: null };
+
+async function checkUpdate() {
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+      headers: { 'user-agent': 'nexus-companion', accept: 'application/vnd.github+json' },
+    });
+    if (!r.ok) throw new Error(`GitHub answered ${r.status}`);
+    const rel = await r.json();
+    const latest = String(rel.tag_name || '').replace(/^v/, '');
+    const asset = (rel.assets || []).find(a => UPDATE_ASSET.test(a.name));
+    update = {
+      ...update, latest, checkedAt: Date.now(), error: null,
+      available: !!asset && isNewer(latest, manifest.version),
+      url: asset ? asset.browser_download_url : null,
+      state: update.state === 'installed' ? 'installed' : 'idle',
+    };
+    if (update.available) log(`update available: v${latest} (running v${manifest.version})`);
+  } catch (e) {
+    update = { ...update, checkedAt: Date.now(), error: e.message };
+    log(`update check failed: ${e.message}`);
+  }
+  return update;
+}
+
+async function applyUpdate() {
+  if (!update.url) await checkUpdate();
+  if (!update.available || !update.url) return update;
+  update = { ...update, state: 'installing', error: null };
+  const zip = path.join(DATA, `update-${update.latest}.zip`);
+  try {
+    const r = await fetch(update.url, { headers: { 'user-agent': 'nexus-companion' } });
+    if (!r.ok) throw new Error(`download failed (${r.status})`);
+    fs.writeFileSync(zip, Buffer.from(await r.arrayBuffer()));
+    // bsdtar ships with Windows 10+ and reads zips, so no unzip dependency and
+    // no hand-rolled inflate here. Only the two code folders are taken —
+    // nexus-companion.exe in the zip is left alone, Windows holds it open.
+    await new Promise((res, rej) => execFile('tar', ['-xf', zip, '-C', INSTALL, 'nexus-addon', 'nexus-desktop'],
+      e => (e ? rej(new Error(`extract failed: ${e.message}`)) : res())));
+    update = { ...update, state: 'installed' };
+    log(`v${update.latest} installed — restart nexus-companion.exe to run it`);
+  } catch (e) {
+    update = { ...update, state: 'idle', error: e.message };
+    log(`update failed: ${e.message}`);
+  } finally {
+    fs.rmSync(zip, { force: true });
+  }
+  return update;
+}
+
 // ── HTTP: static addon files + RPC for page shims ──────────────────────────
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.md': 'text/markdown', '.json': 'application/json' };
 async function dispatchMessage(msg) {
@@ -296,8 +355,10 @@ const RPC = {
   '/companion/status': async () => ({
     version: manifest.version, port: PORT, cdp: CDP, data: DATA, downloads: DOWNLOADS,
     attached: !!(ws && ws.readyState === WebSocket.OPEN), attachedAt, pageUrl, gameRunning,
-    log: logLines,
+    log: logLines, update,
   }),
+  // A bodyless POST arrives as null, which a destructuring default won't catch.
+  '/companion/update': body => (body && body.apply ? applyUpdate() : checkUpdate()),
   '/companion/open': ({ what }) => openFolder(what === 'downloads' ? DOWNLOADS : DATA),
   '/companion/quit': () => { log('quit requested from the dashboard'); setTimeout(() => process.exit(0), 100); },
   '/storage/get': k => storageLocal.get(k),
@@ -347,6 +408,7 @@ server.on('error', e => {
 server.listen(PORT, '127.0.0.1', () => {
   log(`dashboard at ${BASE}/dashboard.html`);
   if (process.env.NEXUS_OPEN !== '0') openExternal(DASH_URL);
+  if (process.env.NEXUS_UPDATE_CHECK !== '0') checkUpdate();   // one GET, the screen shows the answer
 });
 
 // ── Boot ───────────────────────────────────────────────────────────────────

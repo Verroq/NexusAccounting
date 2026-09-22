@@ -16,6 +16,16 @@ No npm dependencies — Node ≥ 22.
 
 From a checkout instead: `node nexus-desktop/companion.mjs` (Node ≥ 22).
 
+## Updating
+
+The Companion screen in the dashboard checks GitHub's latest release on start
+and shows it under **Updates**; the button downloads that release's zip and
+replaces `nexus-addon/` and `nexus-desktop/` next to the exe. Restart
+`nexus-companion.exe` to run the new version — no reinstall, no re-unzip.
+`nexus-companion.exe` itself is left alone (Windows holds it open while it
+runs); it only changes when Node does, and that release says so.
+Set `NEXUS_UPDATE_CHECK=0` to skip the check on start.
+
 ## Building the exe
 
 ```
@@ -39,6 +49,8 @@ in `%USERPROFILE%\.wslconfig`, then `wsl --shutdown`) — or run Node on Windows
 | `NEXUS_CDP` | `http://127.0.0.1:9222` | DevTools endpoint |
 | `NEXUS_PORT` | `7777` | dashboard / RPC port |
 | `NEXUS_DATA` | `~/.nexus-accounting` | `storage.json` lives here |
+| `NEXUS_UPDATE_CHECK` | `1` | `0` skips the release check on start |
+| `NEXUS_REPO` | `Verroq/NexusAccounting` | repo the update check reads |
 
 Data is separate from the Firefox addon's; use the dashboard backup/restore to
 move it across.

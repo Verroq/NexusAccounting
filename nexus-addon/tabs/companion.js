@@ -18,6 +18,7 @@ if (IS_DESKTOP) document.querySelector('.tab[data-tab="companion"]').hidden = fa
 let inited = false;
 let timer = null;
 let lastLog = '';
+let lastUpdate = null;
 
 export function initCompanionTab() {
   if (!inited) {
@@ -30,6 +31,7 @@ export function initCompanionTab() {
       await browser.runtime.sendMessage({ type: 'BACKUP_NOW', reason: 'manual' });
       b.disabled = false;
     });
+    byId('cp-update').addEventListener('click', updateClick);
     byId('cp-copy-log').addEventListener('click', () => copy(byId('cp-copy-log'), lastLog));
     byId('cp-quit').addEventListener('click', async () => {
       if (!await confirmDialog('Quit the companion? Scraping stops until you start nexus-companion.exe again.')) return;
@@ -44,6 +46,42 @@ export function initCompanionTab() {
     if (byId('companion-content').style.display === 'none') return clearInterval(timer);
     refresh();
   }, POLL_MS);
+}
+
+// One button, two jobs: it checks until an update is found, then installs it.
+// The companion only replaces nexus-addon/ and nexus-desktop/ next to the exe,
+// so finishing means restarting nexus-companion.exe.
+async function updateClick() {
+  const btn = byId('cp-update');
+  const known = lastUpdate;
+  const apply = !!(known && known.available && known.state !== 'installed');
+  if (apply && !await confirmDialog(`Download v${known.latest} and replace the companion's files? It runs on the next start of nexus-companion.exe.`)) return;
+  btn.disabled = true;
+  btn.textContent = apply ? 'Updating…' : 'Checking…';
+  try { renderUpdate(await rpc('companion/update', { apply })); }
+  catch { byId('cp-update-state').textContent = 'could not reach GitHub'; }
+  btn.disabled = false;
+}
+
+function renderUpdate(u) {
+  lastUpdate = u || null;
+  const line = byId('cp-update-state');
+  const btn = byId('cp-update');
+  if (!u) { line.textContent = '—'; btn.textContent = 'Check for updates'; return; }
+  if (u.state === 'installing') { line.textContent = `installing v${u.latest}…`; btn.textContent = 'Updating…'; return; }
+  if (u.state === 'installed') {
+    line.innerHTML = `<b>v${u.latest} installed</b> — restart nexus-companion.exe to run it`;
+    btn.textContent = 'Check for updates';
+    return;
+  }
+  if (u.available) {
+    line.innerHTML = `<b>v${u.latest} available</b> · running v${u.current}`;
+    btn.textContent = `Update to v${u.latest}`;
+    return;
+  }
+  line.textContent = u.error ? `check failed: ${u.error}`
+    : u.checkedAt ? `up to date · checked ${ago(u.checkedAt)}` : 'not checked yet';
+  btn.textContent = 'Check for updates';
 }
 
 async function copy(btn, text) {
@@ -95,6 +133,7 @@ async function refresh() {
   setCard('cp-card-today', counts.join(' · '), 'survey · pirate · mining reports', { dim: !counts.some(Boolean) });
 
   byId('cp-version').textContent = `nexus-companion.exe · v${s.version}`;
+  if (!byId('cp-update').disabled) renderUpdate(s.update);   // don't fight a click in flight
   byId('cp-cdp').textContent = s.cdp.replace(/^https?:\/\//, '');
   byId('cp-dash').textContent = `http://127.0.0.1:${s.port}`;
   byId('cp-data').textContent = s.data;

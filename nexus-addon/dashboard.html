@@ -1559,12 +1559,14 @@
       <div class="intel-panel-head"><span class="intel-panel-title">Companion</span><span class="intel-panel-summary" id="cp-version">nexus-companion.exe</span></div>
       <p class="intel-panel-hint">Keeps running whether this page is open or not. Closing this tab keeps it scraping; Quit stops it.</p>
       <dl class="cp-kv">
+        <dt>Updates</dt><dd><span id="cp-update-state">checking…</span></dd>
         <dt>Debugging port</dt><dd><code id="cp-cdp"></code></dd>
         <dt>Dashboard</dt><dd><code id="cp-dash"></code></dd>
         <dt>Data folder</dt><dd><code id="cp-data"></code></dd>
         <dt>Backups</dt><dd><code id="cp-downloads"></code></dd>
       </dl>
       <div class="intel-panel-actions" style="margin-top:14px;">
+        <button id="cp-update">Check for updates</button>
         <button id="cp-open-data">Open data folder</button>
         <button id="cp-backup">Backup now</button>
         <button id="cp-copy-log">Copy log</button>
