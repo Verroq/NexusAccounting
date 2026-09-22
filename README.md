@@ -33,7 +33,7 @@ the dashboard has a picker to browse each one's data.
 |---|---|
 | Overview | Global — resources collected, ships lost and their rebuild cost, per period |
 | Operations | Surveys · Pirates · Mining · Battles · Debris · Expeditions · Wormhole · Xeno · Shared Intel |
-| Alliance | Stations — stock vs. caps, alerts, withdraw/deposit ledger, dispatch haulers |
+| Alliance | Stations — stock vs. caps, alerts, withdraw/deposit ledger, dispatch haulers and defense |
 | Explore | Galaxy Scout · Asteroid Fields (with live search) · Scouting — collect debris, survey, investigate |
 | Market & R&D | Market · Fleet Templates · Tech Tree · Combat Simulator (the game's own engine, with your intel as the defender) |
 
@@ -43,7 +43,11 @@ resource weights used for "weighted" totals.
 **In the game itself**
 
 - Sidebar link to the dashboard, plus **Empire View** (per-planet workforce, buildings,
-  production) and **Logistics** (ships and resources across all planets) overlays
+  production) and **Quartermaster** (ships and resources across every planet, moon and
+  outpost) overlays
+- Quartermaster sends too: drag a resource or ship onto another colony to stage a
+  delivery, transfer, supply, garrison or outpost collection — pick which hauler types
+  to use, it plans the fleet and shows fuel, ETA and capacity before you confirm
 - **⬆ upgrade** on every building and technology card, **🚀 build** on every ship card: a planner
   that totals the cost to a target level and queues it
 - Asteroid field cards get an "optimal ships to clear" calculator
