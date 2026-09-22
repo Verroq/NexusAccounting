@@ -1060,6 +1060,7 @@ input.tech-input {
 .st-search input { flex: 1; min-width: 0; background: transparent; border: none; padding: 8px 0; font-size: 13px; color: var(--color-text); }
 .st-search input:focus { outline: none; }
 .st-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.st-res-filter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-basis: 100%; }
 .st-chip {
   padding: 5px 12px; border-radius: 20px; font-size: 12px; cursor: pointer;
   border: 1px solid var(--color-divider); color: color-mix(in srgb, var(--color-text) 65%, transparent);
@@ -1090,6 +1091,14 @@ input.tech-input {
 .st-table-wrap tbody tr { cursor: pointer; }
 .st-table-wrap tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
 .st-table-wrap tbody tr.st-selected { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.st-col-toggle {
+  margin-left: 6px; padding: 1px 6px; font-size: 10px; border-radius: var(--radius-md);
+  border: 1px solid var(--color-divider); background: transparent; cursor: pointer;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent); white-space: nowrap;
+}
+.st-col-toggle:hover, .st-col-toggle.on { color: var(--color-accent); border-color: var(--color-accent); }
+.st-res-col { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.st-res-col-head { font-size: 10.5px; }
 .st-bar-row { display: flex; align-items: center; gap: 8px; }
 .st-bar-row .st-track { width: 70px; }
 .st-bar-pct { font-size: 12px; font-variant-numeric: tabular-nums; }

@@ -16,7 +16,7 @@
 // used for state/garrison/buildings, never for amounts.
 
 import { loadFleetTemplates } from './fleets.js';
-import { RARE_WEIGHT, RESOURCE_WEIGHTS, capPlanToStock, cargoShipsFrom, editFleetDialog, fmt, nsGet, planFleet, rememberSelection, rememberedSelections } from '../common.js';
+import { RARE_WEIGHT, RESOURCE_WEIGHTS, applySort, attachSortable, capPlanToStock, cargoShipsFrom, editFleetDialog, fmt, nsGet, planFleet, rememberSelection, rememberedSelections } from '../common.js';
 
 // key = the API's snake_case log/cargo key, field = its camelCase station
 // field, storage = which cap applies.
@@ -121,9 +121,19 @@ export function stationState(st) {
   return 'Secure';
 }
 
-export function filterStations(list, { sector = 'All sectors', query = '', state = 'All', nearFull = false, role = ALL_ROLES } = {}) {
+export function filterStations(list, { sector = 'All sectors', query = '', state = 'All', nearFull = false, role = ALL_ROLES, resources = null, resourceMode = 'Any' } = {}) {
   const q = query.trim().toLowerCase();
+  const wantRes = [...(resources || [])];
+  // A picked resource means "this station actually holds some". 'Any' keeps a
+  // station that holds at least one of them, 'All' demands every one.
+  const holds = (st, key) => {
+    const res = STATION_RESOURCES.find(r => r.key === key);
+    return !!res && Number(st[res.field]) > 0;
+  };
   return list.filter(st => {
+    if (wantRes.length && !(resourceMode === 'All'
+      ? wantRes.every(key => holds(st, key))
+      : wantRes.some(key => holds(st, key)))) return false;
     if (sector !== 'All sectors' && sectorCode(st.systemName) !== sector) return false;
     if (role !== ALL_ROLES && (st.withdrawAccessRole || 'unknown') !== role) return false;
     if (state !== 'All' && stationState(st) !== state) return false;
@@ -239,7 +249,12 @@ const stLogs = new Map();             // stationId → logs
 let stSelected = null;                // selected station id, filters the ledger
 let stCollapsed = false;
 let stView = 'Table';
-const stFilters = { sector: 'All sectors', query: '', state: 'All', nearFull: false, role: ALL_ROLES };
+let stResCols = false;                // table: one column per resource, folded away by default
+// Table-only column sort. The Sort dropdown still orders the cards (and is what
+// the table falls back to); clicking a header takes over until the dropdown is
+// used again.
+const stTableSort = { key: null, dir: -1 };
+const stFilters = { sector: 'All sectors', query: '', state: 'All', nearFull: false, role: ALL_ROLES, resources: new Set(), resourceMode: 'Any' };
 let stRefCoords = null;               // source planet's system coords, for Distance
 let stTemplates = [];                 // saved fleet templates, for the Defend dispatch
 let stCargoShips = [];                // haulers with their researched capacity, largest first
@@ -275,7 +290,11 @@ export async function initStationsTab() {
     renderStations();
     loadLedger();
   });
-  byId('st-sort')?.addEventListener('change', renderStations);
+  byId('st-sort')?.addEventListener('change', () => {
+    stTableSort.key = null;
+    renderStations();
+  });
+  attachSortable('st-head-row', stTableSort, renderStations);
   byId('st-near')?.addEventListener('click', () => {
     stFilters.nearFull = !stFilters.nearFull;
     renderStations();
@@ -286,6 +305,7 @@ export async function initStationsTab() {
     stFilters.state = 'All';
     stFilters.nearFull = false;
     stFilters.role = ALL_ROLES;
+    stFilters.resources.clear();
     byId('st-search').value = '';
     renderStations();
     loadLedger();
@@ -295,6 +315,11 @@ export async function initStationsTab() {
   byId('st-modal')?.addEventListener('click', ev => { if (ev.target.id === 'st-modal') closeMove(); });
   byId('st-toast-dismiss')?.addEventListener('click', () => { byId('st-toast').style.display = 'none'; });
   byId('st-move').addEventListener('click', () => openMove('withdraw', stSelected));
+  byId('st-res-toggle')?.addEventListener('click', ev => {
+    ev.stopPropagation();   // inside the Storage header, which sorts on click
+    stResCols = !stResCols;
+    renderStations();
+  });
   byId('st-collapse').addEventListener('click', toggleCollapse);
   byId('st-collapse-head').addEventListener('click', toggleCollapse);
   byId('st-export').addEventListener('click', exportLedger);
@@ -620,6 +645,44 @@ function renderFilterBar(count) {
     chips.appendChild(chip);
   }
 
+  const resMode = byId('st-res-mode');
+  if (resMode) {
+    resMode.textContent = '';
+    for (const m of ['Any', 'All']) {
+      const opt = el('span', 'st-seg', m);
+      if (stFilters.resourceMode === m) opt.classList.add('on');
+      opt.addEventListener('click', () => {
+        stFilters.resourceMode = m;
+        renderStations();
+        loadLedger();
+      });
+      resMode.appendChild(opt);
+    }
+  }
+
+  const resChips = byId('st-res-filter');
+  if (resChips) {
+    resChips.textContent = '';
+    for (const r of STATION_RESOURCES) {
+      const on = stFilters.resources.has(r.key);
+      const chip = el('span', 'st-chip', r.label);
+      chip.title = `Keep only stations holding ${r.label}`;
+      if (on) {
+        chip.classList.add('on');
+        chip.style.color = resVar(r.key);
+        chip.style.borderColor = resVar(r.key);
+        chip.style.background = `color-mix(in srgb, ${resVar(r.key)} 12%, transparent)`;
+      }
+      chip.addEventListener('click', () => {
+        if (on) stFilters.resources.delete(r.key);
+        else { stFilters.resources.add(r.key); stResCols = true; }   // picking one shows its column
+        renderStations();
+        loadLedger();
+      });
+      resChips.appendChild(chip);
+    }
+  }
+
   byId('st-near').classList.toggle('on', stFilters.nearFull);
   byId('st-count').textContent = `${count} of ${stStations.length} stations`;
 
@@ -639,16 +702,77 @@ function selectStation(id) {
   loadLedger();
 }
 
+// One flat record per station so the shared applySort can order the table by
+// whichever header was clicked — including a resource column.
+function sortRecord(st) {
+  const det = stDetails.get(st.id);
+  return {
+    st,
+    systemName: st.systemName || '',
+    distance: distanceOf(st) ?? Infinity,
+    fill: fillStats(st).mean,
+    state: stationState(st),
+    garrison: (det && det.totalGarrison && det.totalGarrison.total) || 0,
+    role: st.withdrawAccessRole || '',
+    value: stationValue(st),
+    ...Object.fromEntries(STATION_RESOURCES.map(r => [r.key, Number(st[r.field]) || 0])),
+  };
+}
+
+// Columns follow the Holding chips: pick nothing and every resource shows.
+function shownResources() {
+  return stFilters.resources.size
+    ? STATION_RESOURCES.filter(r => stFilters.resources.has(r.key))
+    : STATION_RESOURCES;
+}
+
+// Ten extra columns only fit if the numbers are short: 1.2M / 340k / 900.
+export function shortAmount(n) {
+  const v = Math.round(Number(n) || 0);
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e4) return `${Math.round(v / 1e3)}k`;
+  return fmt(v);
+}
+
+// The per-resource columns are injected next to Storage rather than written
+// into dashboard.html, so collapsing them leaves the default table untouched.
+function renderResHead() {
+  const row = byId('st-head-row');
+  const toggle = byId('st-res-toggle');
+  if (!row) return;
+  row.querySelectorAll('.st-res-col').forEach(th => th.remove());
+  if (toggle) {
+    toggle.textContent = stResCols ? '◂ per resource' : '▸ per resource';
+    toggle.classList.toggle('on', stResCols);
+  }
+  if (!stResCols) return;
+  let prev = byId('st-th-storage');
+  for (const r of shownResources()) {
+    const th = el('th', 'st-res-col st-res-col-head sortable', r.label);
+    th.dataset.key = r.key;
+    th.style.color = resVar(r.key);
+    prev.after(th);
+    prev = th;
+  }
+}
+
 function renderTable(rows) {
   const tbody = byId('st-tbody');
   tbody.textContent = '';
-  for (const st of rows) {
+  renderResHead();   // the resource headers are sortable too, so they exist first
+  let list = rows;
+  if (stTableSort.key) {
+    list = applySort('st-head-row', rows.map(sortRecord), stTableSort, 'systemName').map(r => r.st);
+  } else {
+    document.querySelectorAll('#st-head-row .arrow').forEach(a => a.remove());
+  }
+  for (const st of list) {
     const { mean, peak, peakLabel } = fillStats(st);
     const tr = el('tr');
     if (st.id === stSelected) tr.classList.add('st-selected');
     tr.addEventListener('click', () => selectStation(st.id));
 
-    tr.appendChild(el('td', null, st.name));
+    tr.title = st.name;   // the Station column is gone; coordinates identify the row
     tr.appendChild(el('td', 'st-num', st.systemName));
     tr.appendChild(el('td', 'st-num', distLabel(st)));
 
@@ -664,6 +788,17 @@ function renderTable(rows) {
       storage.appendChild(flag);
     }
     tr.appendChild(storage);
+
+    if (stResCols) {
+      const keep = new Set(shownResources().map(r => r.key));
+      for (const r of stationResources(st).filter(r => keep.has(r.key))) {
+        const cell = el('td', 'st-res-col', shortAmount(r.amount));
+        cell.title = `${r.label}: ${fmt(Math.round(r.amount))} / ${fmt(r.cap)} (${Math.round(r.fill * 100)}%)`;
+        cell.style.color = r.amount ? resVar(r.key) : 'color-mix(in srgb, var(--color-text) 30%, transparent)';
+        if (r.fill >= NEAR_FULL) cell.style.fontWeight = '600';
+        tr.appendChild(cell);
+      }
+    }
 
     const state = el('td');
     state.appendChild(statePill(stationState(st)));

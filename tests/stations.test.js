@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import {
   ALL_ROLES, DEPOSITABLE, aggregateMembers, buildAlerts, fillStats, filterStations,
   ledgerCsv, ledgerRows, moveLimit, overLimit, parsedAmounts, planHaulers, roleOptions, sectorCode,
-  sortStations, stationResources, stationState, stationValue, totalAmount,
+  shortAmount, sortStations, stationResources, stationState, stationValue, totalAmount,
 } from '../nexus-addon/tabs/stations.js';
 import { makeBrowserStub, loadBackground } from './helpers.js';
 
@@ -69,6 +69,19 @@ test('filterStations composes sector, search, state and near-full', () => {
   assert.deepEqual(filterStations(list, { nearFull: true }).map(s => s.id), [1]);
   assert.deepEqual(filterStations(list, { sector: 'G21', nearFull: true }).map(s => s.id), [1]);
   assert.equal(filterStations(list, {}).length, 3, 'no filters keeps everything');
+});
+
+test('filterStations matches picked resources by Any or All', () => {
+  const list = [
+    station({ id: 1, ore: 5000, darkMatter: 400 }),
+    station({ id: 2, ore: 5000, darkMatter: 0 }),
+    station({ id: 3, ore: 0, darkMatter: 900 }),
+  ];
+  assert.deepEqual(filterStations(list, { resources: ['dark_matter'] }).map(s => s.id), [1, 3]);
+  assert.deepEqual(filterStations(list, { resources: new Set(['ore', 'dark_matter']) }).map(s => s.id), [1, 2, 3],
+    'Any is the default: at least one of the picked resources');
+  assert.deepEqual(filterStations(list, { resources: ['ore', 'dark_matter'], resourceMode: 'All' }).map(s => s.id), [1]);
+  assert.equal(filterStations(list, { resources: [] }).length, 3, 'no chip picked keeps everything');
 });
 
 test('roleOptions lists the withdraw rights in use, least privileged first', () => {
@@ -243,4 +256,13 @@ test('stationTransferBody carries several resources in one mission', () => {
     'a supply mission has no rare slots');
   assert.match(stationTransferBody('withdraw', 4021, ships, { ore: 0 }).error, /above zero/);
   assert.match(stationTransferBody('withdraw', 4021, ships, {}).error, /above zero/);
+});
+
+test('shortAmount keeps the per-resource columns narrow', () => {
+  assert.equal(shortAmount(0), '0');
+  assert.equal(shortAmount(950), '950');
+  assert.equal(shortAmount(9999), (9999).toLocaleString());
+  assert.equal(shortAmount(10000), '10k');
+  assert.equal(shortAmount(345678), '346k');
+  assert.equal(shortAmount(1250000), '1.3M');
 });

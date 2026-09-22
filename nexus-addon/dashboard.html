@@ -1092,6 +1092,11 @@
             <select id="st-sort" title="Sort order"></select>
             <div id="st-states" class="st-chips"></div>
             <div id="st-near" class="st-switch" title="Keep only stations whose fullest resource is at 90% or more"><span class="st-knob"></span><span class="st-switch-label">Near full only</span></div>
+            <div class="st-res-filter">
+              <span class="st-muted">Holding</span>
+              <div id="st-res-mode" class="st-segmented" title="Any: stations holding at least one of the picked resources. All: only stations holding every one."></div>
+              <div id="st-res-filter" class="st-chips"></div>
+            </div>
             <div class="st-filters-right">
               <span id="st-count" class="st-muted"></span>
               <div id="st-views" class="st-segmented"></div>
@@ -1105,9 +1110,17 @@
 
           <div id="st-table-wrap" class="st-card st-table-wrap">
             <table>
-              <thead><tr>
-                <th>Station</th><th>Coords</th><th>Distance</th><th style="min-width:150px;">Storage</th>
-                <th>State</th><th>Garrison</th><th>Withdraw</th><th class="st-right">Value</th><th></th>
+              <thead><tr id="st-head-row">
+                <th class="sortable" data-key="systemName">Coords</th>
+                <th class="sortable" data-key="distance">Distance</th>
+                <th id="st-th-storage" class="sortable" data-key="fill" style="min-width:150px;">Storage
+                  <button id="st-res-toggle" class="st-col-toggle" type="button"
+                          title="Show one column per resource">▸ per resource</button>
+                </th>
+                <th class="sortable" data-key="state">State</th>
+                <th class="sortable" data-key="garrison">Garrison</th>
+                <th class="sortable" data-key="role">Withdraw</th>
+                <th class="sortable st-right" data-key="value">Value</th><th></th>
               </tr></thead>
               <tbody id="st-tbody"></tbody>
             </table>
