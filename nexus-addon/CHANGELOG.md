@@ -4,6 +4,46 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.0] - 2026-09-23
+
+The big one here is the **Steam companion**: the Steam client can't load
+extensions, so a small Windows exe now attaches to it and runs the addon
+unchanged next to the game. Also in this one: leader attach on sends, a
+transport picker in the Quartermaster, and zones that stop reading "unknown".
+
+### Added
+- **Steam companion** (`nexus-companion.exe`): launch the game with
+  `--remote-debugging-port=9222` and the companion attaches to it, runs the
+  addon's scraper and serves the dashboard in your browser.
+  - A **Companion** screen in its dashboard replaces the console window:
+    attach state, session, scrape timing, today's counts and a live log, plus
+    copy launch option, open data folder, backup and quit.
+  - Updates itself from that screen: checks GitHub releases at start and every
+    24 h, shows a Windows toast when a new version is out, and installs it in
+    one click (restart to finish).
+  - Asteroid live-search alerts show up as Windows toasts too.
+  - Built and attached to each GitHub release automatically.
+- **Attach leader** checkbox on mine, expedition and investigate sends, greyed
+  out with a reason when the leader isn't available on the source planet.
+- **Quartermaster**: pick which hauler types carry a move, so bulk carriers
+  can stay home. Applies to resource moves and outpost collection.
+- **Stations**: per-resource storage columns (fold out from the Storage
+  header), holding filters (Any/All) and click-to-sort on every column.
+
+### Fixed
+- Expedition, pirate and wormhole reports no longer land in zone `unknown`
+  once the camp is raided or the wormhole collapsed — zones now come from the
+  sector and from missions seen in flight.
+- Scouting debris zones come straight from the API instead of a name lookup.
+- Scouting's Refresh and 30 s poll fetch debris live instead of re-reading a
+  snapshot that could be 15+ minutes old; a failed fetch keeps the last known
+  fields, and the scrape alarm survives a Firefox restart.
+- With two universes open, a queued job could write its reports under the
+  other universe. Each job now keeps the universe it was queued for.
+
+### Removed
+- The Ratio Calculator.
+
 ## [2.2.0] - 2026-09-09
 
 Two things in this one: a **Stations** screen for everything the alliance is
