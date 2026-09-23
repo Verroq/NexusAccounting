@@ -79,8 +79,9 @@ def set_gui_subsystem(exe):
 
 def build(version):
     stage = win_stage()
-    for name in ('sea-entry.cjs', 'sea-config.json'):
-        shutil.copyfile(os.path.join(HERE, name), os.path.join(stage, name))
+    if stage != HERE:   # on Windows the stage is HERE and the files are already there
+        for name in ('sea-entry.cjs', 'sea-config.json'):
+            shutil.copyfile(os.path.join(HERE, name), os.path.join(stage, name))
     blob = os.path.join(stage, 'sea-prep.blob')
     exe = os.path.join(stage, 'nexus-companion.exe')
     subprocess.run([node_exe(), '--experimental-sea-config', 'sea-config.json'], cwd=stage, check=True)
