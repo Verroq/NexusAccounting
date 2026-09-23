@@ -5,7 +5,7 @@ desktop companion for the Steam client. It reads the reports you have already ea
 game's own API, keeps them on your machine, and turns them into a dashboard — plus a few tools
 injected straight into the game.
 
-<img width="1889" height="726" alt="image" src="https://github.com/user-attachments/assets/62757e1c-d4c6-422d-9889-4ad0144b8801" />
+<img width="1915" height="891" alt="image" src="https://github.com/user-attachments/assets/488f6d65-d93b-4ca7-a1f0-18ba5d74e797" />
 
 ## Install
 
@@ -77,6 +77,8 @@ Details, environment variables and the build in [`nexus-desktop/`](nexus-desktop
 
 ## Sharing spy intel with your alliance (Discord)
 
+<img width="1897" height="820" alt="image" src="https://github.com/user-attachments/assets/50527996-7e5e-4986-b5d8-9ecc06fec12d" />
+
 The addon can share spy reports across your alliance through a **private Discord
 channel**: one member posts intel, others pull it into their Combat Simulator.
 The channel's own membership is the access control — only people in the channel
@@ -145,11 +147,11 @@ Known limits:
 
 ## Screens
 
-<img width="1903" height="726" alt="nexus_accounting" src="https://github.com/user-attachments/assets/9a3fd91c-e3cf-4fec-88e1-0c1b973e693c" />
+<img width="1915" height="817" alt="image" src="https://github.com/user-attachments/assets/952abc5d-ff8d-4d98-a70f-4ab96e266483" />
 
-<img width="1893" height="728" alt="nexus_accounting_hourly" src="https://github.com/user-attachments/assets/1658ae94-12c2-42c1-b634-fab23f98bede" />
+<img width="1915" height="817" alt="image" src="https://github.com/user-attachments/assets/5d41cd13-2fec-48f8-b726-dcabd3b41ac1" />
 
-<img width="1901" height="883" alt="nexus_accounting_graph_bar" src="https://github.com/user-attachments/assets/723bf0e3-8251-4fe3-bc6b-57f1bb54629f" />
+<img width="1912" height="824" alt="image" src="https://github.com/user-attachments/assets/8cc50d89-d5c9-4d8b-8f48-e9a56d7e72d7" />
 
 
 ## Building
