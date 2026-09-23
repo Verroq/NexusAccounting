@@ -33,3 +33,6 @@ Dispatches a mission to harvest a debris field.
 
 - Confirmed from the API client wrapper.
 - Typically used together with `/api/fleet/system-debris` and `/api/fleet/fuel-estimate`.
+- `attachLeader` — optional boolean, accepted by every fleet mission endpoint. `true` sends the
+  leadership vessel with the fleet (list its hull in `ships` with `quantity: 1`). See
+  `fleet_mine.md` for a confirmed live example.

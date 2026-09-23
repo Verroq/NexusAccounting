@@ -32,3 +32,6 @@ Sends ships/cargo from a planet to a moon.
 
 - Payload shape confirmed from addon logistics send logic.
 - Safe invalid probe on `s0` returned `400` with validation payload (`error`, `details`).
+- `attachLeader` — optional boolean, accepted by every fleet mission endpoint. `true` sends the
+  leadership vessel with the fleet (list its hull in `ships` with `quantity: 1`). See
+  `fleet_mine.md` for a confirmed live example.

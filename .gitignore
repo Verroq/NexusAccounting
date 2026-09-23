@@ -39,3 +39,6 @@ Stats.txt
 report_dead_code.md
 todolist.md
 nexus-addon/ARCHITECTURE.md
+nexus-companion-*.zip
+nexus-desktop/.cache/
+nexus-addon/__pycache__/

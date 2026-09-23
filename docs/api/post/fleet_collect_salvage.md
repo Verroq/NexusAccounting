@@ -33,3 +33,6 @@ Dispatches a salvage collection mission for a survey report or anomaly result.
 
 - Confirmed from the API client wrapper.
 - Designed for harvesting `uncollectedLoot` referenced by survey reports.
+- `attachLeader` — optional boolean, accepted by every fleet mission endpoint. `true` sends the
+  leadership vessel with the fleet (list its hull in `ships` with `quantity: 1`). See
+  `fleet_mine.md` for a confirmed live example.

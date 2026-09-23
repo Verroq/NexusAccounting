@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, capCargoFleet, cargoShipsFrom, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, nsGet, planFleet, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
+import { applySort, attachLeaderStateFor, attachSortable, capCargoFleet, cargoShipsFrom, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, nsGet, planFleet, rememberAttachLeader, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -133,7 +133,7 @@ export async function initScoutingTab() {
   document.getElementById('sc-planet').addEventListener('change', e => { rememberSelection('sc-planet', e.target.value); renderSurveys(); computeDebrisFuel(); computeSalvageFuel(); updateAvail(); });
   document.getElementById('sc-scan-template').addEventListener('change', e => rememberSelection('sc-scan-template', e.target.value));
   document.getElementById('sc-inv-template').addEventListener('change', e => { rememberSelection('sc-inv-template', e.target.value); computeFuel(); });
-  document.getElementById('sc-debris-refresh').addEventListener('click', loadDebris);
+  document.getElementById('sc-debris-refresh').addEventListener('click', refreshDebris);
   document.getElementById('sc-debris-hidden').addEventListener('click', () => { scShowHidden = !scShowHidden; renderDebris(); });
   document.getElementById('sc-debris-invonly').addEventListener('change', e => { scInvestigatedOnly = e.target.checked; renderDebris(); });
   document.getElementById('sc-debris-nearest').checked = savedSel['sc-debris-nearest'] === true;
@@ -148,12 +148,12 @@ export async function initScoutingTab() {
     tickTimers();
     for (const k in scTicks) for (const upd of scTicks[k]) upd();   // advance all progress bars
     if (++scTick % 10 === 0) updateAvail();       // catch returning fleets
-    if (scTick % 30 === 0) { loadActiveSurveys(); loadDebris(); }
+    if (scTick % 30 === 0) { loadActiveSurveys(); refreshDebris(); }
   }, 1000);
 
   status.textContent = '';
   loadActiveSurveys();
-  loadDebris();
+  refreshDebris();
 }
 
 async function refreshTemplates() {
@@ -504,13 +504,16 @@ async function investigate(report) {
 
   const r = await templateShips(document.getElementById('sc-inv-template').value, planetId);
   if (r.error) { status.textContent = r.error; return; }
+  const attachLeaderState = await attachLeaderStateFor(planetId);
   if (!await confirmDialog(`Investigate ${report.systemName} (${report.eventTitle || report.eventType})?\n\n` +
     `From: ${planet ? planet.name : planetId}\nTemplate: ${r.name}` +
-    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships)) return;
+    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships, attachLeaderState)) return;
+  rememberAttachLeader(attachLeaderState);
 
   status.textContent = `Investigating ${report.systemName}…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships: r.ships,
+    attachLeader: attachLeaderState.attachLeader,
   });
   if (res.error) { status.textContent = `Investigate failed: ${res.error}`; return; }
   scJustInvestigated.add(report.systemId);
@@ -681,6 +684,13 @@ async function updateAvail() {
   if (av.error) { clearAvailStrip(debrisBox, av.error); clearAvailStrip(invBox, av.error); return; }
   renderAvailStrip(debrisBox, scCargoShips, av.available, 'No cargo ships on this planet.');
   renderAvailStrip(invBox, scAllShips, av.available, 'No ships on this planet.');
+}
+
+// Ask background for a live fetch, then re-read. Falls back to the stored
+// snapshot if the fetch fails (logged out, rate-limited).
+async function refreshDebris() {
+  await browser.runtime.sendMessage({ type: 'REFRESH_DEBRIS' }).catch(() => null);
+  await loadDebris();
 }
 
 async function loadDebris() {

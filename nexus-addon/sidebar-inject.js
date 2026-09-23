@@ -13,15 +13,6 @@ const ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" vie
   class="lucide lucide-line-chart sidebar-link-icon" aria-hidden="true">
   <path d="M3 3v16a2 2 0 0 0 2 2h16"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>`;
 
-// lucide-style "calculator" icon.
-const CALC_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-  class="lucide lucide-calculator sidebar-link-icon" aria-hidden="true">
-  <rect width="16" height="20" x="4" y="2" rx="2"></rect><line x1="8" x2="16" y1="6" y2="6"></line>
-  <line x1="16" x2="16" y1="14" y2="18"></line><path d="M16 10h.01"></path><path d="M12 10h.01"></path>
-  <path d="M8 10h.01"></path><path d="M12 14h.01"></path><path d="M8 14h.01"></path>
-  <path d="M12 18h.01"></path><path d="M8 18h.01"></path></svg>`;
-
 // lucide-style "globe" icon for the empire-wide view.
 const EMPIRE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -44,9 +35,6 @@ function buildSection() {
     <a class="sidebar-link" href="${DASH_URL}" target="_blank" rel="noopener" data-nexus-addon="1">
       ${ICON}<span class="sidebar-link-label">Nexus Tracker</span>
     </a>
-    <a class="sidebar-link" href="#" data-nexus-calc="1">
-      ${CALC_ICON}<span class="sidebar-link-label">Ratio Calculator</span>
-    </a>
     <a class="sidebar-link" href="#" data-nexus-lsbelts="1">
       ${ICON}<span class="sidebar-link-label">Live Search Belts</span>
     </a>
@@ -59,10 +47,7 @@ function buildSection() {
   return section;
 }
 
-// ── Ratio calculator: floating, draggable, non-modal panel on the game page ──
-// ratio = offer / pay. Editing any two of {offer, pay, ratio} infers the third
-// (the field edited least recently). Offer/pay are positive integers; ratio float.
-let calcPanel = null;
+// Floating, draggable, non-modal panels on the game page.
 function makeDraggable(el, handle) {
   handle.addEventListener('mousedown', e => {
     if (e.target.closest('button, input')) return;
@@ -77,78 +62,8 @@ function makeDraggable(el, handle) {
   });
 }
 
-function openRatioCalc() {
-  if (calcPanel) { calcPanel.remove(); calcPanel = null; return; }   // toggle off
-
-  const panel = document.createElement('div');
-  calcPanel = panel;
-  panel.style.cssText = 'position:fixed;top:120px;left:120px;z-index:2147483647;width:300px;' +
-    'background:#1b2030;color:#e6e8ee;border:1px solid #39405a;border-radius:8px;' +
-    'box-shadow:0 8px 24px rgba(0,0,0,.5);font:14px/1.5 system-ui,sans-serif';
-
-  const header = document.createElement('div');
-  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;' +
-    'padding:10px 14px;border-bottom:1px solid #39405a;cursor:move;user-select:none';
-  const title = document.createElement('span');
-  title.textContent = 'Ratio Calculator'; title.style.fontWeight = '600';
-  const close = document.createElement('button');
-  close.textContent = '✕';
-  close.style.cssText = 'background:transparent;border:none;color:#8b949e;cursor:pointer;font-size:1rem';
-  close.onclick = () => { panel.remove(); calcPanel = null; };
-  header.append(title, close);
-
-  const inputCss = 'width:90px;background:#21262d;border:1px solid #30363d;color:#e6edf3;' +
-    'padding:6px 9px;border-radius:6px;font-size:0.9rem;-moz-appearance:textfield';
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;padding:14px';
-  const row = (labelText, ph) => {
-    const r = document.createElement('div');
-    r.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px';
-    const l = document.createElement('label');
-    l.textContent = labelText;
-    const inp = document.createElement('input');
-    inp.placeholder = ph; inp.style.cssText = inputCss;
-    r.append(l, inp);
-    wrap.append(r);
-    return inp;
-  };
-  const a = row('Offer (receive)', 'amount');
-  const b = row('For (pay)', 'amount');
-  const r = row('Ratio (received per 1 paid)', 'ratio');
-  r.style.cssText += ';color:#e3b341;font-weight:600';
-  for (const el of [a, b]) { el.type = 'number'; el.min = '0'; el.step = '1'; el.inputMode = 'numeric'; }
-  r.type = 'text'; r.inputMode = 'decimal';   // type=text so a mid-typing "2." isn't discarded
-
-  const intOf = el => { el.value = el.value.replace(/\D/g, ''); const v = parseInt(el.value, 10); return isNaN(v) ? null : v; };
-  const floatOf = el => { el.value = el.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1'); const v = parseFloat(el.value); return isNaN(v) ? null : v; };
-  const parse = { a: () => intOf(a), b: () => intOf(b), r: () => floatOf(r) };
-  const setF = { a: v => { a.value = Math.round(v); }, b: v => { b.value = Math.round(v); }, r: v => { r.value = +v.toFixed(3); } };
-
-  let recent = ['r', 'b', 'a'];   // most-recent first; tracks user input only
-  const infer = edited => {
-    parse[edited]();
-    recent = [edited, ...recent.filter(x => x !== edited)];
-    const va = parse.a(), vb = parse.b(), vr = parse.r();
-    const target = recent[2];   // least-recently user-edited field
-    let out = null;
-    if (target === 'a' && vb != null && vr != null) out = vb * vr;
-    else if (target === 'b' && va != null && vr > 0) out = va / vr;
-    else if (target === 'r' && va != null && vb > 0) out = va / vb;
-    if (out != null && isFinite(out) && out >= 0) setF[target](out);
-  };
-  a.addEventListener('input', () => infer('a'));
-  b.addEventListener('input', () => infer('b'));
-  r.addEventListener('input', () => infer('r'));
-
-  panel.append(header, wrap);
-  document.body.append(panel);
-  makeDraggable(panel, header);
-  a.focus();
-}
-
 document.addEventListener('click', e => {
-  if (e.target.closest('[data-nexus-calc]')) { e.preventDefault(); openRatioCalc(); }
-  else if (e.target.closest('[data-nexus-lsbelts]')) { e.preventDefault(); openFieldsPanel(); }
+  if (e.target.closest('[data-nexus-lsbelts]')) { e.preventDefault(); openFieldsPanel(); }
 });
 
 function inject() {
@@ -194,7 +109,7 @@ ext.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // ── Live-search matches window ──────────────────────────────────────────────
 // Opened when the user clicks an asteroid live-search notification. Floating,
-// draggable, non-modal — same style as the ratio calculator.
+// draggable, non-modal.
 const TYPE_COLOR = {
   ore: '#f0883e', gas: '#a371f7', ice: '#a5d6ff', plasma: '#ff7b72',
   quantum: '#d2a8ff', dark: '#6e40c9',
@@ -224,7 +139,8 @@ function recommend(m, excavator) {
 // confirmDialog so a send from this window looks like one from the dashboard.
 // `untilFullState`, when passed, is a caller-owned { untilFull: bool } rendered
 // as a "Mine until full" checkbox; the dialog writes the choice back into it.
-function lsConfirm(message, ships, defs, altLabel, untilFullState = null) {
+// `attachLeaderState` ({ attachLeader: bool }) does the same for "Attach leader".
+function lsConfirm(message, ships, defs, altLabel, untilFullState = null, attachLeaderState = null) {
   return new Promise(resolve => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483647;display:flex;align-items:center;justify-content:center';
@@ -257,18 +173,23 @@ function lsConfirm(message, ships, defs, altLabel, untilFullState = null) {
       }
       box.append(row);
     }
-    // Mine-until-full toggle — a mission option, not part of the fleet.
-    if (untilFullState) {
-      const fullRow = document.createElement('label');
-      fullRow.title = 'Keep mining past the usual 10 cycles until the mining hold is full or the field is depleted';
-      fullRow.style.cssText = 'margin-top:12px;display:flex;align-items:center;gap:6px;color:#8b949e;font-size:0.85rem;cursor:pointer;white-space:normal';
-      const fullChk = document.createElement('input');
-      fullChk.type = 'checkbox';
-      fullChk.checked = !!untilFullState.untilFull;
-      fullChk.addEventListener('change', () => { untilFullState.untilFull = fullChk.checked; });
-      fullRow.append(fullChk, document.createTextNode('Mine until full'));
-      box.append(fullRow);
-    }
+    // Mission-option toggles — not part of the fleet, so they sit above the buttons.
+    const optionRow = (state, key, label, title) => {
+      if (!state) return;
+      const row = document.createElement('label');
+      row.title = state.disabled ? state.reason : title;
+      row.style.cssText = `margin-top:12px;display:flex;align-items:center;gap:6px;color:#8b949e;font-size:0.85rem;white-space:normal;${state.disabled ? 'opacity:.5;cursor:not-allowed' : 'cursor:pointer'}`;
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.disabled = !!state.disabled;
+      chk.checked = !state.disabled && !!state[key];
+      chk.addEventListener('change', () => { state[key] = chk.checked; });
+      row.append(chk, document.createTextNode(label));
+      if (state.disabled && state.reason) row.append(document.createTextNode(` — ${state.reason}`));
+      box.append(row);
+    };
+    optionRow(untilFullState, 'untilFull', 'Mine until full', 'Keep mining past the usual 10 cycles until the mining hold is full or the field is depleted');
+    optionRow(attachLeaderState, 'attachLeader', 'Attach leader', 'Send the leadership vessel along with this fleet');
 
     const btns = document.createElement('div');
     btns.style.cssText = 'margin-top:18px;display:flex;gap:10px;justify-content:flex-end;white-space:normal';
@@ -361,6 +282,7 @@ async function openFieldsPanel() {
   let tpl = templates.find(t => String(t.id) === String((template_selections || {})['af-template-select'])) || templates[0] || null;
   let excavator = localStorage.getItem('nx-ls-excavator') === '1';   // +20% capacity toggle
   let untilFull = localStorage.getItem('nx-ls-until-full') === '1';   // mine until the hold is full
+  let attachLeader = localStorage.getItem('nx-ls-attach-leader') === '1';   // send the leadership vessel along
 
   // "Already mining" row highlight: fields we already control, or with an
   // active mine mission en route. Mirrors the Asteroids tab's criteria.
@@ -572,13 +494,20 @@ async function openFieldsPanel() {
         if (!canMine) return;
         const short = ships.some(s => (avail[s.shipDefId] || 0) < s.quantity);
         const untilFullState = { untilFull };
+        const av = await ext.runtime.sendMessage({ type: 'GET_LEADER_AVAILABILITY', sourcePlanetId: planetId });
+        const leaderOk = !!(av && av.ok);
+        const attachLeaderState = { attachLeader: leaderOk && attachLeader, disabled: !leaderOk, reason: leaderOk ? '' : (av && av.reason) || 'Leader unavailable' };
         const r = await lsConfirm(
           `Send fleet?\nTo: ${m.name} (${m.system})\nFrom: ${planetName}` +
           (short ? '\n\n⚠ Some ships are short on this planet; sending what is available.' : ''),
-          ships, shipDefs, null, untilFullState);
+          ships, shipDefs, null, untilFullState, attachLeaderState);
         if (!r) return;
         untilFull = untilFullState.untilFull;   // sticks for the next send
         localStorage.setItem('nx-ls-until-full', untilFull ? '1' : '0');
+        if (leaderOk) {   // only remember a choice that was actually offered
+          attachLeader = attachLeaderState.attachLeader;
+          localStorage.setItem('nx-ls-attach-leader', attachLeader ? '1' : '0');
+        }
         const sendShips = ships;
         // Reflect the sent fleet in the shared editor (escorts kept, miners swapped).
         shipsState.clear();
@@ -587,7 +516,7 @@ async function openFieldsPanel() {
         mineBtn.disabled = true; mineBtn.textContent = '…';
         const res = await ext.runtime.sendMessage({
           type: 'SEND_MINE', sourcePlanetId: planetId, targetFieldId: m.id, ships: sendShips, miningDuration: 600,
-          mineUntilFull: untilFull,
+          mineUntilFull: untilFull, attachLeader: attachLeaderState.attachLeader,
         });
         if (res && res.error) { mineBtn.textContent = '⛏'; mineBtn.disabled = false; window.alert(`Send failed: ${res.error}`); }
         else {

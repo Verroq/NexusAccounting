@@ -1,5 +1,6 @@
 # Release workflow: push a tag like v1.3.3 and this submits that version to
-# AMO (listed channel) and attaches the built xpi to a GitHub release.
+# AMO (listed channel) and attaches the built xpi to a GitHub release. A second
+# job on a Windows runner adds the Steam companion exe to the same release.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   WEB_EXT_API_KEY      AMO JWT issuer (user:12345678:123)
@@ -63,3 +64,30 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             --notes "See nexus-addon/CHANGELOG.md for details. Firefox via AMO, Chrome via the Web Store." \
             nexus-accounting-*.xpi nexus-accounting-*.zip
+
+  # The SEA blob has to be produced by the very node.exe it is injected into,
+  # so the companion is built on Windows rather than through WSL interop.
+  companion:
+    needs: release
+    runs-on: windows-latest
+    permissions:
+      contents: write   # upload to the release the job above created
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Build the Windows companion
+        working-directory: nexus-desktop
+        run: python build-exe.py
+
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" nexus-companion-*.zip --clobber

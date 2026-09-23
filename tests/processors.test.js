@@ -517,6 +517,38 @@ test('nsGet/nsSet namespace storage.local keys by the active universe', async ()
   assert.deepEqual(await browser.storage.local.get(null), {}, 'nsRemove clears the prefixed key');
 });
 
+test('enqueue pins storage writes to the universe it was queued for', async () => {
+  makeBrowserStub();
+  const bg = await loadBackground();
+
+  // Two game tabs (s0 + beta): an intercept or UI call flips currentUniverse
+  // while an s0 processor is mid-run. Its writes must still land under s0__.
+  bg.setCurrentUniverse('s0');
+  const run = bg.enqueue(async () => {
+    await bg.nsSet({ totals: { ore: 1 } });
+    bg.setCurrentUniverse('beta');           // the flip
+    await bg.nsSet({ totals: { ore: 2 } });  // still s0's processor
+    assert.equal((await bg.nsGet(['totals'])).totals.ore, 2, 'reads inside the queue follow the queued universe');
+  }, 's0');
+  await run;
+
+  const raw = await browser.storage.local.get(null);
+  assert.deepEqual(Object.keys(raw), ['s0__totals'], 'nothing leaked into beta__');
+  assert.equal(raw.s0__totals.ore, 2);
+
+  // Outside the queue the plain global applies again, and an explicit
+  // universe argument overrides both.
+  assert.equal(bg.getCurrentUniverse(), 'beta');
+  await bg.nsSet({ totals: { ore: 3 } });
+  await bg.nsSet({ totals: { ore: 4 } }, 'nf');
+  assert.equal((await browser.storage.local.get(null)).beta__totals.ore, 3);
+  assert.equal((await browser.storage.local.get(null)).nf__totals.ore, 4);
+
+  // A queued failure records last_error under the queued universe, not the global.
+  await bg.enqueue(async () => { throw new Error('boom'); }, 's0');
+  assert.equal((await browser.storage.local.get(null)).s0__last_error, 'boom');
+});
+
 test('nsGet/nsSet isolate data between universes', async () => {
   makeBrowserStub();
   const bg = await loadBackground();

@@ -2,7 +2,7 @@
 // both kinds share one background store (exp_*), tagged per-record by `kind`.
 
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachLeaderStateFor, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, rememberAttachLeader, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartExpeditions, chartExpComp;
 
@@ -236,16 +236,19 @@ async function launchExpedition() {
   const r = await resolveExpeditionShips(planetId);
   if (r.error) { status.textContent = r.error; return; }
 
+  const attachLeaderState = await attachLeaderStateFor(planetId);
   const ships = await editFleetDialog({
     title: 'Launch expedition',
     subtitle: `From: ${planet ? planet.name : planetId}\nZone: ${zone} · Depth: ${depth}\nFleet: ${r.name}`,
-    avail: r.avail, seed: r.seed,
+    avail: r.avail, seed: r.seed, attachLeaderState,
   });
   if (!ships || !ships.length) return;   // cancelled or emptied
+  rememberAttachLeader(attachLeaderState);
 
   status.textContent = 'Launching…';
   const res = await browser.runtime.sendMessage({
     type: 'SEND_EXPEDITION', sourcePlanetId: planetId, ships, zone, depth,
+    attachLeader: attachLeaderState.attachLeader,
   });
   if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
   status.textContent = 'Expedition launched ✓';

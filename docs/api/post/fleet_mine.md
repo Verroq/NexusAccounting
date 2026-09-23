@@ -21,6 +21,25 @@ Dispatches ships to mine an asteroid field.
 }
 ```
 
+With the leadership vessel attached (confirmed live, leader ship is `shipDefId` 29 here and is
+listed in `ships` like any other hull):
+
+```json
+{
+  "sourcePlanetId": 92841,
+  "targetFieldId": 1126390,
+  "ships": [
+    { "shipDefId": 4, "quantity": 37 },
+    { "shipDefId": 21, "quantity": 57 },
+    { "shipDefId": 29, "quantity": 1 }
+  ],
+  "miningDuration": 600,
+  "attachLeader": true,
+  "hangarAssignments": {},
+  "mineUntilFull": true
+}
+```
+
 ## Response Structure
 
 ```json
@@ -40,7 +59,9 @@ Dispatches ships to mine an asteroid field.
   10 cycles until the mining hold is full or the field is depleted. Omit or `false` for a
   fixed-length run.
 - `escortRetreatThreshold` — optional, retreat threshold for the combat escort.
-- `attachLeader` — optional boolean, sends the leadership vessel along.
+- `attachLeader` — optional boolean. `true` attaches the leader to the mission so the leadership
+  vessel travels with the fleet (its hull still appears in `ships` with `quantity: 1`). Omit or
+  `false` to leave the leader home. Not mine-specific: every fleet mission endpoint accepts it.
 
 ## Notes
 

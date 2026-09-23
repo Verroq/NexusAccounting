@@ -58,6 +58,7 @@
       </div>
       <div class="nx-nav-group">
         <div class="nx-nav-group-title">Help</div>
+        <button class="tab nx-nav-item" data-tab="companion" hidden><span class="nx-nav-icon">⎔</span><span>Companion</span></button>
         <button class="tab nx-nav-item" data-tab="discordsetup"><span class="nx-nav-icon">✉</span><span>Discord Setup</span></button>
         <button class="tab nx-nav-item" data-tab="faq"><span class="nx-nav-icon">?</span><span>FAQ</span></button>
       </div>
@@ -1091,6 +1092,11 @@
             <select id="st-sort" title="Sort order"></select>
             <div id="st-states" class="st-chips"></div>
             <div id="st-near" class="st-switch" title="Keep only stations whose fullest resource is at 90% or more"><span class="st-knob"></span><span class="st-switch-label">Near full only</span></div>
+            <div class="st-res-filter">
+              <span class="st-muted">Holding</span>
+              <div id="st-res-mode" class="st-segmented" title="Any: stations holding at least one of the picked resources. All: only stations holding every one."></div>
+              <div id="st-res-filter" class="st-chips"></div>
+            </div>
             <div class="st-filters-right">
               <span id="st-count" class="st-muted"></span>
               <div id="st-views" class="st-segmented"></div>
@@ -1104,9 +1110,17 @@
 
           <div id="st-table-wrap" class="st-card st-table-wrap">
             <table>
-              <thead><tr>
-                <th>Station</th><th>Coords</th><th>Distance</th><th style="min-width:150px;">Storage</th>
-                <th>State</th><th>Garrison</th><th>Withdraw</th><th class="st-right">Value</th><th></th>
+              <thead><tr id="st-head-row">
+                <th class="sortable" data-key="systemName">Coords</th>
+                <th class="sortable" data-key="distance">Distance</th>
+                <th id="st-th-storage" class="sortable" data-key="fill" style="min-width:150px;">Storage
+                  <button id="st-res-toggle" class="st-col-toggle" type="button"
+                          title="Show one column per resource">▸ per resource</button>
+                </th>
+                <th class="sortable" data-key="state">State</th>
+                <th class="sortable" data-key="garrison">Garrison</th>
+                <th class="sortable" data-key="role">Withdraw</th>
+                <th class="sortable st-right" data-key="value">Value</th><th></th>
               </tr></thead>
               <tbody id="st-tbody"></tbody>
             </table>
@@ -1508,6 +1522,59 @@
     </div>
   </div>
 
+  <!-- Desktop companion (Steam client) status. Only reachable from the companion's
+       own dashboard: the sidebar entry stays hidden in the browser addon. -->
+  <div id="companion-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Companion</h1><p>The desktop companion attached to the Steam client</p></div>
+
+    <div class="stats" id="cp-cards">
+      <div class="stat-card" id="cp-card-game"><div class="label">Game</div><div class="value">—</div><div class="sub"></div></div>
+      <div class="stat-card" id="cp-card-session"><div class="label">Session</div><div class="value">—</div><div class="sub"></div></div>
+      <div class="stat-card" id="cp-card-scrape"><div class="label">Last scrape</div><div class="value">—</div><div class="sub"></div></div>
+      <div class="stat-card" id="cp-card-today"><div class="label">Collected today</div><div class="value">—</div><div class="sub">survey · pirate · mining reports</div></div>
+    </div>
+
+    <div class="intel-panel cp-notice cp-warn" id="cp-waiting" style="display:none;">
+      <div class="intel-panel-head"><span class="intel-panel-title">Waiting for the game</span><span class="intel-panel-summary">Nexus Legacy is not running, or its debugging port is closed</span></div>
+      <div class="cp-steps">
+        <div class="cp-step"><span class="cp-step-n done">✓</span><span>Unzip the companion anywhere and run <code>nexus-companion.exe</code> — done, that is this page.</span></div>
+        <div class="cp-step"><span class="cp-step-n">2</span><span>In Steam, right-click <em>Nexus Legacy</em> → Properties → Launch Options and paste
+          <code>--remote-debugging-port=9222</code> <button class="cp-copy-launch">Copy</button></span></div>
+        <div class="cp-step"><span class="cp-step-n">3</span><span>Start the game. This page attaches on its own — nothing to click.</span></div>
+      </div>
+    </div>
+
+    <div class="intel-panel cp-notice cp-danger" id="cp-portclosed" style="display:none;">
+      <div class="intel-panel-head"><span class="intel-panel-title">The game is running, but its debugging port is closed</span></div>
+      <p class="intel-panel-hint">The Steam launch option is missing or has a typo. It must read exactly <code>--remote-debugging-port=9222</code> — nothing before, nothing after. Fix it, then restart the game; this page attaches on its own.</p>
+      <div class="intel-panel-actions"><button class="cp-copy-launch cp-accent">Copy launch option</button><button id="cp-open-faq">Open setup guide</button></div>
+    </div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Activity</span><span class="intel-panel-summary" id="cp-log-summary">live · last 200 lines</span></div>
+      <div class="cp-log" id="cp-log"></div>
+    </div>
+
+    <div class="intel-panel" style="margin-bottom:0;">
+      <div class="intel-panel-head"><span class="intel-panel-title">Companion</span><span class="intel-panel-summary" id="cp-version">nexus-companion.exe</span></div>
+      <p class="intel-panel-hint">Keeps running whether this page is open or not. Closing this tab keeps it scraping; Quit stops it.</p>
+      <dl class="cp-kv">
+        <dt>Updates</dt><dd><span id="cp-update-state">checking…</span></dd>
+        <dt>Debugging port</dt><dd><code id="cp-cdp"></code></dd>
+        <dt>Dashboard</dt><dd><code id="cp-dash"></code></dd>
+        <dt>Data folder</dt><dd><code id="cp-data"></code></dd>
+        <dt>Backups</dt><dd><code id="cp-downloads"></code></dd>
+      </dl>
+      <div class="intel-panel-actions" style="margin-top:14px;">
+        <button id="cp-update">Check for updates</button>
+        <button id="cp-open-data">Open data folder</button>
+        <button id="cp-backup">Backup now</button>
+        <button id="cp-copy-log">Copy log</button>
+        <button id="cp-quit" class="cp-danger-btn" style="margin-left:14px;">Quit companion</button>
+      </div>
+    </div>
+  </div>
+
   <div id="faq-content" style="display:none;">
     <div class="nx-screen-head"><h1>FAQ</h1><p>How the addon collects, stores and shows your data</p></div>
 
@@ -1595,6 +1662,32 @@
         tag, and one stamped for another universe is refused; both cases now report a count and a
         reason. An ally on an older build may also have posted before the message ID reached the
         index — ask them to share again after updating.</p>
+      </details>
+    </div>
+
+    <div class="intel-panel">
+      <div class="intel-panel-head"><span class="intel-panel-title">Steam support</span></div>
+      <details class="faq-item">
+        <summary>Does it work with the Steam version of the game?</summary>
+        <p>Yes, through a small companion instead of the browser addon. The Steam client is a
+        wrapper around the same web game with no room for extensions, so the companion attaches
+        to it over its debugging port and does the rest: scraping, the in-game sidebar and
+        overlays, and this dashboard. Setup: in Steam, right-click the game → <em>Properties</em>
+        → <em>Launch Options</em> and enter <code>--remote-debugging-port=9222</code>; unzip the
+        <code>nexus-companion-…-win-x64.zip</code> from the GitHub releases anywhere; start the
+        game, then run <code>nexus-companion.exe</code>. Nothing to install. The sidebar link opens
+        the dashboard in your default browser.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Is the Steam data shared with the browser addon?</summary>
+        <p>No. The companion keeps its own store in <code>~/.nexus-accounting/storage.json</code>.
+        To move history across, <em>Export JSON</em> on one side and import it on the other.</p>
+      </details>
+      <details class="faq-item">
+        <summary>The companion says "Game not attached".</summary>
+        <p>The game is not running, or was started without the launch option — check that Steam
+        shows exactly <code>--remote-debugging-port=9222</code> with nothing after it. The
+        companion retries every few seconds, so just start the game and wait.</p>
       </details>
     </div>
 
