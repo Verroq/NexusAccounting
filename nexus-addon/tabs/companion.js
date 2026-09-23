@@ -13,7 +13,12 @@ const rpc = (route, payload) => fetch(browser.runtime.getURL(route), {
   method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload ?? null),
 }).then(r => r.json()).then(r => r.result);
 
-if (IS_DESKTOP) document.querySelector('.tab[data-tab="companion"]').hidden = false;
+if (IS_DESKTOP) {
+  document.querySelector('.tab[data-tab="companion"]').hidden = false;
+  // Header copy of Quit, so the companion can be stopped from any screen.
+  byId('btn-quit-companion').hidden = false;
+  byId('btn-quit-companion').addEventListener('click', quit);
+}
 
 let inited = false;
 let timer = null;
@@ -33,11 +38,7 @@ export function initCompanionTab() {
     });
     byId('cp-update').addEventListener('click', updateClick);
     byId('cp-copy-log').addEventListener('click', () => copy(byId('cp-copy-log'), lastLog));
-    byId('cp-quit').addEventListener('click', async () => {
-      if (!await confirmDialog('Quit the companion? Scraping stops until you start nexus-companion.exe again.')) return;
-      await rpc('companion/quit');
-      byId('cp-card-game').querySelector('.value').textContent = 'Stopped';
-    });
+    byId('cp-quit').addEventListener('click', quit);
   }
   clearInterval(timer);
   refresh();
@@ -46,6 +47,13 @@ export function initCompanionTab() {
     if (byId('companion-content').style.display === 'none') return clearInterval(timer);
     refresh();
   }, POLL_MS);
+}
+
+async function quit() {
+  if (!await confirmDialog('Quit the companion? Scraping stops until you start nexus-companion.exe again.')) return;
+  await rpc('companion/quit');
+  byId('cp-card-game').querySelector('.value').textContent = 'Stopped';
+  byId('status-text').textContent = 'Companion stopped';
 }
 
 // One button, two jobs: it checks until an update is found, then installs it.
