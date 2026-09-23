@@ -258,7 +258,7 @@ globalThis.browser = {
   },
   webRequest: { onCompleted: { addListener: (fn, { urls }) => webRequestListeners.push({ fn, urls }) } },
   notifications: {
-    async create(id, { title, message }) { log(`🔔 ${title}: ${message}`); return id; },
+    async create(id, { title, message }) { notify(title, message); return id; },
     async clear() {},
     onClicked: noop,
   },
@@ -279,6 +279,33 @@ onCdp('Network.responseReceived', ({ response }) => {
   }
 });
 
+// ── OS notifications ───────────────────────────────────────────────────────
+// The exe has no window, so a toast is the only way to reach the user while
+// they are in the game. Windows raises one through PowerShell's own AppId —
+// no dependency, no registration. Title and message go through the
+// environment, never the script text, so report data can't be injected into
+// the command. Anything else (WSL dev runs) tries notify-send, else logs only.
+const PS_TOAST = `
+$ErrorActionPreference='Stop'
+[void][Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]
+$x=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+$t=$x.GetElementsByTagName('text')
+[void]$t.Item(0).AppendChild($x.CreateTextNode($env:NX_TITLE))
+[void]$t.Item(1).AppendChild($x.CreateTextNode($env:NX_MESSAGE))
+$id='{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($id).Show([Windows.UI.Notifications.ToastNotification]::new($x))
+`;
+function notify(title, message) {
+  log(`🔔 ${title}: ${message}`);
+  const env = { ...process.env, NX_TITLE: title, NX_MESSAGE: message };
+  const done = e => { if (e) log(`notification failed: ${e.message}`); };
+  if (process.platform === 'win32') {
+    execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', PS_TOAST], { env, windowsHide: true }, done);
+  } else {
+    execFile('notify-send', [title, message], { env }, () => {});   // dev boxes; absent is fine
+  }
+}
+
 // ── Updates ────────────────────────────────────────────────────────────────
 // The exe carries no runtime code — nexus-addon/ and nexus-desktop/ sit next
 // to it — so an update is those two folders replaced from the release zip, and
@@ -287,7 +314,10 @@ onCdp('Network.responseReceived', ({ response }) => {
 const REPO = process.env.NEXUS_REPO || 'Verroq/NexusAccounting';
 const INSTALL = path.join(HERE, '..');
 const UPDATE_ASSET = /^nexus-companion-.*-win-x64\.zip$/;
+const UPDATE_TOP = 'nexus companion';   // the folder every release zip is wrapped in (see build-exe.py)
 let update = { current: manifest.version, latest: null, available: false, url: null, checkedAt: 0, state: 'idle', error: null };
+let notifiedVersion = null;   // so the daily re-check doesn't toast the same release twice
+const UPDATE_EVERY_MS = 24 * 60 * 60 * 1000;
 
 async function checkUpdate() {
   try {
@@ -304,7 +334,10 @@ async function checkUpdate() {
       url: asset ? asset.browser_download_url : null,
       state: update.state === 'installed' ? 'installed' : 'idle',
     };
-    if (update.available) log(`update available: v${latest} (running v${manifest.version})`);
+    if (update.available && notifiedVersion !== latest) {
+      notifiedVersion = latest;
+      notify('Nexus Companion update', `v${latest} is out (you run v${manifest.version}). Open the Companion screen to install it.`);
+    }
   } catch (e) {
     update = { ...update, checkedAt: Date.now(), error: e.message };
     log(`update check failed: ${e.message}`);
@@ -322,10 +355,12 @@ async function applyUpdate() {
     if (!r.ok) throw new Error(`download failed (${r.status})`);
     fs.writeFileSync(zip, Buffer.from(await r.arrayBuffer()));
     // bsdtar ships with Windows 10+ and reads zips, so no unzip dependency and
-    // no hand-rolled inflate here. Only the two code folders are taken —
-    // nexus-companion.exe in the zip is left alone, Windows holds it open.
-    await new Promise((res, rej) => execFile('tar', ['-xf', zip, '-C', INSTALL, 'nexus-addon', 'nexus-desktop'],
-      e => (e ? rej(new Error(`extract failed: ${e.message}`)) : res())));
+    // no hand-rolled inflate here. The zip holds everything under one folder,
+    // stripped off here so the two code folders land next to the running exe —
+    // which is left alone, Windows holds it open.
+    await new Promise((res, rej) => execFile('tar', ['-xf', zip, '-C', INSTALL, '--strip-components=1',
+      `${UPDATE_TOP}/nexus-addon`, `${UPDATE_TOP}/nexus-desktop`],
+    e => (e ? rej(new Error(`extract failed: ${e.message}`)) : res())));
     update = { ...update, state: 'installed' };
     log(`v${update.latest} installed — restart nexus-companion.exe to run it`);
   } catch (e) {
@@ -408,7 +443,10 @@ server.on('error', e => {
 server.listen(PORT, '127.0.0.1', () => {
   log(`dashboard at ${BASE}/dashboard.html`);
   if (process.env.NEXUS_OPEN !== '0') openExternal(DASH_URL);
-  if (process.env.NEXUS_UPDATE_CHECK !== '0') checkUpdate();   // one GET, the screen shows the answer
+  if (process.env.NEXUS_UPDATE_CHECK !== '0') {
+    checkUpdate();                                  // one GET, the screen shows the answer
+    setInterval(checkUpdate, UPDATE_EVERY_MS);      // a companion left running still hears about a release
+  }
 });
 
 // ── Boot ───────────────────────────────────────────────────────────────────

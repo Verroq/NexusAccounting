@@ -27,6 +27,9 @@ NODE_ZIP = 'node-v24.21.0-win-x64.zip'
 NODE_URL = f'https://nodejs.org/dist/v24.21.0/{NODE_ZIP}'
 FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2'
 COMPANION_FILES = ['companion.mjs', 'version.mjs', 'page-shim.js', 'README.md']
+# Everything lands in one folder, so unzipping drops a single tidy directory
+# instead of three loose entries. The updater strips it back off.
+TOP = 'nexus companion'
 
 sys.path.insert(0, ADDON)
 from build import FILES as ADDON_FILES  # noqa: E402  — same whitelist as the xpi
@@ -90,11 +93,11 @@ def build(version):
 
     target = os.path.join(ROOT, f'nexus-companion-{version}-win-x64.zip')
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:
-        z.write(exe, 'nexus-companion.exe')
+        z.write(exe, f'{TOP}/nexus-companion.exe')
         for name in COMPANION_FILES:
-            z.write(os.path.join(HERE, name), f'nexus-desktop/{name}')
+            z.write(os.path.join(HERE, name), f'{TOP}/nexus-desktop/{name}')
         for name in ADDON_FILES:
-            z.write(os.path.join(ADDON, name), f'nexus-addon/{name}')
+            z.write(os.path.join(ADDON, name), f'{TOP}/nexus-addon/{name}')
     os.remove(exe)
     print(f'built {os.path.basename(target)} ({os.path.getsize(target) // 1024 // 1024} MB)')
 

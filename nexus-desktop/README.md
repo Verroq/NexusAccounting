@@ -10,8 +10,10 @@ No npm dependencies — Node ≥ 22.
 
 1. Steam → Nexus Legacy → Properties → Launch Options:
    `--remote-debugging-port=9222`
-2. Unzip `nexus-companion-<version>-win-x64.zip` anywhere, start the game,
-   run `nexus-companion.exe`. It retries until the game is up.
+2. Unzip `nexus-companion-<version>-win-x64.zip` anywhere — it drops one
+   `nexus companion\` folder holding the exe, `nexus-desktop\` and
+   `nexus-addon\`. Start the game, run `nexus-companion.exe` from that folder.
+   It retries until the game is up.
 3. The in-game sidebar link opens the dashboard in your default browser.
 
 From a checkout instead: `node nexus-desktop/companion.mjs` (Node ≥ 22).
@@ -33,9 +35,10 @@ python3 nexus-desktop/build-exe.py
 ```
 Downloads the official `node.exe` once into `nexus-desktop/.cache/`, generates
 the SEA blob with *that* node (blob and binary must be the same build) and
-injects it with postject (`npx`, build-time only). The zip carries the exe plus
-`nexus-desktop/` and `nexus-addon/` — nothing is bundled, so the companion
-runs the exact files the Firefox addon ships. On WSL the blob step runs
+injects it with postject (`npx`, build-time only). The zip carries a single
+`nexus companion/` folder with the exe plus `nexus-desktop/` and
+`nexus-addon/` — nothing is bundled, so the companion runs the exact files the
+Firefox addon ships. On WSL the blob step runs
 node.exe through interop in `%TEMP%`.
 
 The debugging port is bound to `127.0.0.1` on the Windows side. From WSL2
