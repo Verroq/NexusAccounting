@@ -54,10 +54,11 @@ function buildCost(def, qty) {
   return tot;
 }
 
-// Ship key from the card image, e.g. /api/images/ships/terran/interceptor.webp
+// Ship key from the card image's file name, e.g. /api/images/ships/terran/interceptor.webp,
+// or /images/ships/supporter/miner/ice_drill.webp when a skin is equipped.
 function keyFromCard(card) {
   const img = card.querySelector('img[src*="/ships/"]');
-  const m = img && img.src.match(/\/ships\/[^/]+\/([a-z0-9_]+)\.webp/i);
+  const m = img && img.src.match(/\/ships\/(?:[^/]+\/)+([a-z0-9_]+)\.webp/i);
   return m ? m[1] : null;
 }
 
