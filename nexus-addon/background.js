@@ -288,6 +288,9 @@ browser.runtime.onMessage.addListener(msg => {
     return gamePost('/api/fleet/mine', {
       sourcePlanetId: msg.sourcePlanetId, targetFieldId: msg.targetFieldId,
       ships: msg.ships, miningDuration: msg.miningDuration,
+      // Always sent by the game's own dialog. Suspected cause of "Cannot find
+      // context with specified id" on sends with a ship skin equipped.
+      hangarAssignments: {},
       mineUntilFull: !!msg.mineUntilFull,
       ...(msg.attachLeader ? { attachLeader: true } : {}),
     });
