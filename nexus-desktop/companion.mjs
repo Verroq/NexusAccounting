@@ -162,7 +162,13 @@ async function attach() {
   await cdp('Runtime.evaluate', { expression: isolatedWorldScript(), contextId: worldCtx }).catch(e => log('isolated inject:', e.message));
   if (booted) dispatchMessage({ type: 'SCRAPE_NOW' }).catch(e => log('scrape:', e.message));
 }
-onCdp('Runtime.executionContextCreated', ({ context }) => { if (context.name === WORLD) worldCtx = context.id; });
+// The world is created in every frame, iframes included (skins/cosmetics use
+// them). Only the main frame's counts: an iframe's world dies with the iframe
+// and a send through it fails with "Cannot find context with specified id".
+onCdp('Runtime.executionContextCreated', ({ context }) => {
+  if (context.name === WORLD && (!frameId || context.auxData?.frameId === frameId)) worldCtx = context.id;
+});
+onCdp('Runtime.executionContextDestroyed', ({ executionContextId }) => { if (executionContextId === worldCtx) worldCtx = null; });
 onCdp('Runtime.executionContextsCleared', () => { worldCtx = null; });
 onCdp('Page.frameNavigated', ({ frame }) => { if (!frame.parentId) { pageUrl = frame.url; frameId = frame.id; } });
 
