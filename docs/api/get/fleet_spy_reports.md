@@ -80,6 +80,13 @@ limit={number}
 
 - Report objects are populated on the sweep account.
 
+## Espionage v2 (2026-09-25 onward)
+
+New reports leave `buildingData`, `defenseData`, `fleetData` and `resourceData` `null` and carry
+the scan in `intel` (tiered precision, `{min, max}` ranges below tier 4, camelCase resource keys,
+`fleet.ships[].quantity` = active ships only). The example above predates it. Shape and reading
+rules: [live-verify-s0-2026-09-28.md](../_sweeps/live-verify-s0-2026-09-28.md#breaking-spy-reports-moved-to-intel-espionage-v2).
+
 ## Live Verification
 
 - Verified 2026-08-26 on `s0`: `GET /api/fleet/spy-reports` -> `200`.

@@ -303,6 +303,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SEND_INVESTIGATE') {
     return gamePost('/api/fleet/investigate', {
       sourcePlanetId: msg.sourcePlanetId, reportId: msg.reportId, ships: msg.ships,
+      hangarAssignments: {}, // always sent by the game's dialog, as on SEND_MINE
       ...(msg.attachLeader ? { attachLeader: true } : {}),
     });
   }
@@ -325,6 +326,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'SEND_XENO_SURVEY') {
     return gamePost('/api/fleet/xeno-survey', {
       sourcePlanetId: msg.sourcePlanetId, targetMoonId: msg.targetMoonId, ships: msg.ships,
+      hangarAssignments: {}, // always sent by the game's dialog, as on SEND_MINE
     });
   }
   if (msg.type === 'GET_PLANETS') return getPlanets();
@@ -2332,12 +2334,38 @@ function capIntel(byId) {
     .slice(0, INTEL_KEEP);
 }
 
+// Espionage v2 (2026-09): reports carry `intel` and leave the old
+// buildingData/defenseData/fleetData/resourceData null. Below tier 4 a number
+// comes as a {min, max} range (quantityRange, levelRange, resource values).
+// Ships and levels take the top of the range (worst case for an attacker);
+// resources take the bottom (loot you can count on). `quantity` is the active
+// count only — damaged ships sit in damagedQuantity and are left out.
+const rangeTop = v => (typeof v === 'number' ? v : v ? (v.max ?? v.min ?? null) : null);
+
+function spyIntelFleet(ships) {
+  return extractFleet((ships || []).map(s => ({ key: s.key, quantity: rangeTop(s.quantity ?? s.quantityRange) })));
+}
+
+function spyIntelLevels(items) {
+  return (items || []).map(i => ({ key: i.key, name: i.name, level: rangeTop(i.level ?? i.levelRange) }));
+}
+
+function spyIntelResources(res) {
+  const out = {};
+  for (const [k, v] of Object.entries(res || {})) {
+    const n = typeof v === 'number' ? v : v && typeof v.min === 'number' ? v.min : null;
+    if (n != null) out[k.replace(/[A-Z]/g, c => '_' + c.toLowerCase())] = n; // cryoIce → cryo_ice, like the rest of the addon
+  }
+  return out;
+}
+
 async function processSpyReports(reports) {
   if (!reports.length) return 0;
   const { spy_reports } = await nsGet(['spy_reports']);
   const byId = {};
   for (const r of (spy_reports || [])) byId[r.id] = r;
   for (const r of reports) {
+    const intel = r.intel || {};
     byId[r.id] = {
       id: r.id,
       created_at: r.createdAt,
@@ -2346,10 +2374,10 @@ async function processSpyReports(reports) {
       target_user: r.targetUsername || null,
       target_system_id:   r.targetSystemId   || null,
       target_system_name: r.targetSystemName || null,
-      fleet: extractFleet(r.fleetData),
-      buildings: r.buildingData || [],
-      defense: r.defenseData || null,
-      resources: r.resourceData || {},
+      fleet: r.fleetData ? extractFleet(r.fleetData) : spyIntelFleet(intel.fleet && intel.fleet.ships),
+      buildings: r.buildingData || spyIntelLevels(intel.buildings),
+      defense: r.defenseData || (intel.defenses ? spyIntelLevels(intel.defenses) : null),
+      resources: r.resourceData || spyIntelResources(intel.resources),
     };
   }
   const merged = capIntel(byId);

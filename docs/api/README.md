@@ -35,7 +35,8 @@ The index below stays grouped by game area, so the folder in each link tells you
 ## Live Audit (Primary: S0)
 
 - Primary validation target: `https://s0.nexuslegacy.space`
-- Latest sweep (GET-only, docs regenerated from live responses): [live-verify-s0-2026-08-26.md](./_sweeps/live-verify-s0-2026-08-26.md)
+- Latest sanity check (live GETs + bundle diff + request-body check, docs not regenerated): [live-verify-s0-2026-09-28.md](./_sweeps/live-verify-s0-2026-09-28.md)
+- Last doc regeneration from live responses: [live-verify-s0-2026-08-26.md](./_sweeps/live-verify-s0-2026-08-26.md)
 - Full API surface pulled from the game client bundle (434 endpoints, 328 still undocumented): [client-bundle-discovery-2026-08-26.md](./_sweeps/client-bundle-discovery-2026-08-26.md)
 - Every GET doc below ends with a `## Live Verification` section stating when its example was captured.
 - Previous sweep summary (GET + safe POST probes): [live-sweep-s0-full-2026-08-06.md](./_sweeps/live-sweep-s0-full-2026-08-06.md)
