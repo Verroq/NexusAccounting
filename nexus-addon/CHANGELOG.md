@@ -4,6 +4,30 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.1] - 2026-09-28
+
+A fix release, mostly for ship skins: skinned cards in the ship planner and
+sends from players with a skin equipped both work again. Spy reports in the
+game's new espionage format are read too.
+
+### Added
+- **Companion**: a Quit button in the top bar, so the companion can be
+  stopped from any screen, not only the Companion screen.
+
+### Fixed
+- **Spy reports** sent since the game's espionage update (2026-09-25) were
+  stored empty: no fleet, buildings, defences or resources in Intel, the
+  Combat Simulator import or Discord sharing. They are read from the new
+  format now; lower-tier scans that only give a range count ships and
+  levels at the top of it and resources at the bottom.
+- **Ship planner**: ships with a cosmetic skin got no build button.
+- Mine sends failed with "Cannot find context with specified id" for players
+  with a ship skin equipped. Investigate and xeno-survey sends now send the
+  same field the game does, so they can't hit it either.
+- **Companion**: sends could fail with the same error once a skin or
+  cosmetic iframe had loaded and gone away.
+- The companion exe build no longer fails on Windows.
+
 ## [2.3.0] - 2026-09-23
 
 The big one here is the **Steam companion**: the Steam client can't load
