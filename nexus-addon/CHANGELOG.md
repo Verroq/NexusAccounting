@@ -4,6 +4,31 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.2] - 2026-09-29
+
+The live search results window catches up with the Asteroids Fields tab:
+sortable columns, and the same send dialog.
+
+### Added
+- **Live search window**: click a column header (Fuel, Type, Mult, Left %,
+  Recommended) to sort; click again to reverse. The choice is remembered.
+
+### Changed
+- **Live search window**: the ⛏ button opens the same send dialog as the
+  Asteroids Fields tab. The fleet is edited there (Optimise Mining Fleet,
+  Excavator +20%, zone escort buttons, mine until full, attach leader)
+  instead of in an editor inside the window.
+- **Live search window**: the Fleet picker leaves out escort-tagged
+  templates, as the Asteroids tab does. They show up as the send dialog's
+  escort buttons for the field's zone.
+- Excavator and Attach leader in the live search window now share the send
+  dialog's saved settings, so they start unticked once.
+
+### Fixed
+- **Live search window**: the refresh every 10 s no longer asks the game for
+  a fresh fuel estimate for every row, which could run into the game's rate
+  limit.
+
 ## [2.3.1] - 2026-09-28
 
 A fix release, mostly for ship skins: skinned cards in the ship planner and
