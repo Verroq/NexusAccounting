@@ -90,7 +90,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "dashboard.html"
+        "dashboard.html",
+        "common.js"
       ],
       "matches": [
         "https://*.nexuslegacy.space/*",

@@ -167,6 +167,8 @@ export async function confirmDialog(message, ships, attachLeaderState = null) {
 // into it. Left null, no checkbox is shown and the resolve value is unchanged,
 // so callers that do not mine (expeditions) are unaffected. `attachLeaderState`
 // is the same shape ({ attachLeader: bool }) for the "Attach leader" checkbox.
+// Also opened on the game page by the live-search window (sidebar-inject.js),
+// hence the top z-index: it must sit above that window.
 export async function editFleetDialog({ title, subtitle = '', avail = {}, seed = {}, recShips = [], miningShipIds = null, excavatorShipDefId = null, excavatorBonus = 1.2, escortTemplates = [], templates = [], untilFullState = null, attachLeaderState = null }) {
   const defs = await shipDefs();
   const ids = [...new Set([
@@ -184,7 +186,7 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
 
   return new Promise((resolve) => {
     const ov = document.createElement('div');
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483647;display:flex;align-items:center;justify-content:center';
     const box = document.createElement('div');
     box.style.cssText = 'background:#1b2030;color:#e6e8ee;border:1px solid #39405a;border-radius:8px;max-width:420px;width:90%;padding:20px;font:14px/1.5 system-ui,sans-serif';
     const h = document.createElement('div');
