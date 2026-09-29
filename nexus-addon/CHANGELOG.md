@@ -12,6 +12,11 @@ sortable columns, and the same send dialog.
 ### Added
 - **Live search window**: click a column header (Fuel, Type, Mult, Left %,
   Recommended) to sort; click again to reverse. The choice is remembered.
+  
+- A show row of resource icons (ore, gas, ice,
+  plasma, quantum, dark) to pick which field types the table lists. None
+  selected shows all. It only filters the window; the live search keeps
+  its own filters and notifications.
 
 ### Changed
 - **Live search window**: the ⛏ button opens the same send dialog as the
