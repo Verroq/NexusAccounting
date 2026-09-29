@@ -114,6 +114,13 @@ const TYPE_COLOR = {
   ore: '#f0883e', gas: '#a371f7', ice: '#a5d6ff', plasma: '#ff7b72',
   quantum: '#d2a8ff', dark: '#6e40c9',
 };
+// Field type → resource icon + label, for the window's type filter (same set
+// as the Asteroids tab's FIELD_TYPES).
+const FIELD_TYPE_RES = {
+  ore: ['ore', 'ore'], gas: ['hydrogen', 'gas (hydrogen)'], ice: ['cryo_ice', 'ice (cryo-ice)'],
+  plasma: ['plasma_core', 'plasma (core)'], quantum: ['quantum_dust', 'quantum (dust)'],
+  dark: ['dark_matter', 'dark (matter)'],
+};
 // Ship recommendation per field type: specialized ship + per-cycle extraction
 // (Stats.txt). ships = ceil( remaining / (rate * cycles * richness) ); an
 // Excavator in the fleet adds a whole-fleet yield bonus.
@@ -160,7 +167,7 @@ async function openFieldsPanel() {
     'padding:10px 14px;border-bottom:1px solid #39405a;cursor:move;user-select:none';
   const titleWrap = document.createElement('div');
   const title = document.createElement('div');
-  title.textContent = `Asteroid matches (${matches.length})`; title.style.fontWeight = '600';
+  title.style.fontWeight = '600';
   const sub = document.createElement('div');
   sub.style.cssText = 'color:#8b949e;font-size:0.75rem';
   sub.textContent = live_search_last_at ? `as of ${new Date(live_search_last_at).toLocaleTimeString()}` : 'no scan yet';
@@ -303,6 +310,36 @@ async function openFieldsPanel() {
   excLbl.append(excChk, document.createTextNode('Excavator +20%'));
   pickWrap.append(pickLbl, picker, excLbl);
 
+  // Type filter: which field types the table shows. Display only — the live
+  // search itself keeps its own filters. None selected = all types.
+  let typeFilter = new Set();
+  try { typeFilter = new Set(JSON.parse(localStorage.getItem('nx-ls-type-filter')) || []); } catch { /* none saved */ }
+  const typeWrap = document.createElement('div');
+  typeWrap.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 14px;border-bottom:1px solid #39405a';
+  function drawTypeFilter() {
+    typeWrap.textContent = '';
+    const lbl = document.createElement('span');
+    lbl.textContent = 'Show:'; lbl.style.cssText = 'color:#8b949e;font-size:0.85rem;margin-right:2px';
+    typeWrap.append(lbl);
+    for (const [type, [res, label]] of Object.entries(FIELD_TYPE_RES)) {
+      const on = typeFilter.has(type);
+      const img = document.createElement('img');
+      img.src = `${location.origin}/images/resources/${res}.webp`;
+      img.alt = label;
+      img.title = `${label}: ${on ? 'shown (click to remove)' : 'click to show only selected types'}`;
+      img.style.cssText = 'width:22px;height:22px;object-fit:contain;cursor:pointer;border-radius:5px;padding:2px;' +
+        `border:1px solid ${on ? TYPE_COLOR[type] : 'transparent'};opacity:${!typeFilter.size || on ? 1 : 0.35}`;
+      img.onclick = () => {
+        if (on) typeFilter.delete(type); else typeFilter.add(type);
+        localStorage.setItem('nx-ls-type-filter', JSON.stringify([...typeFilter]));
+        drawTypeFilter();
+        renderRows();
+      };
+      typeWrap.append(img);
+    }
+  }
+  drawTypeFilter();
+
   const body = document.createElement('div');
   body.style.cssText = 'overflow:auto;padding:10px 14px';
 
@@ -329,7 +366,12 @@ async function openFieldsPanel() {
 
   function renderRows() {
     body.textContent = '';
+    const shown = typeFilter.size ? matches.filter(m => typeFilter.has(m.type)) : matches;
+    title.textContent = shown.length === matches.length
+      ? `Asteroid matches (${matches.length})` : `Asteroid matches (${shown.length} of ${matches.length})`;
     if (!matches.length) { body.textContent = 'No current matches.'; body.style.color = '#8b949e'; return; }
+    if (!shown.length) { body.textContent = 'No matches of the selected types.'; body.style.color = '#8b949e'; return; }
+    body.style.color = '';
 
     const table = document.createElement('table');
     table.style.cssText = 'width:100%;border-collapse:collapse';
@@ -356,7 +398,7 @@ async function openFieldsPanel() {
     // Fuel is estimated for the template, or the recommendation when the
     // template has nothing on this planet.
     const tplShips = templateShips();
-    const rows = matches.map(m => {
+    const rows = shown.map(m => {
       const rec = recommend(m, excavator);
       const ships = tplShips.length ? tplShips : recShipsFor(m);
       return { m, rec, ships, fuel: fuelCache.get(fuelKey(m, ships)) };
@@ -441,7 +483,6 @@ async function openFieldsPanel() {
     if (!panel.isConnected) { ext.storage.onChanged.removeListener(onScan); return; }
     ext.storage.local.get(['live_search_last_matches', 'live_search_last_at']).then(d => {
       matches = d.live_search_last_matches || [];
-      title.textContent = `Asteroid matches (${matches.length})`;
       sub.textContent = d.live_search_last_at ? `as of ${new Date(d.live_search_last_at).toLocaleTimeString()}` : 'no scan yet';
       renderRows();
     });
@@ -484,7 +525,7 @@ async function openFieldsPanel() {
   btnGroup.append(toggleBtn);
   footer.append(note, btnGroup);
 
-  panel.append(header, pickWrap, body, footer);
+  panel.append(header, pickWrap, typeWrap, body, footer);
   document.body.append(panel);
   makeDraggable(panel, header);
 }
