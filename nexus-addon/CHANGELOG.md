@@ -4,6 +4,17 @@ All notable changes to the Nexus Accounting Firefox addon.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+- **Asteroids Fields tab and live search** now read the game's galaxy-wide
+  field index first. Systems without asteroid fields are no longer scanned,
+  and the sector lookups are gone. "Nearest field systems" now counts only
+  systems that have fields, so the same number covers a wider area.
+- **Live search** skips systems whose fields can't match the filter (type,
+  zone, minimum multiplier, minimum quantity) without fetching them. Strict
+  filters make each 5-minute scan much lighter on the game API.
+
 ## [2.3.2] - 2026-09-29
 
 The live search results window catches up with the Asteroids Fields tab:

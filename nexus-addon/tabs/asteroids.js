@@ -1,9 +1,9 @@
-// Asteroids Fields tab: asteroid fields in the N nearest explored systems to a
-// chosen planet (type, content, multiplier, security zone, distance, miner).
+// Asteroids Fields tab: asteroid fields in the N nearest systems with fields to
+// a chosen planet (type, content, multiplier, security zone, distance, miner).
 //
-//   /api/galaxy/map                        → all systems with coords + sector id
-//   /api/galaxy/sectors/{sectorId}/systems → name/zone/planetCount for a sector
-//   /api/galaxy/systems/{id}/planets       → that system's asteroidFields
+//   /api/galaxy/map                  → source system coords
+//   /api/galaxy/field-index          → every system with fields: name/zone/coords
+//   /api/galaxy/systems/{id}/planets → that system's asteroidFields
 // Per-system scans reuse the finder's shared cache.
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
@@ -54,7 +54,8 @@ const AF_PER_PAGE = 25;
 const MINING_DURATION = 600;   // seconds; fixed for asteroid mining missions
 let afTemplates = [];        // fleet templates, managed in the Fleets tab
 let afMap = null;            // { byId: {id→{x,y,sectorId,visibility}}, systems: [...] }, cached
-const sectorSystems = {};   // sectorId → systems[] (name/zone/planetCount), cached
+let afIndex = null;          // { at, systems: [{id,name,zone,x,y}] } from field-index
+const AF_INDEX_TTL = 5 * 60 * 1000;   // ~3 MB payload; totals drift as fields are mined
 let afAllShips = [];        // every ship def: [{ shipDefId, name, imageUrl }]
 let afAvailTimer = null;    // periodic availability poll
 let afMyUsername = null;    // this player's username, to spot fields already mined by us
@@ -187,13 +188,20 @@ async function loadMap() {
   return afMap;
 }
 
-// Systems of a sector (with name/zone/planetCount/visibility), cached.
-async function sectorSystemsFor(sectorId) {
-  if (sectorSystems[sectorId]) return sectorSystems[sectorId];
-  const res = await browser.runtime.sendMessage({ type: 'GET_SECTOR_SYSTEMS', sectorId });
+// Systems that have asteroid fields (field-index rows are per system+fieldType,
+// collapsed here to one entry per system), cached for AF_INDEX_TTL.
+async function loadFieldSystems() {
+  if (afIndex && Date.now() - afIndex.at < AF_INDEX_TTL) return afIndex.systems;
+  const res = await browser.runtime.sendMessage({ type: 'GET_FIELD_INDEX' });
   if (res.error) throw new Error(res.error);
-  sectorSystems[sectorId] = res.systems || [];
-  return sectorSystems[sectorId];
+  const byId = new Map();
+  for (const r of res.systems || []) {
+    if (!byId.has(r.systemId)) byId.set(r.systemId, {
+      id: r.systemId, name: r.systemName, zone: r.securityZone, x: r.systemX, y: r.systemY,
+    });
+  }
+  afIndex = { at: Date.now(), systems: [...byId.values()] };
+  return afIndex.systems;
 }
 
 // Set the distance reference from the cached map (no fetch if map isn't loaded).
@@ -328,14 +336,17 @@ async function scan() {
   if (!src) { status.textContent = 'Source system not on the map.'; return; }
   afRefMS = { x: src.x, y: src.y };
 
-  // The N nearest explored systems (asteroid fields need at least partial vis).
-  const targets = map.systems
-    .filter(s => s.id !== p.systemId && (s.visibility === 'full' || s.visibility === 'partial'))
+  // The N nearest systems that have asteroid fields.
+  status.textContent = 'Loading field index…';
+  let fieldSystems;
+  try { fieldSystems = await loadFieldSystems(); } catch (e) { status.textContent = `Error: ${e.message}`; return; }
+  const targets = fieldSystems
+    .filter(s => s.id !== p.systemId)
     .map(s => ({ s, d: Math.hypot(s.x - src.x, s.y - src.y) }))
     .sort((a, b) => a.d - b.d)
     .slice(0, count)
     .map(o => o.s);
-  if (!targets.length) { status.textContent = 'No explored systems nearby.'; return; }
+  if (!targets.length) { status.textContent = 'No asteroid fields nearby.'; return; }
 
   const { planet_scan_cache } = await browser.storage.local.get('planet_scan_cache');
   const cache = planet_scan_cache || {};
@@ -351,12 +362,6 @@ async function scan() {
   try {
     for (const sys of targets) {
       if (!afRunning) break;
-      // name/zone/planetCount come from the system's sector (cached per sector).
-      let meta;
-      try {
-        meta = (await sectorSystemsFor(sys.sectorId)).find(s => s.id === sys.id);
-      } catch { errors++; continue; }
-      if (!meta || !meta.planetCount) { scanned++; continue; }   // no bodies → no fields
       let data;
       try {
         data = await getSystemPlanets(sys.id, cache, cacheTtlMs);
@@ -365,13 +370,13 @@ async function scan() {
         afFields.push({
           fieldId: f.id,
           name: f.name || `#${f.id}`,
-          system: meta.name || `#${sys.id}`,
+          system: sys.name || `#${sys.id}`,
           systemId: sys.id,
           type: f.fieldType || '—',
           mult: f.richness ?? null,
           remaining: f.remainingResources ?? null,
           total: f.totalResources ?? null,
-          zone: meta.securityZone || '—',
+          zone: sys.zone || '—',
           sx: sys.x, sy: sys.y,
           minerPresent: f.controllerName || null,
           ownerName: (f.outpostShieldMaxHp ?? 0) > 0 ? (f.controllerName || null) : null,

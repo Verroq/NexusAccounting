@@ -112,16 +112,17 @@ browser.alarms.onAlarm.addListener(alarm => {
 });
 
 // ── Asteroid live search ───────────────────────────────────────────────────
-// Scans the N nearest explored systems every 5 minutes (background alarm, runs
-// regardless of focus) and fires a system notification when a field newly
-// matches the saved filter. Mirrors tabs/asteroids.js scan(), API-only.
+// Scans the N nearest systems with asteroid fields every 5 minutes (background
+// alarm, runs regardless of focus) and fires a system notification when a field
+// newly matches the saved filter. Mirrors tabs/asteroids.js scan(), API-only.
+// /api/galaxy/field-index (one call, per system+fieldType totals) picks the
+// systems and skips any whose totals can't match; only those left get the
+// per-system /planets call for per-field data.
 const LS_ALARM = 'nexus-livesearch';
 const LS_INTERVAL_MIN = 5;
 const LS_MAX_SYSTEMS = 150;            // cap so a background scan finishes inside the SW budget
 const LS_REQ_DELAY_MS = 40;            // polite spacing between API calls
 const LS_ABORT_AFTER_ERRORS = 6;       // bail the scan after this many consecutive API failures
-const lsSectorCache = new Map();       // sectorId → { at, systems }, reused across scans
-const LS_SECTOR_TTL = 15 * 60 * 1000;
 
 async function setLiveSearch(config) {
   await browser.storage.local.set({ live_search: config });
@@ -143,15 +144,6 @@ async function stopLiveSearch() {
   return { ok: true };
 }
 
-// Sector systems with a cross-scan TTL cache (names/zones change rarely).
-async function lsSectorSystems(sectorId, token) {
-  const hit = lsSectorCache.get(sectorId);
-  if (hit && Date.now() - hit.at < LS_SECTOR_TTL) return hit.systems;
-  const systems = (await apiFetch(`/api/galaxy/sectors/${sectorId}/systems`, token, { polite: true })).systems || [];
-  lsSectorCache.set(sectorId, { at: Date.now(), systems });
-  return systems;
-}
-
 function fieldMatches(f, cfg) {
   const leftPct = f.totalResources ? (f.remainingResources / f.totalResources) * 100 : null;
   if (cfg.types?.length && !cfg.types.includes(f.fieldType)) return false;
@@ -159,6 +151,17 @@ function fieldMatches(f, cfg) {
   if (cfg.multMin != null && !((f.richness ?? -Infinity) >= cfg.multMin)) return false;
   if (cfg.qtyMin != null && !((f.remainingResources ?? -Infinity) >= cfg.qtyMin)) return false;
   if (cfg.leftMin != null && !((leftPct ?? -Infinity) >= cfg.leftMin)) return false;
+  return true;
+}
+
+// Can any field behind this field-index row pass the filter? Necessary
+// conditions only (no field beats the row's max richness or total remaining);
+// leftMin has no bound from the totals, so it is checked per field later.
+function indexRowCouldMatch(r, cfg) {
+  if (cfg.types?.length && !cfg.types.includes(r.fieldType)) return false;
+  if (cfg.zones?.length && !cfg.zones.includes(r.securityZone)) return false;
+  if (cfg.multMin != null && !(r.maxRichness >= cfg.multMin)) return false;
+  if (cfg.qtyMin != null && !(r.totalRemaining >= cfg.qtyMin)) return false;
   return true;
 }
 
@@ -176,40 +179,43 @@ async function liveSearchScan() {
     const map = await apiFetch('/api/galaxy/map', token, { polite: true });
     const src = (map.systems || []).find(s => s.id === planet.systemId);
     if (!src) return;
+    const index = (await apiFetch('/api/galaxy/field-index', token, { polite: true })).systems || [];
 
+    // field-index rows → one entry per system, with its per-type rows.
+    const bySys = new Map();
+    for (const r of index) {
+      if (r.systemId === src.id) continue;
+      const e = bySys.get(r.systemId) || bySys.set(r.systemId, {
+        id: r.systemId, name: r.systemName, zone: r.securityZone || 'unknown',
+        d: Math.hypot(r.systemX - src.x, r.systemY - src.y), rows: [],
+      }).get(r.systemId);
+      e.rows.push(r);
+    }
     const want = Math.max(1, Math.min(LS_MAX_SYSTEMS, cfg.near || 25));
-    const targets = (map.systems || [])
-      .filter(s => s.id !== src.id && (s.visibility === 'full' || s.visibility === 'partial'))
-      .map(s => ({ s, d: Math.hypot(s.x - src.x, s.y - src.y) }))
+    const targets = [...bySys.values()]
       .sort((a, b) => a.d - b.d)
       .slice(0, want)
-      .map(o => o.s);
+      .filter(e => e.rows.some(r => indexRowCouldMatch(r, cfg)));
 
     const matches = [];
     let errStreak = 0;
     for (const sys of targets) {
-      let sector;
-      try { sector = await lsSectorSystems(sys.sectorId, token); }
-      catch { if (++errStreak >= LS_ABORT_AFTER_ERRORS) break; continue; }
-      const meta = sector.find(s => s.id === sys.id);
-      if (!meta || !meta.planetCount) { errStreak = 0; continue; }
       let data;
       try { data = await apiFetch(`/api/galaxy/systems/${sys.id}/planets`, token, { polite: true }); }
       catch { if (++errStreak >= LS_ABORT_AFTER_ERRORS) break; continue; }
       errStreak = 0;
       for (const f of (data.asteroidFields || [])) {
-        const zone = meta.securityZone || 'unknown';
-        if (fieldMatches({ ...f, zone }, cfg)) {
+        if (fieldMatches({ ...f, zone: sys.zone }, cfg)) {
           matches.push({
             id: f.id,
             name: f.name || `#${f.id}`,
-            system: meta.name || `#${sys.id}`,
+            system: sys.name || `#${sys.id}`,
             systemId: sys.id,
             type: f.fieldType || '—',
             mult: f.richness ?? null,
             remaining: f.remainingResources ?? null,
             leftPct: f.totalResources ? Math.round((f.remainingResources / f.totalResources) * 100) : null,
-            zone,
+            zone: sys.zone,
             controllerName: f.controllerName || null,
           });
         }
@@ -345,7 +351,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_GALAXY_MAP') return apiGet('/api/galaxy/map');
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
   if (msg.type === 'GET_ARM_SECTORS') return apiGet(`/api/galaxy/arms/${msg.armId}/sectors`);
-  if (msg.type === 'GET_SECTOR_SYSTEMS') return apiGet(`/api/galaxy/sectors/${msg.sectorId}/systems`);
+  if (msg.type === 'GET_FIELD_INDEX') return apiGet('/api/galaxy/field-index');
   if (msg.type === 'GET_PLAYER_ALLIANCE_TAG') return getPlayerAllianceTag(msg.name);
   if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me');
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
