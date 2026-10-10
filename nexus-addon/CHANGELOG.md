@@ -14,6 +14,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Live search** skips systems whose fields can't match the filter (type,
   zone, minimum multiplier, minimum quantity) without fetching them. Strict
   filters make each 5-minute scan much lighter on the game API.
+- **Planet Finder**: searches for unowned planets read the game's planet
+  index first and skip systems with no unowned planet of the wanted type and
+  size. A terra search over a whole arm now fetches about 900 systems
+  instead of 2350. Results are unchanged; other ownership modes scan as before.
 
 ## [2.3.2] - 2026-09-29
 

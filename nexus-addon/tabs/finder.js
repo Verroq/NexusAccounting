@@ -247,6 +247,19 @@ export function focusSystem(systemId) {
   canvas.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
+// /api/galaxy/planet-index: unowned planets of every fully visible system
+// (type/size/free moons only — no names, temperature or owned planets).
+// ~6.8 MB, so kept for PLANET_INDEX_TTL. systemId → planets[].
+let planetIndex = null;   // { at, bySystem: Map }
+const PLANET_INDEX_TTL = 5 * 60 * 1000;
+async function loadPlanetIndex() {
+  if (planetIndex && Date.now() - planetIndex.at < PLANET_INDEX_TTL) return planetIndex.bySystem;
+  const res = await browser.runtime.sendMessage({ type: 'GET_PLANET_INDEX' });
+  if (res.error) throw new Error(res.error);
+  planetIndex = { at: Date.now(), bySystem: new Map((res.systems || []).map(s => [s.systemId, s.planets || []])) };
+  return planetIndex.bySystem;
+}
+
 export async function getSystemPlanets(systemId, cache, ttl = SCAN_CACHE_TTL) {
   const entry = cache[systemId];
   if (entry && Date.now() - entry.at < ttl) return entry.data;
@@ -318,7 +331,7 @@ document.getElementById('f-search').addEventListener('click', async function () 
 
   // Searchable systems: ones you've explored, plus any present in the (possibly
   // imported) scan cache — so shared knowledge covers systems you haven't seen.
-  const candidates = galaxySystems.filter(s =>
+  let candidates = galaxySystems.filter(s =>
     s.armId === region.armId && s.sectorId >= region.min && s.sectorId <= region.max &&
     (s.visibility === 'full' || s.visibility === 'partial' || cachedIds.has(s.id)) &&
     (!wantZone || s.securityZone === wantZone));
@@ -326,8 +339,27 @@ document.getElementById('f-search').addEventListener('click', async function () 
     s.armId === region.armId && s.sectorId >= region.min && s.sectorId <= region.max).length - candidates.length;
 
   const status = document.getElementById('f-progress');
+  // Unowned-only search: the planet index lists every unowned planet, so a
+  // system it knows with no unowned planet of the wanted type/size can't hit.
+  // Systems it doesn't carry (partial / imported) are still fetched. Owned
+  // planets aren't in the index, so other ownership modes scan as before.
+  let skipped = 0;
+  if (ownership === 'unowned') {
+    status.textContent = 'Loading planet index…';
+    try {
+      const idx = await loadPlanetIndex();
+      const before = candidates.length;
+      candidates = candidates.filter(s => {
+        const ps = idx.get(s.id);
+        return !ps || ps.some(p => (!wantType || p.planetType === wantType) && p.size >= minSize && p.size <= maxSize);
+      });
+      skipped = before - candidates.length;
+    } catch { /* index unavailable: full scan */ }
+  }
   if (!candidates.length) {
-    status.textContent = 'No scanned systems in that region — explore it first or import galaxy data.';
+    status.textContent = skipped
+      ? 'No matching unowned planets in that region.'
+      : 'No scanned systems in that region — explore it first or import galaxy data.';
     return;
   }
 
@@ -402,6 +434,7 @@ document.getElementById('f-search').addEventListener('click', async function () 
   await browser.storage.local.set({ planet_scan_cache: cache });
 
   status.textContent = `Done: ${finderHits.length} matches in ${done} scanned systems` +
+    (skipped ? ` · ${skipped} skipped (no unowned match)` : '') +
     (fogged ? ` · ${fogged} unexplored` : '') +
     (errors ? ` · ${errors} systems skipped (errors)` : '') + '.';
   drawGalaxyMap();
@@ -422,6 +455,7 @@ document.getElementById('f-search').addEventListener('click', async function () 
     if (r) { h.rankMil = r.military ?? null; h.rankEco = r.economy ?? null; h.rankRes = r.research ?? null; }
   });
   status.textContent = `Done: ${finderHits.length} matches in ${done} scanned systems` +
+    (skipped ? ` · ${skipped} skipped (no unowned match)` : '') +
     (fogged ? ` · ${fogged} unexplored` : '') +
     (errors ? ` · ${errors} systems skipped (errors)` : '') + '.';
   renderFinderResults();

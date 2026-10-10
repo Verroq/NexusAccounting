@@ -349,6 +349,7 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'BACKUP_NOW') return backupToDownloads(msg.reason || 'manual').then(() => ({ ok: true })).catch(e => ({ error: e.message }));
   if (msg.type === 'GET_ARMS') return apiGet('/api/galaxy/arms');
   if (msg.type === 'GET_GALAXY_MAP') return apiGet('/api/galaxy/map');
+  if (msg.type === 'GET_PLANET_INDEX') return apiGet('/api/galaxy/planet-index?catalog=1');
   if (msg.type === 'GET_SYSTEM_PLANETS') return apiGet(`/api/galaxy/systems/${msg.systemId}/planets`);
   if (msg.type === 'GET_ARM_SECTORS') return apiGet(`/api/galaxy/arms/${msg.armId}/sectors`);
   if (msg.type === 'GET_FIELD_INDEX') return apiGet('/api/galaxy/field-index');
