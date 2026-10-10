@@ -118,6 +118,7 @@ The index below stays grouped by game area, so the folder in each link tells you
 - [galaxy_arm_sectors.md](./get/galaxy_arm_sectors.md)
 - [galaxy_sector_systems.md](./get/galaxy_sector_systems.md)
 - [galaxy_field_index.md](./get/galaxy_field_index.md)
+- [galaxy_planet_index.md](./get/galaxy_planet_index.md)
 - [galaxy_system_planets.md](./get/galaxy_system_planets.md)
 - [stations_sector.md](./get/stations_sector.md)
 - [stations_detail.md](./get/stations_detail.md)
