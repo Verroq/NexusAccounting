@@ -8,7 +8,8 @@
 //
 //   GET  /api/combat-simulator/bootstrap  → ship lists, own research profile,
 //                                           pirate zones, planetary-defence keys
-//   POST /api/combat-simulator/simulate   → { attacker, defender } → report
+//   POST /api/combat-simulator/jobs       → { attacker, defender } → { ticket }
+//   GET  /api/combat-simulator/jobs/{ticket} → polled until complete → report
 //
 // Both go through background.js (SIM_BOOTSTRAP / SIM_RUN); the POST has to be
 // issued from a game tab, which is the background's job, not ours.
