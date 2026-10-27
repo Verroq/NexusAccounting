@@ -18,6 +18,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   index first and skip systems with no unowned planet of the wanted type and
   size. A terra search over a whole arm now fetches about 900 systems
   instead of 2350. Results are unchanged; other ownership modes scan as before.
+- **Combat simulator** uses the game's new calculation jobs, like the
+  official client: it starts a job and checks back every 2 seconds until the
+  result is ready, giving up after 2 minutes.
 
 ## [2.3.2] - 2026-09-29
 

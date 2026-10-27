@@ -913,8 +913,12 @@ async function syncSpyIntel() {
 }
 
 // ── Combat simulator ────────────────────────────────────────────────────────
-// Thin proxy over the game's own simulator (POST /api/combat-simulator/simulate,
-// with GET /api/combat-simulator/bootstrap for the ship/defence/profile lists).
+// Thin proxy over the game's own simulator, with GET
+// /api/combat-simulator/bootstrap for the ship/defence/profile lists. Same job
+// flow as the official client: POST /api/combat-simulator/jobs → { ticket },
+// then poll GET /api/combat-simulator/jobs/{ticket} every 2s until
+// { status: 'complete', result }. (The older synchronous /simulate still
+// answers, but the client no longer calls it.)
 // One side looks like:
 //   { type: 'player'|'npc'|'pirate', fleet: [{ shipDefId, quantity }],
 //     useOwnBonuses, attachLeadership,
@@ -944,19 +948,29 @@ async function simulateCombat(attacker, defender) {
     return { error: 'Add at least one defending ship, or some planetary defence.' };
   }
 
-  const res = await gamePost('/api/combat-simulator/simulate', { attacker, defender });
-  if (res && res.error) {
-    // gamePost surfaces the body text on a non-2xx; pull the game's own code out
-    // of it when it is there.
-    const code = Object.keys(SIM_ERRORS).find(c => String(res.error).includes(c));
-    return { error: code ? SIM_ERRORS[code] : res.error };
+  // The game answers a refusal with a `code` in the body text; pull it out
+  // when it is there.
+  const simError = err => {
+    const code = Object.keys(SIM_ERRORS).find(c => String(err).includes(c));
+    return { error: code ? SIM_ERRORS[code] : err };
+  };
+  const res = await gamePost('/api/combat-simulator/jobs', { attacker, defender });
+  if (res && res.error) return simError(res.error);
+  // gamePost wraps a success as { ok: true, data }.
+  const ticket = res && res.data && res.data.ticket;
+  if (typeof ticket !== 'string') return { error: 'The game did not start the calculation.' };
+
+  // ponytail: fixed 2-minute cap; the client polls until the user aborts.
+  for (let i = 0; i < 60; i++) {
+    if (i) await new Promise(r => setTimeout(r, 2000));
+    const job = await apiGet(`/api/combat-simulator/jobs/${encodeURIComponent(ticket)}`);
+    if (job.error) return simError(job.error);
+    if (job.status === 'pending') continue;
+    if (job.status !== 'complete' || !job.result) return { error: 'The game\'s combat calculation failed.' };
+    if (!job.result.report) return { error: 'The game answered, but with no combat report.' };
+    return job.result;
   }
-  // gamePost wraps a success as { ok: true, data } — the simulation itself is
-  // `data`. Every other caller only ever checks `error`, so the wrapper went
-  // unnoticed until a caller actually needed the body.
-  const sim = res && res.ok && res.data ? res.data : res;
-  if (!sim || !sim.report) return { error: 'The game answered, but with no combat report.' };
-  return sim;
+  return { error: 'The game\'s combat calculation timed out.' };
 }
 
 // Look up a player's per-category leaderboard ranks by exact name (finder
