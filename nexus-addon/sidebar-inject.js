@@ -215,8 +215,11 @@ async function openFieldsPanel() {
   // chosen in the picker below. The template seeds the send dialog and, capped
   // to what the planet has, is the fleet the Fuel column estimates for.
   const planetId = live_search && live_search.planetId;
-  const { fleet_templates, template_selections } =
-    await ext.storage.local.get(['fleet_templates', 'template_selections']);
+  // Picks are per universe (common.js rememberSelection), seeded from the old global copy.
+  const stored = await ext.storage.local.get(['fleet_templates', `${LS_NS}template_selections`, 'template_selections']);
+  // By this universe's ship ids (templates store ship keys, see common.js).
+  const fleet_templates = await (await loadCommon()).templatesFor(stored.fleet_templates, LS_NS.slice(0, -2));
+  const template_selections = stored[`${LS_NS}template_selections`] || stored.template_selections;
   const templates = (fleet_templates || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));   // alphabetical picker
   // As in the Asteroids tab: escort-tagged templates are not mining fleets, so
   // the picker leaves them out; they come back as the send dialog's zone
@@ -504,7 +507,7 @@ async function openFieldsPanel() {
 
   picker.addEventListener('change', () => {
     tpl = miningTemplates.find(t => String(t.id) === picker.value) || null;
-    ext.storage.local.set({ template_selections: { ...(template_selections || {}), 'af-template-select': picker.value } });
+    ext.storage.local.set({ [`${LS_NS}template_selections`]: { ...(template_selections || {}), 'af-template-select': picker.value } });
     renderRows();
   });
   renderRows();

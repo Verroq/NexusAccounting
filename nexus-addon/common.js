@@ -695,15 +695,61 @@ export async function capCargoFleet(plan, planetId, capOf, availCache) {
   return capPlanToStock(plan, av.available, capOf);
 }
 
-// Remember template-dropdown choices (by element id) across tabs and sessions.
+// Fleet templates are stored with ships by ship key (`shipKeys`, e.g.
+// "ore_harvester"): ship ids differ between universes (Second Dawn numbers
+// them differently from Season 0). Callers get `ships` by id for the
+// universe they work in. Templates saved before this hold Season 0 ids in
+// `ships`, read through the Season 0 catalog. Needs that universe's ship
+// catalog (`${u}__ships`, built from the shipyard); without it ids are kept.
+async function shipCatalog(universe) {
+  const k = `${universe}__ships`;
+  return (await browser.storage.local.get(k))[k] || {};
+}
+function shipsToKeys(ships, catalog) {
+  const out = {};
+  for (const [id, q] of Object.entries(ships || {})) if (catalog[id]?.key) out[catalog[id].key] = q;
+  return out;
+}
+export async function templatesFor(raw, universe = selectedUniverse) {
+  const [cat, s0] = await Promise.all([shipCatalog(universe), shipCatalog('s0')]);
+  const idOf = {};
+  for (const [id, s] of Object.entries(cat)) if (s.key) idOf[s.key] = Number(id);
+  return (raw || []).map(t => {
+    const keys = t.shipKeys || (Object.keys(s0).length ? shipsToKeys(t.ships, s0) : null);
+    if (!keys || !Object.keys(cat).length) return { ...t, ships: { ...(t.ships || {}) } };
+    const ships = {};
+    for (const [k, q] of Object.entries(keys)) if (idOf[k] != null) ships[idOf[k]] = q;
+    return { ...t, ships };
+  });
+}
+// Back to storage form. Ships this universe doesn't have stay as they were.
+export async function templatesToStore(list, universe = selectedUniverse) {
+  const [cat, s0, { fleet_templates: prev }] = await Promise.all([
+    shipCatalog(universe), shipCatalog('s0'), browser.storage.local.get('fleet_templates')]);
+  if (!Object.keys(cat).length) return list;   // no catalog: nothing to map with
+  const known = new Set(Object.values(cat).map(s => s.key));
+  return list.map(t => {
+    const old = (prev || []).find(p => p.id === t.id);
+    const oldKeys = old ? old.shipKeys || shipsToKeys(old.ships, s0) : {};
+    const kept = Object.fromEntries(Object.entries(oldKeys).filter(([k]) => !known.has(k)));
+    const { ships, ...rest } = t;
+    return { ...rest, shipKeys: { ...kept, ...shipsToKeys(ships, cat) } };
+  });
+}
+
+// Remember template-dropdown choices (by element id) across tabs and sessions,
+// per universe: they name planets and pick templates for that universe (the
+// in-game live search window reads the same key). The old global copy seeds a
+// universe that has none yet.
 export async function rememberedSelections() {
-  const { template_selections } = await browser.storage.local.get('template_selections');
-  return template_selections || {};
+  const key = `${selectedUniverse}__template_selections`;
+  const r = await browser.storage.local.get([key, 'template_selections']);
+  return { ...(r[key] || r.template_selections || {}) };
 }
 export async function rememberSelection(id, value) {
   const cur = await rememberedSelections();
   cur[id] = value;
-  await browser.storage.local.set({ template_selections: cur });
+  await browser.storage.local.set({ [`${selectedUniverse}__template_selections`]: cur });
 }
 
 export function fmt(n) {

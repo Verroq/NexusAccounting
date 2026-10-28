@@ -1,10 +1,13 @@
 // Fleets tab: named fleet templates, reusable by any task (mining a field,
 // collecting gas, future jobs). A template is planet-agnostic — ship quantities
-// keyed by shipDefId. Stored under `fleet_templates`.
+// keyed by shipDefId here, by ship key in storage (`fleet_templates`, see
+// templatesFor in common.js: ids differ between universes).
 //
 // Templates can be tagged as escort for specific zones via `escortZones: string[]`
 // (values: 'sentinel', 'open', 'dead', 'rift'). The fleet editor uses these to
 // show per-template coloured buttons for escort optimisation.
+
+import { templatesFor, templatesToStore } from '../common.js';
 
 let inited = false;
 let templates = [];          // [{ id, name, ships: { shipDefId: qty } }]
@@ -36,7 +39,7 @@ function statText(s) {
 export async function loadFleetTemplates() {
   const { fleet_templates, mining_template } =
     await browser.storage.local.get(['fleet_templates', 'mining_template']);
-  if (fleet_templates && fleet_templates.length) return fleet_templates;
+  if (fleet_templates && fleet_templates.length) return templatesFor(fleet_templates);
   if (mining_template && Object.keys(mining_template.ships || {}).length) {
     const seeded = [{ id: Date.now(), name: 'Mining', ships: mining_template.ships }];
     await browser.storage.local.set({ fleet_templates: seeded });
@@ -46,7 +49,7 @@ export async function loadFleetTemplates() {
 }
 
 async function save() {
-  await browser.storage.local.set({ fleet_templates: templates });
+  await browser.storage.local.set({ fleet_templates: await templatesToStore(templates) });
 }
 
 // Mining-ship colour legend (built once).
