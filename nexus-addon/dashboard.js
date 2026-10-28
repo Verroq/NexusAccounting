@@ -611,7 +611,9 @@ async function maybeShowWhatsNew() {
   let body = 'See CHANGELOG.md for details.';
   try {
     const md = await (await fetch(browser.runtime.getURL('CHANGELOG.md'))).text();
-    const m = md.match(/## \[[^\]]+\][^\n]*\n([\s\S]*?)(?=\n## \[|$)/);
+    // The installed version's section, not the first one ([Unreleased]).
+    const v = whatsnew_pending.replace(/\./g, '\\.');
+    const m = md.match(new RegExp(`## \\[${v}\\][^\\n]*\\n([\\s\\S]*?)(?=\\n## \\[|$)`));
     if (m) body = renderMarkdown(m[1].trim());
   } catch { /* keep fallback */ }
   infoDialog(`What's new in v${whatsnew_pending}`, body);
