@@ -7,6 +7,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **📡 Next Survey on the galaxy page**: a button in the game's search bar
+  opens the nearest system you can survey (not on cooldown, no survey already
+  flying there), measured from the colony in the planet switcher. Zone chips
+  beside it limit the pick to Sentinel / Open / Dead systems, and a counter
+  shows the surveys started today. When the game's Survey button is greyed
+  out (system on cooldown, or a scout already on its way) it is replaced by
+  the same Next Survey shortcut, with the game's reason below. It only opens
+  the system; you still click the game's Survey button.
 - **New Frontier: Second Dawn support** for the galaxy features. That
   universe only lets the game page itself reach the galaxy and fleet
   endpoints, so they failed with "Error: API /api/galaxy/arms". The addon now

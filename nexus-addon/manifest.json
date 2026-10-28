@@ -50,6 +50,11 @@
     },
     {
       "matches": ["https://*.nexuslegacy.space/*"],
+      "js": ["browser-polyfill.js", "dynamic-transport.js", "galaxy-survey.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.nexuslegacy.space/*"],
       "js": ["empire-view.js"],
       "run_at": "document_idle"
     },
