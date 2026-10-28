@@ -6,9 +6,11 @@
 // (from /api/fleet/survey-cooldowns) sits beside them.
 //
 // The game's own Survey button is replaced by the same "Next Survey" shortcut
-// while it is greyed out because the selected system is on cooldown or a
-// scout is already on its way; its own text stays below as a second line.
-// "No recon ships" is left alone: another system would not fix that.
+// while it is greyed out because the selected system is on cooldown (live
+// countdown below) or a scout is already on its way. The reason comes from
+// the cooldown and mission data, not the button text, so any client language
+// works. Other reasons ("No recon ships") are left alone: another system
+// would not fix them.
 //
 // Opening the system goes through the game's own router (pushState +
 // popstate), so the app is not reloaded. Never starts a survey: the player
@@ -47,7 +49,27 @@
     return best && { ...best, distance: bestD };
   }
 
-  globalThis.NexusGalaxySurvey = Object.freeze({ nearestSurveyable });
+  // Why a survey of `systemId` can't start now: { endsAt } while on cooldown,
+  // { busy: true } while a survey is outbound to or scanning it, else null.
+  function surveyBlock(systemId, cooldowns, missions, now = Date.now()) {
+    const id = Number(systemId);
+    for (const c of cooldowns || []) {
+      const endsAt = Date.parse(c.cooldownEndsAt);
+      if (Number(c.systemId) === id && endsAt > now) return { endsAt };
+    }
+    return (missions || []).some(m => m.missionType === 'survey' && Number(m.targetSystemId) === id &&
+      (m.status === 'outbound' || m.status === 'surveying')) ? { busy: true } : null;
+  }
+
+  // "4:05" under an hour, "1:02:03" past it.
+  function fmtLeft(ms) {
+    const t = Math.max(0, Math.round(ms / 1000));
+    const p = n => String(n).padStart(2, '0');
+    const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
+    return h ? `${h}:${p(m)}:${p(sec)}` : `${m}:${p(sec)}`;
+  }
+
+  globalThis.NexusGalaxySurvey = Object.freeze({ nearestSurveyable, surveyBlock, fmtLeft });
   if (typeof document === 'undefined' || !ext?.storage) return;   // test sandbox
 
   // ── Page part ──
@@ -59,14 +81,40 @@
   }
 
   let systems = null;   // the map does not change during a session
+  let cooldowns = null, missions = null, fetchedAt = 0;
   let zones = {};
   let dailyCount = null;
+
+  // Map once, cooldowns + missions each time (single flight).
+  let loading = null;
+  function refresh() {
+    return loading ||= (async () => {
+      const [map, cd, ms] = await Promise.all([
+        systems ? null : api('/api/galaxy/map'),
+        api('/api/fleet/survey-cooldowns'),
+        api('/api/fleet/missions'),
+      ]);
+      if (map) systems = map.systems || [];
+      cooldowns = cd.cooldowns || [];
+      missions = ms.missions || [];
+      dailyCount = cd.dailySurveyCount ?? null;
+      paintBar();
+    })().finally(() => { loading = null; fetchedAt = Date.now(); });   // a failure waits too
+  }
+
+  const byName = name => name && systems?.find(s => String(s.name || '').toUpperCase() === name.toUpperCase());
+
+  // System the galaxy panel shows: the last breadcrumb (Galaxy › Arm ›
+  // Sector › System). The URL is no help, the app drops ?system= on arrival.
+  function selectedSystem() {
+    const crumbs = document.querySelectorAll('.galaxy-panel .bread-item');
+    return byName(crumbs[crumbs.length - 1]?.textContent.trim());
+  }
 
   // Colony shown in the planet switcher, e.g. "[E45-30]".
   function currentSystem() {
     const m = /([A-Z]{1,3}\d+-\d+)/i.exec(document.querySelector('.planet-switcher-btn .ps-system')?.textContent || '');
-    const name = m && m[1].toUpperCase();
-    return name && systems.find(s => String(s.name || '').toUpperCase() === name);
+    return byName(m && m[1]);
   }
 
   function allowedZones() {
@@ -86,17 +134,10 @@
   async function next(btn, el = btn) {
     btn.disabled = true;
     try {
-      const [map, cd, ms] = await Promise.all([
-        systems ? null : api('/api/galaxy/map'),
-        api('/api/fleet/survey-cooldowns'),
-        api('/api/fleet/missions'),
-      ]);
-      if (map) systems = map.systems || [];
-      dailyCount = cd.dailySurveyCount ?? null;
-      paintBar();
+      await refresh();
       const from = currentSystem();
       if (!from) return flash(el, 'Current system unknown');
-      const target = nearestSurveyable({ systems, from, cooldowns: cd.cooldowns, missions: ms.missions, allowed: allowedZones() });
+      const target = nearestSurveyable({ systems, from, cooldowns, missions, allowed: allowedZones() });
       if (!target) return flash(el, 'No system to survey');
       history.pushState({}, '', `/galaxy?system=${target.id}`);
       window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
@@ -146,20 +187,23 @@
     paintBar();
   }
 
-  // The game's .survey-btn, greyed out for a reason another system fixes:
-  // "Cooldown: …", or still "Survey System" while a scout is outbound or
-  // scanning there. English client text.
-  const swappable = b => b.disabled && /^(Cooldown\b|Survey System$)/i.test(b.textContent.trim());
-
   // The native button is hidden, not rewritten: React keeps its own nodes,
   // and showing it again is all it takes once it is usable (or another system
   // is selected). Ours copies its classes for the game's pill style.
+  let tick = null;
   function swapSurveyButton() {
     const nat = document.querySelector('.survey-btn:not(.nx-next-survey)');
     let mine = document.querySelector('.nx-next-survey');
-    if (!nat || !swappable(nat)) {
+    const sel = nat?.disabled && selectedSystem();
+    const block = sel && cooldowns && surveyBlock(sel.id, cooldowns, missions);
+    // Greyed out for no reason we know of (maybe a survey sent since the last
+    // fetch), or a survey under way that may have finished: look again, at
+    // most every 15 s.
+    if (nat?.disabled && (!block || block.busy) && !loading && Date.now() - fetchedAt > 15000) refresh().then(scan, () => {});
+    if (!block) {
       nat?.style.removeProperty('display');
       mine?.remove();
+      clearInterval(tick); tick = null;
       return;
     }
     nat.style.setProperty('display', 'none', 'important');
@@ -173,13 +217,29 @@
       const label = document.createElement('span');
       label.textContent = LABEL;
       const sub = document.createElement('small');
-      sub.style.cssText = 'font-size:.65rem; opacity:.75;';
+      sub.style.cssText = 'font-size:.65rem; opacity:.75; font-variant-numeric:tabular-nums;';
       mine.append(label, sub);
       mine.onclick = () => next(mine, label);
       nat.after(mine);
     }
-    const was = nat.textContent.trim();   // "Cooldown: …" / "Survey System"
-    if (mine.lastChild.textContent !== was) mine.lastChild.textContent = was;
+    // This runs on every DOM change, ours included: only act when the state
+    // changed, and only write text that differs, or it would feed itself.
+    const key = `${sel.id}|${block.endsAt || 'busy'}`;
+    if (mine.__key === key) return;
+    mine.__key = key;
+    const sub = mine.lastChild;
+    const say = t => { if (sub.textContent !== t) sub.textContent = t; };
+    clearInterval(tick); tick = null;
+    if (block.busy) return say('Survey under way');
+    const paint = () => {
+      const left = block.endsAt - Date.now();
+      say(`⏳ ${fmtLeft(left)}`);
+      // Over: the game re-enables its button on its next render; until then
+      // show it as it is.
+      if (left <= 0) { clearInterval(tick); tick = null; cooldowns = cooldowns.filter(c => Number(c.systemId) !== Number(sel.id)); scan(); }
+    };
+    paint();
+    if (block.endsAt > Date.now()) tick = setInterval(paint, 1000);
   }
 
   ext.storage.local.get(ZONES_KEY).then(r => { zones = r[ZONES_KEY] || {}; paintBar(); }).catch(() => {});

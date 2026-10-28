@@ -13,7 +13,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   beside it limit the pick to Sentinel / Open / Dead systems, and a counter
   shows the surveys started today. When the game's Survey button is greyed
   out (system on cooldown, or a scout already on its way) it is replaced by
-  the same Next Survey shortcut, with the game's reason below. It only opens
+  the same Next Survey shortcut, with a live cooldown countdown below. Works
+  in any game language. It only opens
   the system; you still click the game's Survey button.
 - **New Frontier: Second Dawn support** for the galaxy features. That
   universe only lets the game page itself reach the galaxy and fleet
