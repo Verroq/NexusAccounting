@@ -58,6 +58,7 @@ const WORMHOLES_PATH = '/api/fleet/wormholes';
 const MISSIONS_PATH = '/api/fleet/missions';
 const RESEARCH_PATH = '/api/research';
 const MINING_PATH = '/api/fleet/mining-reports';
+const PATROL_PATH = '/api/fleet/patrol-reports';
 const EXPEDITION_PATH = '/api/fleet/expedition-reports';
 const WORMHOLE_PATH = '/api/fleet/wormhole-runs';
 // xeno_survey (ruins survey) results aren't a fleet report — they arrive as a
@@ -1563,6 +1564,7 @@ const FUEL_BASE = 3.48;
 // Map a mission type to a dashboard tab key for fuel accounting.
 function fuelMissionType(t) {
   const s = (t || '').toLowerCase();
+  if (s.includes('patrol')) return 'patrol';
   if (s.includes('debris')) return 'debris';
   if (s.includes('xeno')) return 'xeno';   // must precede the 'survey' check below
   if (s.includes('survey') || s.includes('investigate') || s.includes('anomaly')) return 'survey';
@@ -2714,6 +2716,58 @@ async function processPvpReports(reports, token) {
   return n;
 }
 
+// System patrol reports (hunt/guard) → one record per patrol: loot, losses,
+// events. The zone comes with the report (combatLog.zone). Hunt patrols also
+// send "Pirate Base Located" notices (patrol_hunt_discovery: no loot, the camp
+// found) — stored with kind 'discovery', not counted as patrols.
+// ponytail: every record kept, no totals/archive/records_cap like mining;
+// patrols end a few times a day at most. Add the archive path if that grows.
+async function processPatrolReports(reports) {
+  const stored = await nsGet(['patrol_seen_ids', 'patrol_recent_reports']);
+  const seen = new Set(stored.patrol_seen_ids || []);
+  const recent = [...(stored.patrol_recent_reports || [])];
+  const kindOf = r => (/^patrol_hunt_discovery/.test(r.eventType || '') ? 'discovery' : 'patrol');
+  // Records stored before `kind` existed get it from the report again.
+  const byId = new Map(recent.map(x => [x.id, x]));
+  let n = 0, patched = false;
+  for (const r of reports) {
+    const old = byId.get(r.id);
+    if (old && old.kind === undefined) { old.kind = kindOf(r); patched = true; }
+    if (r.id == null || seen.has(r.id)) continue;
+    seen.add(r.id);
+    const loot = numericResources(r.loot);
+    const log = r.combatLog || {};
+    const events = log.patrolEvents || [];
+    const eventTypes = {};
+    for (const e of events) eventTypes[e.type || 'other'] = (eventTypes[e.type || 'other'] || 0) + 1;
+    const lostDetail = parseShipsLost(r.shipsLost);
+    recent.push({
+      id: r.id,
+      created_at: r.createdAt,
+      kind: kindOf(r),
+      camps: (log.patrolHuntDiscovery?.camps || []).map(c => ({ id: c.campId, name: c.campName, system: c.systemName })),
+      title: r.eventTitle || '',
+      mode: log.mode || null,            // hunt / guard
+      zone: log.zone || 'unknown',
+      coverage: log.coverage || null,
+      duration_h: (r.explorationDuration || 0) / 3600,
+      events: events.length,           // kept, not shown
+      event_types: eventTypes,          // e.g. asteroid_field, derelict_cargo
+      ore: loot.ore || 0,
+      silicates: loot.silicates || 0,
+      hydrogen: loot.hydrogen || 0,
+      ...extrasOf(loot),
+      ships_lost: Object.values(lostDetail).reduce((a, b) => a + b, 0),
+      ships_lost_detail: lostDetail,
+    });
+    n++;
+  }
+  if (!n && !patched) return 0;
+  recent.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  await nsSet({ patrol_seen_ids: [...seen], patrol_recent_reports: recent });
+  return n;
+}
+
 async function processMiningReports(reports, ships, zones = {}) {
   const stored = await nsGet([
     'mining_seen_ids', 'mining_totals', 'mining_daily', 'mining_resources_lost',
@@ -3707,13 +3761,14 @@ async function scrapeUniverse(token, universeKey) {
   try {
     const planetId = await getHomePlanetId(token, universeKey);
     const [shipyardData, reportData, pirateData, spyData, campScoutData,
-           miningData, expeditionData, wormholeData, xenoMessagesData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
+           miningData, patrolData, expeditionData, wormholeData, xenoMessagesData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
       apiFetch(`/api/planets/${planetId}/shipyard`, token).catch(() => null),   // 403s while ships are on patrol — fall back to cached catalog
       apiFetch(REPORTS_PATH, token),
       apiFetch(PIRATES_PATH, token),
       apiFetch(SPY_PATH, token),
       apiFetch(CAMP_SCOUT_PATH, token),
       apiFetch(MINING_PATH, token).catch(() => ({ reports: [] })),
+      apiFetch(PATROL_PATH, token).catch(() => ({ reports: [] })),
       apiFetch(EXPEDITION_PATH, token).catch(() => ({ reports: [] })),
       apiFetch(WORMHOLE_PATH, token).catch(() => ({ runs: [] })),
       apiFetch(`${XENO_MESSAGES_PATH}?page=1`, token).catch(() => ({ notifications: [] })),
@@ -3746,6 +3801,7 @@ async function scrapeUniverse(token, universeKey) {
       const nSurveys = await processSurveyReports(reportData.reports || [], ships, zones);
       const nPirates = await processPirateReports(pirateData.reports || [], ships, campZones);
       const nMining = await processMiningReports(miningData.reports || [], ships, zones);
+      await processPatrolReports(patrolData.reports || []);
       await processExpeditionReports(expeditionData.reports || [], wormholeData.runs || [], ships, zones, wormholeZones, wormholeClasses || {});
       await processXenoReports(xenoMessagesData.notifications || []);
       if (systemDebrisData) await processSystemDebris(systemDebrisData.debris || [], zones);
@@ -3788,6 +3844,7 @@ const WATCHED_URLS = [
   'https://*.nexuslegacy.space/api/fleet/spy-reports*',
   'https://*.nexuslegacy.space/api/fleet/camp-scout-reports*',
   'https://*.nexuslegacy.space/api/fleet/mining-reports*',
+  'https://*.nexuslegacy.space/api/fleet/patrol-reports*',
   'https://*.nexuslegacy.space/api/fleet/expedition-reports*',
   'https://*.nexuslegacy.space/api/fleet/wormhole-runs*',
   'https://*.nexuslegacy.space/api/messages/system*',
@@ -3884,6 +3941,7 @@ function routeIntercepted(url, json, token, universeKey) {
     if (url.includes('/survey-reports')) n = await processSurveyReports(json.reports || [], ships, zones);
     else if (url.includes('/pirate-reports')) n = await processPirateReports(json.reports || [], ships, camp_zones || {});
     else if (url.includes('/mining-reports')) n = await processMiningReports(json.reports || [], ships, zones);
+    else if (url.includes('/patrol-reports')) n = await processPatrolReports(json.reports || []);
     else if (url.includes('/expedition-reports')) n = await processExpeditionReports(json.reports || [], [], ships, zones, wz, wc);
     else if (url.includes('/wormhole-runs')) n = await processExpeditionReports([], json.runs || [], ships, zones, wz, wc);
     if (n) console.log(`[NexusAccounting] Realtime: ${n} new reports from ${url}`);
@@ -3898,7 +3956,7 @@ function getCurrentUniverse() { return currentUniverse; }
 // Exposed for the node test harness (tests/processors.test.js). The service
 // worker itself drives everything through the listeners registered above.
 export {
-  processSurveyReports, processPirateReports, processMiningReports,
+  processSurveyReports, processPirateReports, processMiningReports, processPatrolReports,
   processPvpReports,
   processExpeditionReports, processSystemDebris, rebuildAggregates,
   checkDrift, ensureSchema, appendToArchive, loadArchive,

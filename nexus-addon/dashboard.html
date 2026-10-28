@@ -32,6 +32,7 @@
         <button class="tab nx-nav-item" data-tab="surveys"><span class="nx-nav-icon">◇</span><span>Surveys</span></button>
         <button class="tab nx-nav-item" data-tab="pirates"><span class="nx-nav-icon">☠</span><span>Pirates</span></button>
         <button class="tab nx-nav-item" data-tab="mining"><span class="nx-nav-icon">▲</span><span>Mining</span></button>
+        <button class="tab nx-nav-item" data-tab="patrol"><span class="nx-nav-icon">⛨</span><span>Patrol</span></button>
         <button class="tab nx-nav-item" data-tab="battles"><span class="nx-nav-icon">✦</span><span>Battles</span></button>
         <button class="tab nx-nav-item" data-tab="debris"><span class="nx-nav-icon">✧</span><span>Debris</span></button>
         <button class="tab nx-nav-item" data-tab="expeditions"><span class="nx-nav-icon">➤</span><span>Expeditions</span></button>
@@ -153,7 +154,7 @@
         <p>Totals across every source · honouring view, zone and window</p>
       </div>
       <p style="color:var(--color-muted); font-size:0.85rem; margin-bottom:12px;">
-        Combined across surveys, pirate raids, mining, debris (precise) and expeditions.
+        Combined across surveys, pirate raids, mining, patrols, debris (precise) and expeditions.
       </p>
       <div class="section-label">Resources collected (all sources)</div>
     <div class="stats" id="g-stats-collected"></div>
@@ -377,6 +378,63 @@
           </tr>
         </thead>
         <tbody id="m-reports-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="patrol-content" style="display:none;">
+    <div class="nx-screen-head"><h1>Patrol</h1><p>System patrol loot, events, losses and net gain</p></div>
+    <div class="section-label">Resources looted</div>
+    <div class="stats" id="pt-stats-loot"></div>
+
+    <div class="section-label">Operations</div>
+    <div class="stats" id="pt-stats-ops"></div>
+
+    <div class="section-label">Resources lost (destroyed ships)</div>
+    <div class="stats" id="pt-stats-lost"></div>
+
+    <div class="section-label">Net gain (loot − ship costs − fuel)</div>
+    <div class="stats" id="pt-stats-net"></div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h2>Loot composition</h2>
+        <canvas id="chart-patrol-loot"></canvas>
+      </div>
+      <div class="chart-box">
+        <h2>Patrols per period</h2>
+        <canvas id="chart-patrol"></canvas>
+      </div>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>Patrol Reports</h2>
+        <div class="pagination">
+          <button id="pt-btn-prev">← Prev</button>
+          <span id="pt-page-info">Page 1</span>
+          <button id="pt-btn-next">Next →</button>
+        </div>
+      </div>
+      <table>
+        <thead id="pt-reports-head">
+          <tr>
+            <th class="sortable" data-key="created_at">Date</th>
+            <th class="sortable" data-key="mode">Mode</th>
+            <th class="sortable" data-key="zone">Zone</th>
+            <th class="sortable" data-key="duration_h">Duration</th>
+            <th class="sortable" data-key="ore">Ore</th>
+            <th class="sortable" data-key="silicates">Silicates</th>
+            <th class="sortable" data-key="hydrogen">Hydrogen</th>
+            <th class="sortable" data-key="alloys">Alloys</th>
+            <th class="sortable" data-key="cryo_ice">Cryo-Ice</th>
+            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
+            <th class="sortable" data-key="plasma_core">Plasma Core</th>
+            <th class="sortable" data-key="dark_matter">Dark Matter</th>
+            <th class="sortable" data-key="antimatter">Antimatter</th>
+          </tr>
+        </thead>
+        <tbody id="pt-reports-tbody"></tbody>
       </table>
     </div>
   </div>

@@ -770,3 +770,44 @@ test('live search fieldMatches: type/zone/mult/qty/left filters + null handling'
     types: ['ore'], zones: ['sentinel'], multMin: 2, qtyMin: 501, leftMin: 50,
   }), false);
 });
+
+test('patrol processor: one record per patrol, deduped, newest first', async () => {
+  const store = makeBrowserStub();
+  const bg = await loadBackground();
+  const patrol = (id, day) => ({
+    id, createdAt: `${day}T05:51:23.438Z`, eventTitle: 'System Patrol · Hunt (8h)',
+    loot: { ore: 793, silicates: 587, cryo_ice: 4 }, shipsLost: [{ quantity: 1, shipDefId: 6 }],
+    explorationDuration: 28800,
+    combatLog: { mode: 'hunt', zone: 'sentinel', coverage: 'system', patrolEvents: [
+      { type: 'pirate_encounter', loot: { ore: 244 } }, { type: 'pirate_encounter' }, { type: 'derelict' }] },
+  });
+  assert.equal(await bg.processPatrolReports([patrol(1, '2026-06-14')]), 1);
+  assert.equal(await bg.processPatrolReports([patrol(1, '2026-06-14'), patrol(2, '2026-06-15')]), 1);
+  const [newest, older] = store.patrol_recent_reports;
+  assert.equal(newest.id, 2);
+  assert.equal(older.id, 1);
+  assert.deepEqual(
+    { mode: older.mode, zone: older.zone, h: older.duration_h, ev: older.events, ore: older.ore, cryo: older.cryo_ice, lost: older.ships_lost },
+    { mode: 'hunt', zone: 'sentinel', h: 8, ev: 3, ore: 793, cryo: 4, lost: 1 });
+  assert.deepEqual(older.event_types, { pirate_encounter: 2, derelict: 1 });
+  assert.deepEqual(older.ships_lost_detail, { 6: 1 });
+});
+
+test('patrol processor: base-located notices are kind discovery; old records get a kind', async () => {
+  const store = makeBrowserStub();
+  const bg = await loadBackground();
+  const found = { id: 9, createdAt: '2026-06-16T01:00:00.000Z', eventType: 'patrol_hunt_discovery', loot: {}, shipsLost: [],
+    combatLog: { patrolHuntDiscovery: { camps: [{ campId: 489, campName: 'Wraith Point', systemName: 'G35-10' }] } } };
+  const done = { id: 8, createdAt: '2026-06-15T01:00:00.000Z', eventType: 'patrol_hunt_system_2', loot: { ore: 5 }, shipsLost: [],
+    combatLog: { mode: 'hunt', zone: 'open', patrolEvents: [] } };
+  await bg.processPatrolReports([found, done]);
+  const [d, p] = store.patrol_recent_reports;
+  assert.deepEqual([d.kind, p.kind], ['discovery', 'patrol']);
+  assert.deepEqual(d.camps, [{ id: 489, name: 'Wraith Point', system: 'G35-10' }]);
+
+  // As stored before kinds existed.
+  await browser.storage.local.set({ s0__patrol_recent_reports: store.patrol_recent_reports.map(r => ({ ...r, kind: undefined })) });
+  assert.equal(store.patrol_recent_reports[0].kind, undefined);
+  await bg.processPatrolReports([found]);
+  assert.equal(store.patrol_recent_reports[0].kind, 'discovery');
+});
