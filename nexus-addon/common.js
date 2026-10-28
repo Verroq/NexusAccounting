@@ -695,15 +695,19 @@ export async function capCargoFleet(plan, planetId, capOf, availCache) {
   return capPlanToStock(plan, av.available, capOf);
 }
 
-// Remember template-dropdown choices (by element id) across tabs and sessions.
+// Remember template-dropdown choices (by element id) across tabs and sessions,
+// per universe: they name planets and pick templates for that universe (the
+// in-game live search window reads the same key). The old global copy seeds a
+// universe that has none yet.
 export async function rememberedSelections() {
-  const { template_selections } = await browser.storage.local.get('template_selections');
-  return template_selections || {};
+  const key = `${selectedUniverse}__template_selections`;
+  const r = await browser.storage.local.get([key, 'template_selections']);
+  return { ...(r[key] || r.template_selections || {}) };
 }
 export async function rememberSelection(id, value) {
   const cur = await rememberedSelections();
   cur[id] = value;
-  await browser.storage.local.set({ template_selections: cur });
+  await browser.storage.local.set({ [`${selectedUniverse}__template_selections`]: cur });
 }
 
 export function fmt(n) {

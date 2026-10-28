@@ -32,6 +32,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   existing live search carries over to the universe it was started in.
 
 ### Fixed
+- **Template and planet picks are kept per universe.** Picking a template
+  (or planet) in one universe changed it in the other, so the in-game live
+  search window could open with the other universe's template. Existing
+  picks carry over to each universe the first time.
 - **Live search on two universes at once**: a Second Dawn scan could make
   Season 0 calls wait for no reason (one API budget counter was shared by
   every universe), so the Season 0 window took ages to open. Each universe
