@@ -8,7 +8,8 @@
 //
 // NOT listed here (deliberately left as plain global keys): settings
 // (records_cap, selected_universe, resource_weights), user-authored fleet
-// templates (fleet_templates), and the universe catalog itself (universes).
+// templates (fleet_templates: by ship key, so one copy serves every universe),
+// and the universe catalog itself (universes).
 // Ship defs, research and the home planet id ARE scoped — a scrape cycle
 // walks every logged-in universe, so a global copy would only ever hold
 // whichever universe ran last.

@@ -36,6 +36,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (or planet) in one universe changed it in the other, so the in-game live
   search window could open with the other universe's template. Existing
   picks carry over to each universe the first time.
+- **Fleet templates on Second Dawn used the wrong ships** (e.g. an ore
+  template opened gas collectors): templates saved ships by the game's ship
+  number, and Second Dawn numbers its ships differently from Season 0. They
+  are now saved by ship type and work in every universe. Existing templates
+  are read as Season 0 templates.
 - **Live search on two universes at once**: a Second Dawn scan could make
   Season 0 calls wait for no reason (one API budget counter was shared by
   every universe), so the Season 0 window took ages to open. Each universe

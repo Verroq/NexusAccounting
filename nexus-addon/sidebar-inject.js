@@ -217,7 +217,8 @@ async function openFieldsPanel() {
   const planetId = live_search && live_search.planetId;
   // Picks are per universe (common.js rememberSelection), seeded from the old global copy.
   const stored = await ext.storage.local.get(['fleet_templates', `${LS_NS}template_selections`, 'template_selections']);
-  const fleet_templates = stored.fleet_templates;
+  // By this universe's ship ids (templates store ship keys, see common.js).
+  const fleet_templates = await (await loadCommon()).templatesFor(stored.fleet_templates, LS_NS.slice(0, -2));
   const template_selections = stored[`${LS_NS}template_selections`] || stored.template_selections;
   const templates = (fleet_templates || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));   // alphabetical picker
   // As in the Asteroids tab: escort-tagged templates are not mining fleets, so
