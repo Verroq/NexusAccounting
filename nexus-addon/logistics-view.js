@@ -126,7 +126,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
 // Through NexusTransport: on universes with the dynamic API (nf2) the moon
 // lookup and fuel estimates only answer the encoded form.
 async function jget(path) {
-  const r = await NexusTransport.call('GET', path);
+  const r = await globalThis.NexusTransport.call('GET', path);
   if (r.status < 200 || r.status >= 300) throw new Error(`${path} → ${r.status}`);
   return r.data;
 }
@@ -468,7 +468,7 @@ function colonyCard(c) {
 }
 
 async function jpost(path, body) {
-  const { status, data } = await NexusTransport.call('POST', path, body);
+  const { status, data } = await globalThis.NexusTransport.call('POST', path, body);
   if (status < 200 || status >= 300) throw new Error(data?.error || data?.message || `${path} → ${status}`);
   return data;
 }

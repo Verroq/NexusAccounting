@@ -193,7 +193,7 @@
         body: post ? payload : undefined,
       });
       const text = await res.text();
-      let data = null;
+      let data;
       try { data = text ? JSON.parse(text) : {}; } catch { data = text; }
       if (res.headers.get('X-Dynamic-Context') === mod.id && res.status !== 304) data = mod.decode(data);
       const code = data && data.code;

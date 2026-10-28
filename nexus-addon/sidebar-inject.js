@@ -101,7 +101,7 @@ async function gameFetch(msg) {
       body: msg.body != null ? JSON.stringify(msg.body) : undefined,
     });
     const text = await r.text();
-    let data = {};
+    let data;
     try { data = text ? JSON.parse(text) : {}; } catch { data = text; }
     res = { status: r.status, data, headers: r.headers };
     // Refused before it ran, so retrying a POST here does not repeat it.
