@@ -59,7 +59,7 @@ function makeBrowserStub(seed = {}) {
       },
     },
     runtime: { onInstalled: { addListener() {} }, onStartup: { addListener() {} }, onMessage: { addListener() {} } },
-    alarms: { create() {}, onAlarm: { addListener() {} } },
+    alarms: { create() {}, clear() {}, onAlarm: { addListener() {} } },
     browserAction: { onClicked: { addListener() {} } },
     action: { onClicked: { addListener() {} } },
     cookies: { get: async () => null },

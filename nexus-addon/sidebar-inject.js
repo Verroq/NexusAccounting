@@ -78,32 +78,55 @@ inject();
 new MutationObserver(() => inject())
   .observe(document.documentElement, { childList: true, subtree: true });
 
-// Run game API writes from the page origin (same-origin + cookies), so they are
-// identical to the game's own requests. The background routes the mine call here
-// because a Bearer request from the extension is rejected by the server (500).
+// Run game API calls from the page origin (same-origin + cookies), so they are
+// identical to the game's own requests. The background routes POSTs here
+// because a Bearer request from the extension is rejected by the server (500),
+// and GETs the server only accepts through the game's dynamic transport
+// (dynamic-transport.js).
+let dynamicRequired = false;   // this tab's universe answered DYNAMIC_API_REQUIRED
+
+async function gameFetch(msg) {
+  const method = msg.method || 'POST';
+  const headers = msg.token ? { Authorization: `Bearer ${msg.token}` } : {};
+  const T = globalThis.NexusTransport;
+  const covered = T && await T.route(method, msg.path);
+  const viaTransport = () => T.request(method, msg.path, msg.body, headers);
+
+  let res = dynamicRequired && covered ? await viaTransport() : null;
+  if (!res) {
+    const r = await fetch(msg.path, {
+      method,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: msg.body != null ? JSON.stringify(msg.body) : undefined,
+    });
+    const text = await r.text();
+    let data;
+    try { data = text ? JSON.parse(text) : {}; } catch { data = text; }
+    res = { status: r.status, data, headers: r.headers };
+    // Refused before it ran, so retrying a POST here does not repeat it.
+    if (data && data.code === 'DYNAMIC_API_REQUIRED' && covered) {
+      dynamicRequired = true;
+      res = await viaTransport() || res;
+    }
+  }
+
+  const d = res.data;
+  // The game's budget headers, so the background's rate limiter stays right
+  // for calls it routes through this tab.
+  const rateLimit = { remaining: res.headers.get('ratelimit-remaining'), reset: res.headers.get('ratelimit-reset') };
+  if (res.status >= 200 && res.status < 300) return { ok: true, data: d && typeof d === 'object' ? d : {}, rateLimit };
+  // The puzzle is for the player to solve in the game itself; never automated.
+  const m = d && d.code === 'HUMAN_CHALLENGE_REQUIRED'
+    ? 'The game wants a human check: solve it in the game tab, then try again.'
+    : (d && typeof d === 'object' ? (d.message || d.error) : d ? `${res.status}: ${String(d).slice(0, 200)}` : null) ||
+      `${res.status}`;
+  return { error: m, status: res.status, code: d && d.code, retryAfter: res.headers.get('Retry-After'), rateLimit };
+}
+
 ext.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== 'GAME_FETCH') return;
-  fetch(msg.path, {
-    method: msg.method || 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(msg.token ? { Authorization: `Bearer ${msg.token}` } : {}),
-    },
-    body: msg.body != null ? JSON.stringify(msg.body) : undefined,
-  }).then(async r => {
-    const text = await r.text();
-    if (!r.ok) {
-      let m = `${r.status}`;
-      try { const j = JSON.parse(text); m = j.message || j.error || m; }
-      catch { if (text) m = `${r.status}: ${text.slice(0, 200)}`; }
-      sendResponse({ error: m, status: r.status, retryAfter: r.headers.get('Retry-After') });
-    } else {
-      let data = {};
-      try { data = JSON.parse(text); } catch { /* empty/non-JSON ok */ }
-      sendResponse({ ok: true, data });
-    }
-  }).catch(e => sendResponse({ error: e.message }));
+  gameFetch(msg).then(sendResponse, e => sendResponse({ error: e.message }));
   return true;   // keep the channel open for the async sendResponse
 });
 
@@ -148,11 +171,19 @@ function recommend(m, excavator) {
 let commonMod = null;
 const loadCommon = () => (commonMod ||= import(rt.getURL('common.js')));
 
+// Live search is per universe (background.js): this tab shows its own
+// universe's search, stored under `${universe}__live_search*`.
+const LS_NS = `${location.hostname.split('.')[0]}__`;
+async function lsGet(keys) {
+  const raw = await ext.storage.local.get(keys.map(k => LS_NS + k));
+  return Object.fromEntries(keys.map(k => [k, raw[LS_NS + k]]));
+}
+
 let fieldsPanel = null;
 async function openFieldsPanel() {
   if (fieldsPanel) { fieldsPanel.remove(); fieldsPanel = null; }
-  const { live_search_last_matches, live_search_last_at, live_search } =
-    await ext.storage.local.get(['live_search_last_matches', 'live_search_last_at', 'live_search']);
+  const { live_search_last_matches, live_search_last_at, live_search, live_search_last_error } =
+    await lsGet(['live_search_last_matches', 'live_search_last_at', 'live_search', 'live_search_last_error']);
   let matches = live_search_last_matches || [];
   const running = !!(live_search && live_search.enabled);
 
@@ -170,7 +201,9 @@ async function openFieldsPanel() {
   title.style.fontWeight = '600';
   const sub = document.createElement('div');
   sub.style.cssText = 'color:#8b949e;font-size:0.75rem';
-  sub.textContent = live_search_last_at ? `as of ${new Date(live_search_last_at).toLocaleTimeString()}` : 'no scan yet';
+  const lsSub = (at, err) => (at ? `as of ${new Date(at).toLocaleTimeString()}` : 'no scan yet') +
+    (err ? ` · ⚠ last scan: ${err}` : '');
+  sub.textContent = lsSub(live_search_last_at, live_search_last_error);
   titleWrap.append(title, sub);
   const close = document.createElement('button');
   close.textContent = '✕';
@@ -479,11 +512,11 @@ async function openFieldsPanel() {
   // Live-refresh title/timestamp/rows when a background scan writes new results,
   // so the window doesn't sit on a stale "as of" time. Self-removes once closed.
   function onScan(changes, area) {
-    if (area !== 'local' || !('live_search_last_at' in changes || 'live_search_last_matches' in changes)) return;
+    if (area !== 'local' || !['live_search_last_at', 'live_search_last_matches', 'live_search_last_error'].some(k => LS_NS + k in changes)) return;
     if (!panel.isConnected) { ext.storage.onChanged.removeListener(onScan); return; }
-    ext.storage.local.get(['live_search_last_matches', 'live_search_last_at']).then(d => {
+    lsGet(['live_search_last_matches', 'live_search_last_at', 'live_search_last_error']).then(d => {
       matches = d.live_search_last_matches || [];
-      sub.textContent = d.live_search_last_at ? `as of ${new Date(d.live_search_last_at).toLocaleTimeString()}` : 'no scan yet';
+      sub.textContent = lsSub(d.live_search_last_at, d.live_search_last_error);
       renderRows();
     });
   }
@@ -535,6 +568,10 @@ ext.runtime.onMessage.addListener(msg => {
 });
 
 // Game tab opened from a notification with no tab previously open: show the panel.
+// The flag names the universe the notification came from.
 ext.storage.local.get('live_search_open_panel').then(({ live_search_open_panel }) => {
-  if (live_search_open_panel) { ext.storage.local.set({ live_search_open_panel: false }); openFieldsPanel(); }
+  if (live_search_open_panel && LS_NS === `${live_search_open_panel}__`) {
+    ext.storage.local.set({ live_search_open_panel: false });
+    openFieldsPanel();
+  }
 });

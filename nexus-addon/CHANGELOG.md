@@ -6,6 +6,52 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **New Frontier: Second Dawn support** for the galaxy features. That
+  universe only lets the game page itself reach the galaxy and fleet
+  endpoints, so they failed with "Error: API /api/galaxy/arms". The addon now
+  sends those calls through the open game tab the same way the game does.
+  Keep a Second Dawn game tab open while using the Finder, Asteroids,
+  Scouting or other galaxy tabs. If the game asks for a human check, solve it
+  in the game tab and try again.
+
+- **One live search per universe.** Season 0 and New Frontier can each run
+  their own live search at the same time, with their own planet, filters
+  and results. The Asteroids tab edits the search of the universe picked in
+  the dashboard, and the in-game results window the one of its own tab.
+  Notifications name their universe and open that universe's game tab. An
+  existing live search carries over to the universe it was started in.
+
+### Fixed
+- **Live search on two universes at once**: a Second Dawn scan could make
+  Season 0 calls wait for no reason (one API budget counter was shared by
+  every universe), so the Season 0 window took ages to open. Each universe
+  now has its own counter.
+- **Live search no longer reports 0 matches when its scan failed.** A failed
+  scan keeps the previous results and shows why in the results window and
+  the Asteroids tab (not logged in, saved planet not found in this
+  universe, API errors). Scans of the same universe no longer overlap.
+- **"Attach leader" in the in-game windows** checked the leader of the
+  universe picked in the dashboard instead of the game tab's own universe,
+  so it could be greyed out (or offered) because of the other universe's
+  leader.
+- **Quartermaster on Second Dawn** now lists your moons, and fuel estimates
+  work there: both use endpoints that universe only answers through the
+  game's own protocol.
+- **Quartermaster resource moves to or from a moon** now offer the
+  Deliver / Transfer choice, like planet-to-planet moves (moon → planet was
+  always sent as Transfer, planet → moon had no mission).
+- **Quartermaster no longer jumps fleets through a moon's Jump Gate.**
+  Moves from a moon to a planet now fly normally, as when sent from the
+  game's fleet page. Tick the new **Use Jump Gate** box (shown for
+  moons with a Jump Gate) to jump instead.
+- **Universe picker**: choosing Season 0 or New Frontier now switches
+  everything to that universe — planet lists, fleets, resources, market and
+  every other live lookup — instead of only the stored stats. Before, live
+  lookups followed whichever universe you had logged into last. The
+  dashboard reloads on the same tab when you switch. The in-game sidebar
+  keeps working on its own tab's universe.
+
 ### Changed
 - **Asteroids Fields tab and live search** now read the game's galaxy-wide
   field index first. Systems without asteroid fields are no longer scanned,
