@@ -7,6 +7,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Patrol tab** (Operations): system patrol reports (hunt/guard), laid out
+  like the Mining tab: loot per resource, patrols, fuel, ship losses and net
+  gain, a loot chart, patrols per period and a sortable report list.
+  "Pirate Base Located" notices from hunt patrols are not counted as
+  patrols. Patrols are part of the Global tab's combined totals. Reports are
+  read on every scrape and as soon as the game loads them.
 - **📡 Next Survey on the galaxy page**: a button in the game's search bar
   opens the nearest system you can survey (not on cooldown, no survey already
   flying there), measured from the colony in the planet switcher. Zone chips

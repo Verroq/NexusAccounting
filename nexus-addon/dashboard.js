@@ -19,6 +19,7 @@ import { initFinderTab } from './tabs/finder.js';
 import { initMarketTab } from './tabs/market.js';
 import { renderGlobalTab } from './tabs/global.js';
 import { renderMiningTab, setMiningPage } from './tabs/mining.js';
+import { renderPatrolTab, setPatrolPage } from './tabs/patrol.js';
 import { renderPiratesTab, setPirateCurrentPage } from './tabs/pirates.js';
 import { initSimulatorTab } from './tabs/simulator.js';
 import { initStationsTab } from './tabs/stations.js';
@@ -121,6 +122,10 @@ export function renderAll() {
     renderMiningTab();
     return;
   }
+  if (activeTab === 'patrol') {
+    renderPatrolTab();
+    return;
+  }
   if (activeTab === 'battles') {
     renderBattlesTab();
     return;
@@ -207,6 +212,7 @@ export const TAB_CONTENT = {
   surveys: 'main-content',
   pirates: 'pirates-content',
   mining: 'mining-content',
+  patrol: 'patrol-content',
   battles: 'battles-content',
   debris: 'debris-content',
   expeditions: 'expeditions-content',
@@ -286,6 +292,7 @@ export function onViewChange() {
   setCurrentPage(1);
   setPirateCurrentPage(1);
   setMiningPage(1);
+  setPatrolPage(1);
   setExpPage(1);
   setWhPage(1);
   setXnReportPage(1);
@@ -445,6 +452,7 @@ export function validateBackupData(data) {
     'recent_reports', 'daily', 'hourly', 'event_breakdown', 'seen_ids',
     'pirate_recent_reports', 'pirate_seen_ids', 'pirate_daily', 'pirate_outcomes',
     'mining_recent_reports', 'mining_seen_ids', 'mining_daily',
+    'patrol_recent_reports', 'patrol_seen_ids',
     'exp_recent_reports', 'exp_seen_ids', 'exp_daily',
     'xeno_recent_reports', 'xeno_seen_ids', 'xeno_daily',
     'survey_archive', 'pirate_archive', 'mining_archive', 'exp_archive', 'xeno_archive',

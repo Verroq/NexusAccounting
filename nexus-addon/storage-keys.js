@@ -37,6 +37,8 @@ export const SCOPED_KEYS = [
   'pirate_debris_total', 'pirate_recent_reports', 'pirate_seen_ids',
   // Mining
   'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports', 'mining_seen_ids',
+  // Patrols (hunt/guard system patrols)
+  'patrol_recent_reports', 'patrol_seen_ids',
   // Debris (live fields + precise collection log)
   'debris_fields', 'debris_last_check', 'debris_collected', 'debris_active_runs',
   'debris_collection_log', 'debris_resources_lost', 'debris_collection_ids', 'debris_loss_ids',

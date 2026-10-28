@@ -3,13 +3,15 @@
 
 import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, combinedLost, computeRawLossCost, computeResourcesLost, computeSeries, dayKey, emptyResources, fmt, fuelForMode, getLabelKey, getMode, getWindowRange, getZone, makeResourceDoughnut, windowActive, makeResourceLineChart, makeStatCard, periodLabelFor, renderNetCards, resourceVal, store } from '../common.js';
 
+import { getPatrolTotals, patrolRecords } from './patrol.js';
+
 export let chartGlobal, chartGlobalPeriod, chartGlobalSrc;
 
 // Resource keys we total (core + alloys + exotics).
 export const GLOBAL_RES_KEYS = ['ore', 'silicates', 'hydrogen', ...EXTRA_RES_KEYS_UI];
 
 export const SOURCE_COLORS = {
-  Survey: '#58a6ff', Pirates: '#ff7b72', Mining: '#e3b341',
+  Survey: '#58a6ff', Pirates: '#ff7b72', Mining: '#e3b341', Patrol: '#f778ba',
   Debris: '#56d364', Expeditions: '#bc8cff', Wormhole: '#39c5cf', Xeno: '#d29922',
 };
 
@@ -30,6 +32,7 @@ export function globalRecords() {
   add('Survey', store.recent_reports);
   add('Pirates', store.pirate_recent_reports);
   add('Mining', store.mining_recent_reports);
+  add('Patrol', patrolRecords());   // flat resources + ships_lost_detail, like mining
   const normExp = r => {
     const o = { created_at: r.created_at, zone: r.zone, ships_destroyed_raw: r.ships_destroyed_raw };
     for (const k of GLOBAL_RES_KEYS) o[k] = (r.loot && r.loot[k]) || 0;
@@ -61,7 +64,8 @@ export function globalLostAllTime() {
   const lost = emptyResources();
   for (const L of [store.resources_lost, store.pirate_resources_lost,
     store.mining_resources_lost, store.debris_resources_lost,
-    store.expedition_resources_lost, store.wormhole_resources_lost, store.xeno_resources_lost]) {
+    store.expedition_resources_lost, store.wormhole_resources_lost, store.xeno_resources_lost,
+    computeResourcesLost(patrolRecords(), store.ships || {})]) {   // patrols keep no running total
     if (!L) continue;
     const cc = combinedLost(L);
     for (const k of ['ore', 'silicates', 'hydrogen', 'alloys']) lost[k] += cc[k] || 0;
@@ -81,6 +85,7 @@ export function renderGlobalTab() {
   if (allTime) {
     const srcTotals = {
       Survey: store.totals, Pirates: store.pirate_totals, Mining: store.mining_totals,
+      Patrol: getPatrolTotals(patrolRecords()),
       Debris: store.debris_collected, Expeditions: store.expedition_totals, Wormhole: store.wormhole_totals,
       Xeno: store.xeno_totals,
     };
@@ -97,7 +102,8 @@ export function renderGlobalTab() {
     lost = { destroyed: globalLostAllTime(), repair: emptyResources() };
     ops = (store.totals?.missions || 0) + (store.pirate_totals?.raids || 0)
       + (store.mining_totals?.deliveries || 0) + ((store.debris_collection_log || []).length)
-      + (store.exp_totals?.missions || 0) + (store.xeno_totals?.missions || 0);
+      + (store.exp_totals?.missions || 0) + (store.xeno_totals?.missions || 0)
+      + patrolRecords().length;
   } else {
     let items = globalRecords().filter(w => getZone() === 'all' || w.r.zone === getZone());
     const { from, to } = getWindowRange();
