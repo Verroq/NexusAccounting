@@ -123,10 +123,12 @@ const fmt = n => Math.round(n || 0).toLocaleString();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// Through NexusTransport: on universes with the dynamic API (nf2) the moon
+// lookup and fuel estimates only answer the encoded form.
 async function jget(path) {
-  const r = await fetch(path, { credentials: 'include' });
-  if (!r.ok) throw new Error(`${path} → ${r.status}`);
-  return r.json();
+  const r = await NexusTransport.call('GET', path);
+  if (r.status < 200 || r.status >= 300) throw new Error(`${path} → ${r.status}`);
+  return r.data;
 }
 
 let overlay = null;
@@ -202,7 +204,8 @@ async function openView() {
     const moonCol = moonIds.map((id, i) => {
       const [det, fl] = moonDetails[i];
       const res = (det && det.moon) || {};
-      return { id, systemId: res.systemId, kind: 'Moon', name: res.name || `Moon #${id}`, res, ships: (fl.fleet || []) };
+      const jumpGate = ((det && det.buildings) || []).some(x => x.key === 'jump_gate' && x.level > 0);
+      return { id, systemId: res.systemId, kind: 'Moon', name: res.name || `Moon #${id}`, res, ships: (fl.fleet || []), jumpGate };
     });
 
     colonies = planets.map((p, i) => {
@@ -465,12 +468,8 @@ function colonyCard(c) {
 }
 
 async function jpost(path, body) {
-  const r = await fetch(path, {
-    method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || data.message || `${path} → ${r.status}`);
+  const { status, data } = await NexusTransport.call('POST', path, body);
+  if (status < 200 || status >= 300) throw new Error(data?.error || data?.message || `${path} → ${status}`);
   return data;
 }
 const fuelEstimate = (sourcePlanetId, targetSystemId, ships) =>
@@ -617,6 +616,14 @@ async function renderBuilder() {
   const head = document.createElement('div');
   head.style.cssText = 'display:flex; align-items:baseline; gap:8px; margin-bottom:10px;';
   box.appendChild(head);
+  // Moon → planet: fly normally unless the player opts into the moon's Jump
+  // Gate (shown only when the moon has one built).
+  if (b.mode !== 'collect' && b.src.kind === 'Moon' && b.src.jumpGate) {
+    const jg = document.createElement('input'); jg.type = 'checkbox'; jg.checked = !!b.jumpGate;
+    jg.title = 'Unticked, the fleet flies normally. Ticked, it goes through this moon\'s Jump Gate.';
+    jg.addEventListener('change', () => { b.jumpGate = jg.checked; });
+    box.appendChild(fieldRow('<span style="color:#9aa4b2;">Use Jump Gate</span>', jg));
+  }
 
   const status = document.createElement('div'); status.style.cssText = 'color:#8b949e; font-size:0.82rem; min-height:16px; margin-top:6px;';
   const fuelLine = document.createElement('div'); fuelLine.style.cssText = 'color:#9aa4b2; font-size:0.85rem; margin-top:8px;';
@@ -711,14 +718,14 @@ async function renderBuilder() {
     box.append(fuelLine);
     updateSend();
   } else if (b.mode === 'resource') {
-    const rVerb = b.src.kind === 'Moon' ? 'Transfer resources' : b.target.kind === 'Moon' ? 'Send resources' : toOutpost ? 'Supply outpost' : 'Deliver resources';
+    const rVerb = b.src.kind === 'Moon' || b.target.kind === 'Moon' ? 'Send resources' : toOutpost ? 'Supply outpost' : 'Deliver resources';
     head.innerHTML = `<b style="color:#e6edf3;">${rVerb}</b>` +
       `<span style="color:#f0883e;">${esc(b.src.name)} → ${esc(b.target.name)}</span>` +
       `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${esc(b.target.name)} to add</span>`;
-    // Mission switch (planet → planet only): deliver = haulers drop cargo and
-    // return; transfer = haulers stay at the destination. Other endpoints (moon/
-    // outpost) don't take this choice.
-    if (b.src.kind === 'Planet' && b.target.kind === 'Planet') {
+    // Mission switch (planets and moons): deliver = haulers drop cargo and
+    // return; transfer = haulers stay at the destination. Outposts don't take
+    // this choice.
+    if (b.src.kind !== 'Outpost' && b.target.kind !== 'Outpost') {
       if (!b.deliverMode) b.deliverMode = 'deliver';
       const seg = document.createElement('div');
       seg.style.cssText = 'display:inline-flex; border:1px solid #30363d; border-radius:7px; overflow:hidden;';
@@ -843,12 +850,16 @@ async function renderBuilder() {
     const resources = b.mode === 'resource'
       ? Object.fromEntries(Object.entries(b.res).filter(([, e]) => e.amount > 0).map(([k, e]) => [RES_BY_K[k].cargo, e.amount]))
       : {};
-    if (src.kind === 'Moon')   // moon → planet
-      return b.mode === 'resource'
-        ? { path: `/api/moons/${src.id}/dispatch`, body: { missionType: 'transfer', targetPlanetId: tgt.id, ships, cargo: resources } }
-        : { path: `/api/moons/${src.id}/recall`, body: { targetPlanetId: tgt.id, ships } };
+    // moon → planet. ordinaryMoonTravel: fly normally, as the game's fleet page
+    // does; without it the server sends the fleet through the moon's Jump Gate
+    // (the "Use Jump Gate" box).
+    if (src.kind === 'Moon')
+      return { path: `/api/moons/${src.id}/dispatch`, body: {
+        missionType: b.mode === 'resource' ? b.deliverMode || 'deliver' : 'transfer',
+        targetPlanetId: tgt.id, ships, cargo: resources, ...(b.jumpGate && src.jumpGate ? {} : { ordinaryMoonTravel: true }) } };
     if (tgt.kind === 'Moon')   // planet → moon (send handles resources + ships)
-      return { path: `/api/moons/${tgt.id}/send`, body: { sourcePlanetId: src.id, ships, cargo: resources } };
+      return { path: `/api/moons/${tgt.id}/send`, body: { sourcePlanetId: src.id, ships, cargo: resources,
+        ...(b.mode === 'resource' ? { missionType: b.deliverMode || 'deliver' } : {}) } };
     if (tgt.kind === 'Outpost')
       return b.mode === 'resource'
         ? { path: `/api/outposts/${tgt.id}/supply`, body: { sourcePlanetId: src.id, ships, resources } }
