@@ -96,3 +96,21 @@ test('getTokens is empty with no cookies at all', async () => {
   assert.deepEqual(await getTokens(), []);
   assert.equal(await getToken(), null);
 });
+
+test('getToken follows the dashboard pick, or a pinned universe, over the freshest', async () => {
+  const s0 = tok(2000, 'game', 's0');
+  const nf = tok(3000, 'game', 'nf');
+  seedCookies([
+    { name: '__Host-nexus-game', domain: 's0.nexuslegacy.space', value: s0 },
+    { name: '__Host-nexus-game', domain: 'nf.nexuslegacy.space', value: nf },
+  ]);
+  await browser.storage.local.set({ selected_universe: 's0' });
+  try {
+    assert.deepEqual(await getToken(), { token: s0, universeKey: 's0' }, 'pick beats fresher nf');
+    assert.deepEqual(await getToken('nf'), { token: nf, universeKey: 'nf' }, 'pin beats pick');
+    await browser.storage.local.set({ selected_universe: 'beta' });
+    assert.equal(await getToken(), null, 'no fallback to another universe');
+  } finally {
+    await browser.storage.local.remove('selected_universe');
+  }
+});

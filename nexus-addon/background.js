@@ -85,9 +85,7 @@ function resolveRecordsCap(stored) {
 
 browser.runtime.onInstalled.addListener(async details => {
   browser.alarms.create(ALARM, { periodInMinutes: INTERVAL_MIN });
-  // Re-arm the asteroid live-search alarm if it was left enabled.
-  const { live_search } = await browser.storage.local.get('live_search');
-  if (live_search && live_search.enabled) browser.alarms.create(LS_ALARM, { periodInMinutes: LS_INTERVAL_MIN });
+  armLiveSearch();   // re-arm if a live search was left enabled
   // Snapshot existing data before the new version touches it.
   if (details.reason === 'update') {
     await browser.storage.local.set({ whatsnew_pending: browser.runtime.getManifest().version });
@@ -104,11 +102,12 @@ browser.runtime.onInstalled.addListener(async details => {
 // left the addon with no scheduled scrape until the next update.
 browser.runtime.onStartup.addListener(() => {
   browser.alarms.create(ALARM, { periodInMinutes: INTERVAL_MIN });
+  armLiveSearch();
 });
 
 browser.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === ALARM) scrape();
-  if (alarm.name === LS_ALARM) liveSearchScan();
+  if (alarm.name === LS_ALARM) liveSearchScanAll();
 });
 
 // ── Asteroid live search ───────────────────────────────────────────────────
@@ -124,24 +123,53 @@ const LS_MAX_SYSTEMS = 150;            // cap so a background scan finishes insi
 const LS_REQ_DELAY_MS = 40;            // polite spacing between API calls
 const LS_ABORT_AFTER_ERRORS = 6;       // bail the scan after this many consecutive API failures
 
-async function setLiveSearch(config) {
-  await browser.storage.local.set({ live_search: config });
+// One live search per universe: config, seen ids and last matches live under
+// `${universe}__live_search*`, like the other scoped keys. One alarm scans
+// every universe whose search is on. `universe` is the in-game tab's own
+// universe, else the dashboard's pick.
+const lsUniverse = async universe =>
+  universe || (await browser.storage.local.get('selected_universe')).selected_universe || 's0';
+
+// Universes with a live search turned on. Also moves a pre-per-universe
+// global `live_search` config to its universe's key, once.
+async function liveSearchUniverses() {
+  const { live_search: legacy, universes } = await browser.storage.local.get(['live_search', 'universes']);
+  if (legacy) {
+    await nsSet({ live_search: legacy }, legacy.universe || 's0');
+    await browser.storage.local.remove(['live_search', 'live_search_seen', 'live_search_last_matches', 'live_search_last_at']);
+  }
+  const keys = (universes || UNIVERSE_FALLBACK).map(u => u.key);
+  const cfgs = await browser.storage.local.get(keys.map(k => `${k}__live_search`));
+  return keys.filter(k => cfgs[`${k}__live_search`]?.enabled);
+}
+
+async function armLiveSearch() {
+  if ((await liveSearchUniverses()).length) browser.alarms.create(LS_ALARM, { periodInMinutes: LS_INTERVAL_MIN });
+  else browser.alarms.clear(LS_ALARM);
+}
+
+async function setLiveSearch(config, universe) {
+  const u = await lsUniverse(universe);
+  await nsSet({ live_search: config }, u);
+  await armLiveSearch();
   if (config && config.enabled) {
-    browser.alarms.create(LS_ALARM, { periodInMinutes: LS_INTERVAL_MIN });
     // Config (filter/planet) may have changed — reset seen so matches re-notify.
-    await browser.storage.local.set({ live_search_seen: [] });
-    liveSearchScan();   // run one immediately so the user isn't waiting 5 min
-  } else {
-    browser.alarms.clear(LS_ALARM);
+    await nsSet({ live_search_seen: [] }, u);
+    liveSearchScan(u);   // run one immediately so the user isn't waiting 5 min
   }
   return { ok: true };
 }
 
-async function stopLiveSearch() {
-  const { live_search } = await browser.storage.local.get('live_search');
-  await browser.storage.local.set({ live_search: { ...(live_search || {}), enabled: false } });
-  browser.alarms.clear(LS_ALARM);
+async function stopLiveSearch(universe) {
+  const u = await lsUniverse(universe);
+  const { live_search } = await nsGet(['live_search'], u);
+  await nsSet({ live_search: { ...(live_search || {}), enabled: false } }, u);
+  await armLiveSearch();
   return { ok: true };
+}
+
+async function liveSearchScanAll() {
+  for (const u of await liveSearchUniverses()) await liveSearchScan(u);
 }
 
 function fieldMatches(f, cfg) {
@@ -165,20 +193,39 @@ function indexRowCouldMatch(r, cfg) {
   return true;
 }
 
-async function liveSearchScan() {
-  const { live_search: cfg } = await browser.storage.local.get('live_search');
+// One scan per universe at a time: a filter edit, the alarm and the immediate
+// scan on start used to overlap, doubling calls on the same budget. A request
+// that comes in mid-scan reruns once after it, so the latest config wins.
+const lsRunning = new Map();   // universe → { rerun }
+async function liveSearchScan(universe) {
+  const running = lsRunning.get(universe);
+  if (running) { running.rerun = true; return; }
+  const state = { rerun: false };
+  lsRunning.set(universe, state);
+  try {
+    do { state.rerun = false; await liveSearchScanOnce(universe); } while (state.rerun);
+  } finally {
+    lsRunning.delete(universe);
+  }
+}
+
+async function liveSearchScanOnce(universe) {
+  const { live_search: cfg } = await nsGet(['live_search'], universe);
   if (!cfg || !cfg.enabled || cfg.planetId == null) return;
-  const { token, universeKey } = await getToken() || {};
-  if (!token) return;
+  const fail = msg => nsSet({ live_search_last_error: `${msg} (${new Date().toLocaleTimeString()})` }, universe);
+  const { token, universeKey } = await getToken(universe) || {};
+  if (!token) return fail(`Not logged in to ${universe}.`);
   currentUniverse = universeKey;
 
   try {
-    const planets = (await getPlanets()).planets || [];
+    const planets = (await getPlanets(universeKey)).planets || [];
     const planet = planets.find(p => p.id === cfg.planetId);
-    if (!planet || planet.systemId == null) return;
+    if (!planet || planet.systemId == null) {
+      return fail('The saved planet is not one of yours in this universe: pick it again in the Asteroids tab.');
+    }
     const map = await apiFetch('/api/galaxy/map', token, { polite: true });
     const src = (map.systems || []).find(s => s.id === planet.systemId);
-    if (!src) return;
+    if (!src) return fail('The saved planet\'s system is not on the galaxy map.');
     const index = (await apiFetch('/api/galaxy/field-index', token, { polite: true })).systems || [];
 
     // field-index rows → one entry per system, with its per-type rows.
@@ -199,10 +246,17 @@ async function liveSearchScan() {
 
     const matches = [];
     let errStreak = 0;
+    let lastErr = null;
     for (const sys of targets) {
       let data;
       try { data = await apiFetch(`/api/galaxy/systems/${sys.id}/planets`, token, { polite: true }); }
-      catch { if (++errStreak >= LS_ABORT_AFTER_ERRORS) break; continue; }
+      catch (e) {
+        lastErr = e;
+        // A run of failures means the scan is blind, not that nothing matches:
+        // keep the previous results rather than save an empty list.
+        if (++errStreak >= LS_ABORT_AFTER_ERRORS) throw e;
+        continue;
+      }
       errStreak = 0;
       for (const f of (data.asteroidFields || [])) {
         if (fieldMatches({ ...f, zone: sys.zone }, cfg)) {
@@ -223,22 +277,23 @@ async function liveSearchScan() {
       await new Promise(r => setTimeout(r, LS_REQ_DELAY_MS));   // be polite to the game API
     }
 
-    const { live_search_seen } = await browser.storage.local.get('live_search_seen');
+    const { live_search_seen } = await nsGet(['live_search_seen'], universe);
     const seen = new Set(live_search_seen || []);
     const fresh = matches.filter(m => !seen.has(m.id));
     // Keep the full current match list + timestamp for the on-click results window.
-    await browser.storage.local.set({
+    await nsSet({
       live_search_seen: matches.map(m => m.id),
       live_search_last_matches: matches,
       live_search_last_at: Date.now(),
-    });
+      live_search_last_error: lastErr ? `some systems failed: ${lastErr.message}` : null,
+    }, universe);
 
     if (fresh.length) {
       const top = fresh[0];
-      browser.notifications.create(`${LS_ALARM}-${Date.now()}`, {
+      browser.notifications.create(`${LS_ALARM}|${universe}|${Date.now()}`, {
         type: 'basic',
         iconUrl: browser.runtime.getURL('icons/icon128.png'),
-        title: '🪨 Asteroid match',
+        title: `🪨 Asteroid match (${universe})`,
         message: fresh.length === 1
           ? `${top.name} (${top.type}) in ${top.system} matches your live search.`
           : `${fresh.length} new fields match your live search — incl. ${top.name} in ${top.system}.`,
@@ -246,17 +301,18 @@ async function liveSearchScan() {
     }
   } catch (err) {
     console.warn('[NexusAccounting] Live search failed:', err);
+    await fail(err.message);
   }
 }
 
-// Clicking a live-search notification focuses (or opens) the game tab and asks
-// its content script to show the draggable matches window. Scoped to whichever
-// universe last set currentUniverse (the live search itself only ever runs
-// against that universe's API — see liveSearchScan()).
+// Clicking a live-search notification focuses (or opens) the game tab of the
+// universe it came from (in the id: `${LS_ALARM}|universe|time`) and asks its
+// content script to show the draggable matches window.
 browser.notifications?.onClicked?.addListener(async id => {
   if (!id.startsWith(LS_ALARM)) return;
   browser.notifications.clear(id);
-  const tabs = await browser.tabs.query({ url: `*://${currentUniverse}.nexuslegacy.space/*` });
+  const universe = id.split('|')[1] || currentUniverse;
+  const tabs = await browser.tabs.query({ url: `*://${universe}.nexuslegacy.space/*` });
   if (tabs.length) {
     const t = tabs[0];
     await browser.tabs.update(t.id, { active: true });
@@ -264,8 +320,8 @@ browser.notifications?.onClicked?.addListener(async id => {
     browser.tabs.sendMessage(t.id, { type: 'SHOW_LS_RESULTS' }).catch(() => {});
   } else {
     // No game tab open — flag it so the content script shows the panel on load.
-    await browser.storage.local.set({ live_search_open_panel: true });
-    browser.tabs.create({ url: `${gameUrlFor(currentUniverse)}/` });
+    await browser.storage.local.set({ live_search_open_panel: universe });
+    browser.tabs.create({ url: `${gameUrlFor(universe)}/` });
   }
 });
 
@@ -273,18 +329,21 @@ browser.action.onClicked.addListener(() => {
   browser.tabs.create({ url: browser.runtime.getURL('dashboard.html') });
 });
 
-browser.runtime.onMessage.addListener(msg => {
+browser.runtime.onMessage.addListener((msg, sender) => {
+  // The in-game sidebar (sidebar-inject.js) works on its own tab's universe;
+  // the dashboard (no game tab) follows its picker — see getToken().
+  const u = hostUniverse(sender?.tab?.url && new URL(sender.tab.url).hostname) || undefined;
   if (msg.type === 'SCRAPE_NOW') return scrape().then(() => ({ ok: true }));
   if (msg.type === 'GET_FLEET') return getFleet(msg.planetId);
-  if (msg.type === 'GET_SHIP_DEFS') return getShipDefs();
+  if (msg.type === 'GET_SHIP_DEFS') return getShipDefs(u);
   if (msg.type === 'GET_UNIVERSES') return getUniverses();
-  if (msg.type === 'GET_PLANET_SHIPS') return getPlanetShips(msg.planetId);
-  if (msg.type === 'GET_MISSIONS') return apiGet('/api/fleet/missions');
+  if (msg.type === 'GET_PLANET_SHIPS') return getPlanetShips(msg.planetId, u);
+  if (msg.type === 'GET_MISSIONS') return apiGet('/api/fleet/missions', u);
   if (msg.type === 'REFRESH_DEBRIS') return refreshDebris();
   if (msg.type === 'GET_FUEL_ESTIMATE') {
     // POST: routed through the game tab (same-origin) — a Bearer POST from the
     // extension carries an Origin header the server 500s on.
-    return gamePost('/api/fleet/fuel-estimate', msg.body).then(r => (r && r.ok) ? r.data : r);
+    return gamePost('/api/fleet/fuel-estimate', msg.body, u).then(r => (r && r.ok) ? r.data : r);
   }
   if (msg.type === 'GET_SURVEY_COOLDOWNS') return apiGet('/api/fleet/survey-cooldowns');
   if (msg.type === 'GET_SURVEY_REPORTS') return apiGet('/api/fleet/survey-reports');
@@ -299,7 +358,7 @@ browser.runtime.onMessage.addListener(msg => {
       hangarAssignments: {},
       mineUntilFull: !!msg.mineUntilFull,
       ...(msg.attachLeader ? { attachLeader: true } : {}),
-    });
+    }, u);
   }
   if (msg.type === 'SEND_SURVEY') {
     return gamePost('/api/fleet/survey', {
@@ -335,8 +394,8 @@ browser.runtime.onMessage.addListener(msg => {
       hangarAssignments: {}, // always sent by the game's dialog, as on SEND_MINE
     });
   }
-  if (msg.type === 'GET_PLANETS') return getPlanets();
-  if (msg.type === 'GET_LEADER_AVAILABILITY') return leaderAvailability(msg.sourcePlanetId);
+  if (msg.type === 'GET_PLANETS') return getPlanets(u);
+  if (msg.type === 'GET_LEADER_AVAILABILITY') return leaderAvailability(msg.sourcePlanetId, u);
   // ── Stations ──
   if (msg.type === 'GET_ALLIANCE_STATIONS') return apiGet('/api/alliances/station-storage');
   if (msg.type === 'GET_STATION_INDEX') return apiGet('/api/galaxy/station-index');
@@ -354,8 +413,8 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_ARM_SECTORS') return apiGet(`/api/galaxy/arms/${msg.armId}/sectors`);
   if (msg.type === 'GET_FIELD_INDEX') return apiGet('/api/galaxy/field-index');
   if (msg.type === 'GET_PLAYER_ALLIANCE_TAG') return getPlayerAllianceTag(msg.name);
-  if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me');
-  if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
+  if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me', u);
+  if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || [], u);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
   if (msg.type === 'SHARE_SPY_INTEL') return shareSpyIntel(msg.reportIds);
   if (msg.type === 'SYNC_SPY_INTEL') return syncSpyIntel();
@@ -374,8 +433,8 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'GET_MARKET_ORDERS') return getOrders('/api/market/orders');
   if (msg.type === 'GET_ALLIANCE_ORDERS') return getOrders('/api/alliance-trade/orders');
   if (msg.type === 'START_RESEARCH') return startResearch(msg.researchId, msg.planetId, msg.useFragments);
-  if (msg.type === 'SET_LIVE_SEARCH') return setLiveSearch(msg.config);
-  if (msg.type === 'STOP_LIVE_SEARCH') return stopLiveSearch();
+  if (msg.type === 'SET_LIVE_SEARCH') return setLiveSearch(msg.config, u);
+  if (msg.type === 'STOP_LIVE_SEARCH') return stopLiveSearch(u);
 });
 
 // Launch a research on a planet: POST /api/research/{id}/start { planetId }.
@@ -1020,8 +1079,8 @@ async function getOrders(path) {
 }
 
 // Authenticated GET for dashboard pages (they have no cookie access of their own).
-async function apiGet(path) {
-  const { token, universeKey } = await getToken() || {};
+async function apiGet(path, universe) {
+  const { token, universeKey } = await getToken(universe) || {};
   if (!token) return { error: 'Not logged in to Nexus Legacy.' };
   currentUniverse = universeKey;
   try {
@@ -1179,10 +1238,15 @@ function universeOf(token, hints) {
   return jwtPayload(token).universeKey || hints.get(token) || 's0';
 }
 
-// The single active session — freshest token across every universe. Used by
-// everything the UI triggers, which follows the live game session.
+// The session everything the UI triggers runs on: the universe picked in the
+// dashboard (`selected_universe`), or `universe` when a caller pins one. Only
+// with no pick at all does it fall back to the freshest token overall — a pick
+// you're not logged into returns null rather than silently answering from
+// another universe (planet lists etc. from the wrong game).
 // Returns { token, universeKey } or null.
-async function getToken() {
+async function getToken(universe) {
+  const want = universe || (await browser.storage.local.get('selected_universe')).selected_universe;
+  if (want) return (await getTokens()).find(s => s.universeKey === want) || null;
   const found = await collectTokens();
   const token = freshestToken(found.keys());
   return token ? { token, universeKey: universeOf(token, found) } : null;
@@ -1210,46 +1274,87 @@ async function getTokens() {
 // the buffer (5 normally, 40 for polite/background calls), until the window
 // resets — so a big scan self-paces instead of waiting to get 429'd. The
 // reactive Retry-After path below still backstops.
-let rlRemaining = Infinity;      // last-seen RateLimit-Remaining
-let rlResetAt = 0;               // epoch ms when the current window resets
+// Each universe is its own host with its own budget, so the state is per
+// universe: one shared counter let a nf2 scan stall s0 calls on nf2's window.
+const rateLimits = new Map();    // universe → { remaining, resetAt (epoch ms) }
+const rlFor = universe => rateLimits.get(universe) ||
+  rateLimits.set(universe, { remaining: Infinity, resetAt: 0 }).get(universe);
 
-function updateRateLimit(headers) {
-  const rem = parseInt(headers.get('ratelimit-remaining'), 10);
-  const reset = parseFloat(headers.get('ratelimit-reset'));   // seconds until reset
-  if (Number.isFinite(rem)) rlRemaining = rem;                // authoritative — corrects drift
-  if (Number.isFinite(reset)) rlResetAt = Date.now() + reset * 1000;
+// remaining/reset as the headers carry them (strings; reset in seconds).
+function updateRateLimit(universe, remaining, reset) {
+  const rl = rlFor(universe);
+  const rem = parseInt(remaining, 10);
+  const secs = parseFloat(reset);
+  if (Number.isFinite(rem)) rl.remaining = rem;               // authoritative — corrects drift
+  if (Number.isFinite(secs)) rl.resetAt = Date.now() + secs * 1000;
 }
 
 // Wait while low on budget and the window hasn't reset, then reserve one slot
 // optimistically (corrected by the next response header) so parallel callers
 // don't all slip through before any response updates the count.
 // polite: if true, uses larger buffer (40) for background scans; if false, uses smaller buffer (5).
-async function rateLimitGate(polite = false) {
+async function rateLimitGate(polite, universe) {
   const buffer = polite ? 40 : 5;
-  while (rlRemaining <= buffer && Date.now() < rlResetAt) {
-    await new Promise(res => setTimeout(res, Math.min(Math.max(rlResetAt - Date.now(), 0) + 100, 2000)));
+  const rl = rlFor(universe);
+  while (rl.remaining <= buffer && Date.now() < rl.resetAt) {
+    await new Promise(res => setTimeout(res, Math.min(Math.max(rl.resetAt - Date.now(), 0) + 100, 2000)));
   }
-  rlRemaining--;
+  rl.remaining--;
 }
 
 // Enhanced API fetch with robust error handling, retry logic, and optional polite mode.
 // options: { polite?: boolean } - if true, uses larger rate-limit buffer for background ops
+// Universes with game-config `dynamicApiEnabled` (nf2) refuse a plain call to
+// ~40 galaxy/fleet endpoints with 403 DYNAMIC_API_REQUIRED; only the game's
+// encoded transport gets through. apiFetch learns those paths ("<universe>
+// <path with ids as :id>") from the refusal and sends them through the game
+// tab, where dynamic-transport.js speaks the protocol.
+// ponytail: in-memory, so a service-worker restart costs one refused call per path.
+const dynamicPaths = new Set();
+const dynamicKey = (universe, path) => `${universe} ${path.split('?')[0].replace(/\/\d+(?=\/|$)/g, '/:id')}`;
+
+// GAME_FETCH in this universe's game tab (sidebar-inject.js).
+async function gameTabFetch(universe, msg) {
+  const tabs = await browser.tabs.query({ url: `${gameUrlFor(universe)}/*` });
+  if (!tabs.length) {
+    return { error: `Open the game (${universe}) in a tab: this universe only answers through the game page.` };
+  }
+  try {
+    return await browser.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', ...msg }) || { error: 'No answer from the game tab.' };
+  } catch (e) {
+    return { error: `Game tab unreachable (reload it): ${e.message}` };
+  }
+}
+
 async function apiFetch(path, token, options = {}) {
   const { polite = false } = options;
   let lastError = null;
   let delayMs = 1000;
   const maxAttempts = 4;
+  // Host comes off the token itself, not currentUniverse: a scrape cycle
+  // walks several universes and a UI call can flip currentUniverse in
+  // between, which would otherwise send a universe's token to another
+  // universe's host (401). Falls back for tokens with no claim.
+  const universe = jwtPayload(token).universeKey || currentUniverse;
 
   // Retry on 429 (rate limit), 5xx errors, or network issues with exponential backoff.
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    await rateLimitGate(polite);
+    await rateLimitGate(polite, universe);
+    if (dynamicPaths.has(dynamicKey(universe, path))) {
+      const res = await gameTabFetch(universe, { method: 'GET', path, token });
+      if (res.rateLimit) updateRateLimit(universe, res.rateLimit.remaining, res.rateLimit.reset);
+      if (res.ok) return res.data;
+      if (res.status === 429 && attempt < maxAttempts) {
+        const retryAfter = parseFloat(res.retryAfter);
+        await new Promise(r => setTimeout(r, Number.isFinite(retryAfter) ? retryAfter * 1000 : delayMs));
+        delayMs *= 2;
+        continue;
+      }
+      throw new NexusAPIError(res.status || 0, `API ${path} → ${res.error}`);
+    }
     let r;
     try {
-      // Host comes off the token itself, not currentUniverse: a scrape cycle
-      // walks several universes and a UI call can flip currentUniverse in
-      // between, which would otherwise send a universe's token to another
-      // universe's host (401). Falls back for tokens with no claim.
-      r = await fetch(`${gameUrlFor(jwtPayload(token).universeKey || currentUniverse)}${path}`, {
+      r = await fetch(`${gameUrlFor(universe)}${path}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch (e) {
@@ -1263,7 +1368,7 @@ async function apiFetch(path, token, options = {}) {
       throw new NexusAPIError(0, `API ${path} → network error: ${e.message}`);
     }
 
-    updateRateLimit(r.headers);
+    updateRateLimit(universe, r.headers.get('ratelimit-remaining'), r.headers.get('ratelimit-reset'));
 
     // Handle success
     if (r.ok) {
@@ -1288,13 +1393,21 @@ async function apiFetch(path, token, options = {}) {
 
     // Parse error message from response
     let errorMsg = `${r.statusText || 'Request failed with status ' + r.status}`;
+    let errorCode = null;
     try {
       const errorText = await r.text();
       if (errorText) {
         const errorData = JSON.parse(errorText);
         errorMsg = errorData.message || errorData.error || errorMsg;
+        errorCode = errorData.code;
       }
     } catch { /* fallback to default errorMsg */ }
+
+    if (errorCode === 'DYNAMIC_API_REQUIRED' && !dynamicPaths.has(dynamicKey(universe, path))) {
+      dynamicPaths.add(dynamicKey(universe, path));
+      attempt--;   // not a failure: retry the same attempt through the game tab
+      continue;
+    }
 
     // Retry on 429 or 5xx errors
     if ((r.status === 429 || r.status >= 500) && attempt < maxAttempts) {
@@ -1389,8 +1502,8 @@ function stationTransferBody(direction, sourcePlanetId, ships, amounts) {
 // ponytail: status strings beyond "attached" are unverified, so the check is
 // positional (docked on this planet, no mission/travel/recovery) rather than
 // reading `vessel.status`.
-async function leaderAvailability(sourcePlanetId) {
-  const r = await apiGet('/api/leadership');
+async function leaderAvailability(sourcePlanetId, universe) {
+  const r = await apiGet('/api/leadership', universe);
   if (!r || r.error) return { ok: false, reason: `Leader state unavailable: ${r ? r.error : 'no response'}` };
   const v = r.vessel;
   if (!r.enabled || !r.unlocked || !v) return { ok: false, reason: 'No leadership vessel' };
@@ -1483,8 +1596,8 @@ async function apiMissionFuel(m) {
 }
 
 // Current stationed fleet as { shipKey: usableQuantity } — for the simulator.
-async function getPlanets() {
-  const { token, universeKey } = await getToken() || {};
+async function getPlanets(universe) {
+  const { token, universeKey } = await getToken(universe) || {};
   if (!token) return { error: 'Not logged in to Nexus Legacy.' };
   currentUniverse = universeKey;
   try {
@@ -1532,8 +1645,8 @@ async function getFleet(planetId) {
 // Full ship catalog (all types, owned or not) from the shipyard, so templates
 // can include combat escorts you don't currently field. Raw shipDefId (= the
 // shipyard ship id) is what the mine endpoint needs.
-async function getShipDefs() {
-  const { token, universeKey } = await getToken() || {};
+async function getShipDefs(universe) {
+  const { token, universeKey } = await getToken(universe) || {};
   if (!token) return { error: 'Not logged in to Nexus Legacy.' };
   currentUniverse = universeKey;
   try {
@@ -1562,8 +1675,8 @@ async function getShipDefs() {
 }
 
 // Ships actually available on one planet, as { shipDefId: undamagedQuantity }.
-async function getPlanetShips(planetId) {
-  const { token, universeKey } = await getToken() || {};
+async function getPlanetShips(planetId, universe) {
+  const { token, universeKey } = await getToken(universe) || {};
   if (!token) return { error: 'Not logged in to Nexus Legacy.' };
   currentUniverse = universeKey;
   if (planetId == null) return { error: 'No planet selected.' };
@@ -1600,10 +1713,10 @@ async function fuelEstimateGate() {
 // content script, so the request is same-origin with the session cookie —
 // identical to the game's own call. A Bearer request straight from the
 // extension is rejected by the server (500).
-async function gamePost(path, body) {
+async function gamePost(path, body, universe) {
   if ('ships' in body && !(body.ships || []).length) return { error: 'No ships selected.' };
   if (path === '/api/fleet/fuel-estimate') await fuelEstimateGate();
-  const { token, universeKey } = await getToken() || {};
+  const { token, universeKey } = await getToken(universe) || {};
   if (universeKey) currentUniverse = universeKey;   // getToken() may return null (no session)
   // Use native API (chrome for Chrome, browser for Firefox via polyfill)
   const api = typeof chrome !== 'undefined' && chrome.tabs ? chrome : browser;
@@ -1622,6 +1735,7 @@ async function gamePost(path, body) {
     // Retry on 429, honouring Retry-After, then exponential backoff — same policy as apiFetch.
     for (let attempt = 0; ; attempt++) {
       const r = await api.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
+      if (r && r.rateLimit) updateRateLimit(currentUniverse, r.rateLimit.remaining, r.rateLimit.reset);
       if (r && r.status === 429 && attempt < 4) {
         const ra = parseFloat(r.retryAfter);
         await new Promise(res => setTimeout(res, Number.isFinite(ra) ? ra * 1000 : 500 * 2 ** attempt));
@@ -1882,9 +1996,9 @@ async function getSystemZones(token, universe) {
   }
 }
 
-async function getSystemCoords(names, ids) {
+async function getSystemCoords(names, ids, universe) {
   const { system_coords_by_id, system_coords_by_name } =
-    await nsGet(['system_coords_by_id', 'system_coords_by_name']);
+    await nsGet(['system_coords_by_id', 'system_coords_by_name'], universe);
   const byId = system_coords_by_id || {};
   const byName = system_coords_by_name || {};
   const result = {};
@@ -3779,4 +3893,5 @@ export {
   formatIntelIndex, parseIntelIndex, INTEL_INDEX_MAX, acceptSharedIntel, sharedIntelReject, discordFetch,
   nsGet, nsSet, nsRemove, enqueue, gameUrlFor, sendStationTransfer, stationTransferBody, setCurrentUniverse, getCurrentUniverse, hostUniverse, getToken, getTokens,
   processSpyReports, processCampScoutReports,
+  setLiveSearch, stopLiveSearch, liveSearchUniverses, updateRateLimit, rateLimitGate,
 };

@@ -8,7 +8,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { attachLeaderStateFor, clearAvailStrip, editFleetDialog, fuelEstimate, rememberAttachLeader, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { attachLeaderStateFor, nsGet, selectedUniverse, clearAvailStrip, editFleetDialog, fuelEstimate, rememberAttachLeader, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // asteroid fieldType → resource icon + label
@@ -114,8 +114,11 @@ export async function initAsteroidsTab() {
     if (area !== 'local') return;
     if (changes.fleet_templates) refreshTemplates();
     // Live search can be stopped from the game-page results window — reflect it.
-    if (changes.live_search) {
-      const en = !!(changes.live_search.newValue && changes.live_search.newValue.enabled);
+    const errChange = changes[`${selectedUniverse}__live_search_last_error`];
+    if (errChange) { lsLastError = errChange.newValue || null; setLsButton(); }
+    const lsChange = changes[`${selectedUniverse}__live_search`];
+    if (lsChange) {
+      const en = !!(lsChange.newValue && lsChange.newValue.enabled);
       if (en !== lsRunning) { lsRunning = en; setLsButton(); }
     }
   });
@@ -280,13 +283,17 @@ function readLsConfig() {
 function saveLiveSearch() { return browser.runtime.sendMessage({ type: 'SET_LIVE_SEARCH', config: readLsConfig() }); }
 function saveLiveSearchIfOn() { if (lsRunning) saveLiveSearch(); }
 
+let lsLastError = null;   // this universe's last scan failure, cleared by a good scan
 function setLsButton() {
   const btn = document.getElementById('ls-search');
   const status = document.getElementById('ls-status');
   btn.textContent = lsRunning ? 'Stop Live Search' : 'Live Search';
   btn.style.cssText = lsRunning ? 'background:#da3633; border:1px solid #f85149; color:#fff;' : '';
   if (!lsRunning) { status.textContent = ''; status.style.color = '#8b949e'; return; }
-  if (!lsTypeFilter.size) {
+  if (lsLastError) {
+    status.textContent = `⚠ Last scan: ${lsLastError}`;
+    status.style.color = '#f85149';
+  } else if (!lsTypeFilter.size) {
     status.textContent = '⚠ No resource type selected — every field type will match.';
     status.style.color = '#e3b341';
   } else {
@@ -303,7 +310,8 @@ async function toggleLiveSearch() {
 
 // Restore the live-search controls from the persisted config.
 async function loadLiveSearch() {
-  const { live_search: cfg } = await browser.storage.local.get('live_search');
+  const { live_search: cfg, live_search_last_error } = await nsGet(['live_search', 'live_search_last_error']);   // this universe's search
+  lsLastError = live_search_last_error || null;
   if (cfg) {
     if (cfg.planetId != null) document.getElementById('ls-planet').value = cfg.planetId;
     document.getElementById('ls-mult-min').value = cfg.multMin ?? '';

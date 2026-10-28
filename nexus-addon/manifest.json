@@ -34,7 +34,7 @@
   "content_scripts": [
     {
       "matches": ["https://*.nexuslegacy.space/*"],
-      "js": ["browser-polyfill.js", "sidebar-inject.js"],
+      "js": ["browser-polyfill.js", "dynamic-transport.js", "sidebar-inject.js"],
       "run_at": "document_idle"
     },
     {
@@ -60,7 +60,7 @@
     },
     {
       "matches": ["https://*.nexuslegacy.space/*"],
-      "js": ["browser-polyfill.js", "logistics-view.js"],
+      "js": ["browser-polyfill.js", "dynamic-transport.js", "logistics-view.js"],
       "run_at": "document_idle"
     },
     {

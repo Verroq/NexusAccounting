@@ -257,13 +257,15 @@ export function positionControls() {
 
 // ── Controls ───────────────────────────────────────────────────────────────
 
-// Which universe's stored data to VIEW. Independent of which universe the
-// background scraper is actively scraping (that follows the live game
-// session — see background.js's currentUniverse). Switching this only
-// changes what loadAll() reads; it does not trigger a scrape.
+// Which universe the dashboard works on: the stored data it reads, and the
+// session background.js's getToken() uses for every live call (planets, fleet,
+// market…). The scrape cycle itself still covers every logged-in universe.
+// ponytail: reload instead of resetting each tab's one-time init (planet
+// lists, galaxy map, listeners); the hash reopens the same tab.
 document.getElementById('universe-select')?.addEventListener('change', async function () {
   await browser.storage.local.set({ selected_universe: this.value });
-  await loadAll();
+  location.hash = activeTab;
+  location.reload();
 });
 
 document.getElementById('btn-scrape').addEventListener('click', async function () {
