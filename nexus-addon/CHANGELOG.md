@@ -6,6 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-28
+
 ### Added
 - **Patrol tab** (Operations): system patrol reports (hunt/guard), laid out
   like the Mining tab: loot per resource, patrols, fuel, ship losses and net
@@ -29,7 +31,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Keep a Second Dawn game tab open while using the Finder, Asteroids,
   Scouting or other galaxy tabs. If the game asks for a human check, solve it
   in the game tab and try again.
-
 - **One live search per universe.** Season 0 and New Frontier can each run
   their own live search at the same time, with their own planet, filters
   and results. The Asteroids tab edits the search of the universe picked in
