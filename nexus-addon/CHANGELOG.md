@@ -11,6 +11,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   could list ships as "#29", "#23" instead of their names, until the page
   was reloaded. It happened when the ship list was asked for while Season 0
   data was being updated in the background.
+- **The addon no longer sends fleets through your Jump Gates.** With the
+  Galactic Highway research, the game routes any fleet through your moons'
+  Jump Gates unless told not to, which put the gates on cooldown. Mining
+  (live search and Asteroids), debris collection, station withdraw and
+  supply, Quartermaster moves and every other fleet the addon sends now fly
+  normally. Ticking **Use Jump Gate** in the Quartermaster still jumps.
 
 ## [3.0.0] - 2026-10-28
 
