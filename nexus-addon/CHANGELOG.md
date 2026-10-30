@@ -6,6 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-10-30
+
 ### Fixed
 - **Ship names on New Frontier**: the mining fleet window (live search ⛏)
   could list ships as "#29", "#23" instead of their names, until the page
