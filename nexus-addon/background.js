@@ -1641,7 +1641,7 @@ async function getFleet(planetId) {
       const data = await apiFetch('/api/planets', token);
       targets = (data.planets || []).map(p => p.id);
     } else {
-      targets = [planetId || await getHomePlanetId(token)];
+      targets = [planetId || await getHomePlanetId(token, universeKey)];
     }
     const fleet = {};
     for (const id of targets) {
@@ -1666,8 +1666,13 @@ async function getShipDefs(universe) {
   if (!token) return { error: 'Not logged in to Nexus Legacy.' };
   currentUniverse = universeKey;
   try {
-    const planetId = await getHomePlanetId(token);
-    const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token);
+    // A stored home planet can be stale, or another universe's (older builds):
+    // on failure, forget it and look it up again once.
+    const shipyard = async () => apiFetch(`/api/planets/${await getHomePlanetId(token, universeKey)}/shipyard`, token);
+    const data = await shipyard().catch(async () => {
+      await nsRemove(['planet_id'], universeKey);
+      return shipyard();
+    });
     const race = jwtRace(token);
     const ships = (data.ships || []).map(s => ({
       shipDefId: s.id,

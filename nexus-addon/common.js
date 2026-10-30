@@ -44,8 +44,11 @@ let _shipDefs = null;
 async function shipDefs() {
   if (!_shipDefs) {
     const res = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
-    _shipDefs = {};
-    for (const s of (res.ships || [])) _shipDefs[s.shipDefId] = s;
+    const defs = {};
+    for (const s of (res.ships || [])) defs[s.shipDefId] = s;
+    // A failed lookup is not cached, or every dialog shows "#id" until reload.
+    if (res.ships?.length) _shipDefs = defs;
+    return defs;
   }
   return _shipDefs;
 }
