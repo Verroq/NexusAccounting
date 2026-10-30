@@ -856,7 +856,7 @@ async function renderBuilder() {
     if (src.kind === 'Moon')
       return { path: `/api/moons/${src.id}/dispatch`, body: {
         missionType: b.mode === 'resource' ? b.deliverMode || 'deliver' : 'transfer',
-        targetPlanetId: tgt.id, ships, cargo: resources, ...(b.jumpGate && src.jumpGate ? {} : { ordinaryMoonTravel: true }) } };
+        targetPlanetId: tgt.id, ships, cargo: resources, ...(b.jumpGate && src.jumpGate ? { useHighway: true } : { ordinaryMoonTravel: true }) } };
     if (tgt.kind === 'Moon')   // planet → moon (send handles resources + ships)
       return { path: `/api/moons/${tgt.id}/send`, body: { sourcePlanetId: src.id, ships, cargo: resources,
         ...(b.mode === 'resource' ? { missionType: b.deliverMode || 'deliver' } : {}) } };

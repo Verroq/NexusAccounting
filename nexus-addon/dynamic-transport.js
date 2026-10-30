@@ -210,6 +210,7 @@
   // Resolves to { status, data }.
   let required = false;
   async function call(method, path, body) {
+    body = noHighway(path, body);
     const covered = await route(method, path);
     if (required && covered) {
       const t = await request(method, path, body);
@@ -228,6 +229,18 @@
       if (t) return t;
     }
     return { status: r.status, data };
+  }
+
+  // Galactic Highway: with the research, the server routes a fleet through
+  // the player's moon Jump Gates unless the request says useHighway: false,
+  // and the gates then go on cooldown. The game's own dialogs always send it
+  // (a "Use highway" box); the addon flies normally unless a caller asks.
+  // Paths: those the game client sends useHighway on (s0 bundle, 2026-10-28).
+  // Same rule as background.js noHighway (an ES module, so not shared).
+  const HIGHWAY = /^\/api\/(fleet\/(mine|collect-debris|dispatch|fuel-estimate|market-deliver|market-pickup|mining-fleet-operation-estimate|field-attack|mining-fleet-defense)|moons\/\d+\/(send|dispatch)(-estimate)?|stations\/\d+\/send)(\?|$)/;
+  function noHighway(path, body) {
+    return body && typeof body === 'object' && !('useHighway' in body) && HIGHWAY.test(path)
+      ? { ...body, useHighway: false } : body;
   }
 
   globalThis.NexusTransport = Object.freeze({ route, request, call, codec, parseRoutes });

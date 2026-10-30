@@ -1641,7 +1641,7 @@ async function getFleet(planetId) {
       const data = await apiFetch('/api/planets', token);
       targets = (data.planets || []).map(p => p.id);
     } else {
-      targets = [planetId || await getHomePlanetId(token)];
+      targets = [planetId || await getHomePlanetId(token, universeKey)];
     }
     const fleet = {};
     for (const id of targets) {
@@ -1666,8 +1666,13 @@ async function getShipDefs(universe) {
   if (!token) return { error: 'Not logged in to Nexus Legacy.' };
   currentUniverse = universeKey;
   try {
-    const planetId = await getHomePlanetId(token);
-    const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token);
+    // A stored home planet can be stale, or another universe's (older builds):
+    // on failure, forget it and look it up again once.
+    const shipyard = async () => apiFetch(`/api/planets/${await getHomePlanetId(token, universeKey)}/shipyard`, token);
+    const data = await shipyard().catch(async () => {
+      await nsRemove(['planet_id'], universeKey);
+      return shipyard();
+    });
     const race = jwtRace(token);
     const ships = (data.ships || []).map(s => ({
       shipDefId: s.id,
@@ -1729,7 +1734,20 @@ async function fuelEstimateGate() {
 // content script, so the request is same-origin with the session cookie —
 // identical to the game's own call. A Bearer request straight from the
 // extension is rejected by the server (500).
+// Galactic Highway: with the research, the server routes a fleet through the
+// player's moon Jump Gates unless the request says useHighway: false, and the
+// gates then go on cooldown. The game's own dialogs always send it (a "Use
+// highway" box); the addon flies normally unless a caller asks. Paths: those
+// the game client sends useHighway on (s0 bundle, 2026-10-28). Same rule as
+// dynamic-transport.js noHighway (a content script, so not shared).
+const HIGHWAY = /^\/api\/(fleet\/(mine|collect-debris|dispatch|fuel-estimate|market-deliver|market-pickup|mining-fleet-operation-estimate|field-attack|mining-fleet-defense)|moons\/\d+\/(send|dispatch)(-estimate)?|stations\/\d+\/send)(\?|$)/;
+export function noHighway(path, body) {
+  return body && typeof body === 'object' && !('useHighway' in body) && HIGHWAY.test(path)
+    ? { ...body, useHighway: false } : body;
+}
+
 async function gamePost(path, body, universe) {
+  body = noHighway(path, body);
   if ('ships' in body && !(body.ships || []).length) return { error: 'No ships selected.' };
   if (path === '/api/fleet/fuel-estimate') await fuelEstimateGate();
   const { token, universeKey } = await getToken(universe) || {};
