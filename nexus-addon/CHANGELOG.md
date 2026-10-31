@@ -6,6 +6,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **"Send failed: Unable to establish a secure connection" on New
+  Frontier**: a fleet sent from Live Search (or any addon window) could
+  fail this way when the game tab had been open since before the addon was
+  updated. The addon now sends it the way the game does in that case too.
+
 ## [3.0.1] - 2026-10-30
 
 ### Fixed
