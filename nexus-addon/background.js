@@ -1786,34 +1786,25 @@ async function gamePost(path, body, universe) {
     // scripting API fallback below.
   }
 
-  // Fallback: execute the fetch directly in the page context via the scripting API
-  // (available because the `scripting` permission + host_permissions cover this origin).
-  // All args must be JSON-serialisable — path (string), token (string), body (object) are.
+  // Fallback: run the call in the tab via the scripting API (the `scripting`
+  // permission + host_permissions cover this origin). It goes through
+  // dynamic-transport.js, injected first (re-run guard: a no-op when already
+  // there): a plain fetch is refused on universes with the dynamic API (nf2
+  // answers DYNAMIC_API_REQUIRED, "Unable to establish a secure connection").
+  // Cookie auth, as in the game page. Args must be JSON-serialisable.
   try {
+    await api.scripting.executeScript({ target: { tabId: tabs[0].id }, files: ['dynamic-transport.js'] });
     const results = await api.scripting.executeScript({
       target: { tabId: tabs[0].id },
-      func: async (fetchPath, fetchToken, fetchBody) => {
-        const r = await fetch(fetchPath, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(fetchToken ? { Authorization: `Bearer ${fetchToken}` } : {}),
-          },
-          body: JSON.stringify(fetchBody),
-        });
-        const text = await r.text();
-        if (!r.ok) {
-          let m = `${r.status}`;
-          try { const j = JSON.parse(text); m = j.message || j.error || m; }
-          catch { if (text) m = `${r.status}: ${text.slice(0, 200)}`; }
-          return { error: m };
-        }
-        let data = {};
-        try { data = JSON.parse(text); } catch { /* empty / non-JSON body is fine */ }
-        return { ok: true, data };
+      func: async (fetchPath, fetchBody) => {
+        let status, data;
+        try {
+          ({ status, data } = await globalThis.NexusTransport.call('POST', fetchPath, fetchBody));
+        } catch (e) { return { error: e.message }; }
+        if (status >= 200 && status < 300) return { ok: true, data: data && typeof data === 'object' ? data : {} };
+        return { error: (data && (data.message || data.error)) || `${status}`, status, code: data && data.code };
       },
-      args: [path, token, body],
+      args: [path, body],
     });
     return results[0]?.result ?? { error: 'Script injection returned no result.' };
   } catch (e2) {
