@@ -6,6 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-10-31
+
 ### Fixed
 - **"Send failed: Unable to establish a secure connection" on New
   Frontier**: a fleet sent from Live Search (or any addon window) could
